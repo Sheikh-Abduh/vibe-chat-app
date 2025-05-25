@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { BookOpen, Gift, Hash, Heart, UserCircle, Palette, Film, Music, Plane, Code, Loader2 } from 'lucide-react';
+import { BookOpen, Gift, Hash, Heart, UserCircle, Palette, Film, Music, Plane, Code, Loader2, PersonStanding } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
@@ -34,6 +34,7 @@ import SplashScreenDisplay from '@/components/common/splash-screen-display';
 const interestsSchema = z.object({
   hobbies: z.string().min(1, { message: "Please enter at least one hobby." }).describe("Comma-separated list of hobbies"),
   age: z.string().min(1, { message: "Please select your age range." }),
+  gender: z.string().min(1, { message: "Please select your gender." }),
   tags: z.string().min(1, { message: "Please enter at least one tag." }).describe("Comma-separated list of tags"),
   passion: z.string().min(1, { message: "Please select your primary passion." }),
 });
@@ -48,6 +49,14 @@ const ageRanges = [
   "45-54",
   "55-64",
   "65+",
+];
+
+const genderOptions = [
+  "Male",
+  "Female",
+  "Non-binary",
+  "Prefer not to say",
+  "Other",
 ];
 
 const passionOptions = [
@@ -89,6 +98,7 @@ export default function InterestsPage() {
     defaultValues: {
       hobbies: "",
       age: "",
+      gender: "",
       tags: "",
       passion: "",
     },
@@ -106,6 +116,7 @@ export default function InterestsPage() {
     // Save interests to localStorage
     localStorage.setItem(`userInterests_hobbies_${currentUser.uid}`, data.hobbies);
     localStorage.setItem(`userInterests_age_${currentUser.uid}`, data.age);
+    localStorage.setItem(`userInterests_gender_${currentUser.uid}`, data.gender);
     localStorage.setItem(`userInterests_tags_${currentUser.uid}`, data.tags);
     localStorage.setItem(`userInterests_passion_${currentUser.uid}`, data.passion);
     
@@ -129,6 +140,7 @@ export default function InterestsPage() {
     // Clear any previously stored interests if skipping
     localStorage.removeItem(`userInterests_hobbies_${currentUser.uid}`);
     localStorage.removeItem(`userInterests_age_${currentUser.uid}`);
+    localStorage.removeItem(`userInterests_gender_${currentUser.uid}`);
     localStorage.removeItem(`userInterests_tags_${currentUser.uid}`);
     localStorage.removeItem(`userInterests_passion_${currentUser.uid}`);
 
@@ -156,7 +168,7 @@ export default function InterestsPage() {
             Share Your vibe
           </CardTitle>
           <CardDescription className="text-muted-foreground pt-1">
-            Tell us a bit more about yourself to personalize your experience.
+            Tell us a bit more about yourself to personalize your experience. Age and Gender are required.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 pt-2">
@@ -164,34 +176,11 @@ export default function InterestsPage() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
                 control={form.control}
-                name="hobbies"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center">
-                      <Palette className="mr-2 h-5 w-5 text-accent" /> Hobbies
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., Reading, Coding, Hiking (comma-separated)"
-                        className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs text-muted-foreground/80">
-                      List some of your favorite activities or interests.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name="age"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-muted-foreground flex items-center">
-                       <Gift className="mr-2 h-5 w-5 text-accent" /> Age Range
+                       <Gift className="mr-2 h-5 w-5 text-accent" /> Age Range <span className="text-destructive ml-1">*</span>
                     </FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
@@ -214,11 +203,61 @@ export default function InterestsPage() {
 
               <FormField
                 control={form.control}
+                name="gender"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-muted-foreground flex items-center">
+                       <PersonStanding className="mr-2 h-5 w-5 text-accent" /> Gender <span className="text-destructive ml-1">*</span>
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+                          <SelectValue placeholder="Select your gender" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="bg-popover border-border/80 text-popover-foreground">
+                        {genderOptions.map((gender) => (
+                          <SelectItem key={gender} value={gender} className="hover:bg-accent/20 focus:bg-accent/30">
+                            {gender}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="hobbies"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-muted-foreground flex items-center">
+                      <Palette className="mr-2 h-5 w-5 text-accent" /> Hobbies <span className="text-destructive ml-1">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g., Reading, Coding, Hiking (comma-separated)"
+                        className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription className="text-xs text-muted-foreground/80">
+                      List some of your favorite activities or interests.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="tags"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-muted-foreground flex items-center">
-                      <Hash className="mr-2 h-5 w-5 text-accent" /> Tags
+                      <Hash className="mr-2 h-5 w-5 text-accent" /> Tags <span className="text-destructive ml-1">*</span>
                     </FormLabel>
                     <FormControl>
                       <Input
@@ -241,7 +280,7 @@ export default function InterestsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-muted-foreground flex items-center">
-                      <Heart className="mr-2 h-5 w-5 text-accent" /> Primary Passion
+                      <Heart className="mr-2 h-5 w-5 text-accent" /> Primary Passion <span className="text-destructive ml-1">*</span>
                     </FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
@@ -289,5 +328,4 @@ export default function InterestsPage() {
     </div>
   );
 }
-
     

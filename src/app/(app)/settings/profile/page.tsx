@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { UserCircle, Edit3, Sparkles, Gift, Hash, Heart, MessageSquare, Info, Loader2 } from 'lucide-react';
+import { UserCircle, Edit3, Sparkles, Gift, Hash, Heart, MessageSquare, Info, Loader2, PersonStanding } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
@@ -36,6 +36,9 @@ import Link from 'next/link';
 // Reusing from onboarding/interests page
 const ageRanges = [
   "Under 18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+",
+];
+const genderOptions = [
+  "Male", "Female", "Non-binary", "Prefer not to say", "Other",
 ];
 const passionOptions = [
   { value: "art_design", label: "Art & Design" },
@@ -52,6 +55,7 @@ const profileSchema = z.object({
   status: z.string().optional().describe("Your current status or mood"),
   hobbies: z.string().optional().describe("Comma-separated list of hobbies"),
   age: z.string().optional(),
+  gender: z.string().optional(),
   tags: z.string().optional().describe("Comma-separated list of tags"),
   passion: z.string().optional(),
 });
@@ -72,6 +76,7 @@ export default function EditProfilePage() {
       status: "",
       hobbies: "",
       age: "",
+      gender: "",
       tags: "",
       passion: "",
     },
@@ -86,6 +91,7 @@ export default function EditProfilePage() {
         const storedStatus = localStorage.getItem(`userProfile_status_${user.uid}`);
         const storedHobbies = localStorage.getItem(`userInterests_hobbies_${user.uid}`);
         const storedAge = localStorage.getItem(`userInterests_age_${user.uid}`);
+        const storedGender = localStorage.getItem(`userInterests_gender_${user.uid}`);
         const storedTags = localStorage.getItem(`userInterests_tags_${user.uid}`);
         const storedPassion = localStorage.getItem(`userInterests_passion_${user.uid}`);
 
@@ -94,6 +100,7 @@ export default function EditProfilePage() {
           status: storedStatus || "",
           hobbies: storedHobbies || "",
           age: storedAge || "",
+          gender: storedGender || "",
           tags: storedTags || "",
           passion: storedPassion || "",
         });
@@ -118,6 +125,7 @@ export default function EditProfilePage() {
     localStorage.setItem(`userProfile_status_${currentUser.uid}`, data.status || "");
     localStorage.setItem(`userInterests_hobbies_${currentUser.uid}`, data.hobbies || "");
     localStorage.setItem(`userInterests_age_${currentUser.uid}`, data.age || "");
+    localStorage.setItem(`userInterests_gender_${currentUser.uid}`, data.gender || "");
     localStorage.setItem(`userInterests_tags_${currentUser.uid}`, data.tags || "");
     localStorage.setItem(`userInterests_passion_${currentUser.uid}`, data.passion || "");
     
@@ -126,13 +134,10 @@ export default function EditProfilePage() {
       description: "Your changes have been saved successfully.",
     });
     
-    // Optionally, navigate away or provide feedback
-    // router.push('/dashboard'); 
     setTimeout(() => {
       setIsSubmitting(false);
-      // Trigger a re-fetch of user details in AppLayout if it relies on localStorage
-      // Forcing a reload is one way, but better to update state in AppLayout if possible
-      // window.location.reload(); // This is a bit heavy-handed
+      // Consider a more elegant state update for AppLayout if direct reload is too jarring
+      // window.location.reload(); 
     }, 500);
   };
   
@@ -141,7 +146,7 @@ export default function EditProfilePage() {
   }
 
   if (!currentUser) {
-   return <SplashScreenDisplay />; // Should be redirected by onAuthStateChanged
+   return <SplashScreenDisplay />;
  }
 
   return (
@@ -263,6 +268,33 @@ export default function EditProfilePage() {
 
               <FormField
                 control={form.control}
+                name="gender"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-muted-foreground flex items-center text-base">
+                       <PersonStanding className="mr-2 h-5 w-5 text-accent" /> Gender
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl>
+                        <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+                          <SelectValue placeholder="Select your gender" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="bg-popover border-border/80 text-popover-foreground">
+                        {genderOptions.map((gender) => (
+                          <SelectItem key={gender} value={gender} className="hover:bg-accent/20 focus:bg-accent/30">
+                            {gender}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="tags"
                 render={({ field }) => (
                   <FormItem>
@@ -301,7 +333,6 @@ export default function EditProfilePage() {
                       <SelectContent className="bg-popover border-border/80 text-popover-foreground">
                         {passionOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value} className="hover:bg-accent/20 focus:bg-accent/30 flex items-center">
-                            {/* Icon can be added here if needed */}
                             {option.label}
                           </SelectItem>
                         ))}
@@ -340,3 +371,4 @@ export default function EditProfilePage() {
     </div>
   );
 }
+

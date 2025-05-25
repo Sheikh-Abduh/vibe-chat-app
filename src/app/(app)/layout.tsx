@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
-import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search, Users, Edit3, BookOpen, Tag, Sparkles, Heart, Info } from 'lucide-react';
+import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search, Users, Edit3, Heart, Info, Gift, PersonStanding, Hash, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -35,6 +35,7 @@ import {
 interface UserStoredDetails {
   hobbies: string;
   age: string;
+  gender: string;
   tags: string;
   passion: string;
   aboutMe: string;
@@ -61,17 +62,16 @@ export default function AppLayout({
         if (onboardingComplete === 'true') {
           setIsCheckingAuth(false); 
         } else {
-          // This check handles cases where user might be on an app page but hasn't onboarded
-          // or tries to access onboarding pages after completion
           if (pathname.startsWith('/onboarding')) {
-             setIsCheckingAuth(false); // Allow access to onboarding pages if not complete
+             setIsCheckingAuth(false); 
           } else {
             router.replace('/onboarding/avatar'); 
           }
         }
-        // Fetch user details from localStorage for the avatar card
+        
         const storedHobbies = localStorage.getItem(`userInterests_hobbies_${user.uid}`);
         const storedAge = localStorage.getItem(`userInterests_age_${user.uid}`);
+        const storedGender = localStorage.getItem(`userInterests_gender_${user.uid}`);
         const storedTags = localStorage.getItem(`userInterests_tags_${user.uid}`);
         const storedPassionKey = localStorage.getItem(`userInterests_passion_${user.uid}`);
         const storedAboutMe = localStorage.getItem(`userProfile_aboutMe_${user.uid}`);
@@ -82,6 +82,7 @@ export default function AppLayout({
         setUserDetails({
           hobbies: storedHobbies || "Not set",
           age: storedAge || "Not set",
+          gender: storedGender || "Not set",
           tags: storedTags || "Not set",
           passion: passionDisplay,
           aboutMe: storedAboutMe || "Tell us about yourself...",
@@ -93,7 +94,7 @@ export default function AppLayout({
       }
     });
     return () => unsubscribe();
-  }, [router, pathname]); // Added pathname to dependencies to re-evaluate if user is on onboarding
+  }, [router, pathname]); 
 
   const handleLogout = async () => {
     try {
@@ -113,16 +114,13 @@ export default function AppLayout({
   }
 
   if (!currentUser && !pathname.startsWith('/onboarding')) {
-     // If somehow not checking auth, no user, and not on onboarding -> splash (then login)
     return <SplashScreenDisplay />;
   }
   
-  // If user is not authenticated but trying to access onboarding pages, allow children to render (onboarding pages handle their own auth checks)
   if (!currentUser && pathname.startsWith('/onboarding')) {
       return <>{children}</>; 
   }
   
-  // Final fallback if no user after checks (e.g. if onboarding check fails to redirect to /login)
   if (!currentUser) {
       return <SplashScreenDisplay />; 
   }
@@ -249,9 +247,15 @@ export default function AppLayout({
                     <span className="text-muted-foreground font-medium mr-1.5">Age:</span> <span className="text-card-foreground/90">{userDetails.age}</span>
                   </div>
                 )}
+                 {userDetails?.gender && userDetails.gender !== "Not set" && (
+                  <div className="flex items-center">
+                     <PersonStanding className="mr-2.5 h-4 w-4 text-accent shrink-0" />
+                    <span className="text-muted-foreground font-medium mr-1.5">Gender:</span> <span className="text-card-foreground/90">{userDetails.gender}</span>
+                  </div>
+                )}
                 {userDetails?.tags && userDetails.tags !== "Not set" && (
                   <div className="flex items-center">
-                     <Tag className="mr-2.5 h-4 w-4 text-accent shrink-0" />
+                     <Hash className="mr-2.5 h-4 w-4 text-accent shrink-0" />
                     <span className="text-muted-foreground font-medium mr-1.5">Tags:</span> <span className="text-card-foreground/90">{userDetails.tags}</span>
                   </div>
                 )}
@@ -283,7 +287,6 @@ export default function AppLayout({
         <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container relative flex h-12 max-w-screen-2xl items-center">
-              {/* SidebarTrigger removed from here as per user request; mobile access might be an issue */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
                   <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} data-ai-hint="typography wordmark" priority />
