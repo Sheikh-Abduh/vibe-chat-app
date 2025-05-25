@@ -45,11 +45,17 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     // on the backend.
     // Example conceptual steps:
     // const cloudinary = require('cloudinary').v2;
-    // cloudinary.config({ cloud_name: 'YOUR_CLOUD_NAME', api_key: 'YOUR_API_KEY', api_secret: 'YOUR_API_SECRET' });
+    // cloudinary.config({
+    //   cloud_name: 'YOUR_CLOUD_NAME',
+    //   api_key: 'YOUR_API_KEY',
+    //   api_secret: 'YOUR_API_SECRET'
+    // });
     // await cloudinary.api.delete_resources_by_prefix(`avatars/${uid}/`);
     // Or if you store public_ids:
-    // const userAvatarPublicId = ... (fetch from userDoc or another source)
-    // if (userAvatarPublicId) await cloudinary.uploader.destroy(userAvatarPublicId);
+    // const userAvatarPublicId = ... (fetch from userDoc or other source)
+    // if (userAvatarPublicId) {
+    //   await cloudinary.uploader.destroy(userAvatarPublicId);
+    // }
     functions.logger.log(
         `Placeholder: Cloudinary assets for UID ${uid} would be deleted here.`,
     );
@@ -75,5 +81,3 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     );
   }
 });
-
-    
