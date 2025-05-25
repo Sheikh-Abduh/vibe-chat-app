@@ -77,11 +77,13 @@ export default function AppLayout({
     <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
       <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 max-w-screen-2xl items-center">
-          <Link href="/dashboard" className="mr-6 flex items-center space-x-2">
-            <Image src="/logo.png" alt="vibe logo" width={32} height={32} data-ai-hint="abstract logo" />
-            <span className="font-bold text-primary" style={{ textShadow: '0 0 3px hsl(var(--primary)/0.7)'}}>vibe</span>
+          <Link href="/dashboard" className="flex items-center">
+            <Image src="/vibe.png" alt="vibe text logo" width={100} height={24} data-ai-hint="typography wordmark" priority />
           </Link>
-          <div className="flex flex-1 items-center justify-end space-x-4">
+          
+          <div className="flex-1" /> {/* Spacer */}
+
+          <div className="flex items-center space-x-4">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
@@ -134,6 +136,9 @@ export default function AppLayout({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <Link href="/dashboard" className="flex items-center">
+              <Image src="/logo.png" alt="vibe app logo" width={48} height={48} data-ai-hint="abstract logo" priority />
+            </Link>
           </div>
         </div>
       </header>
@@ -143,5 +148,3 @@ export default function AppLayout({
     </div>
   );
 }
-
-    
