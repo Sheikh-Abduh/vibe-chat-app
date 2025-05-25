@@ -274,7 +274,10 @@ export default function AppLayout({
               </div>
 
               <div className="ml-auto flex items-center space-x-4">
-                 {/* Search icon removed from here */}
+                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-accent">
+                  <Search className="h-5 w-5" />
+                  <span className="sr-only">Search</span>
+                </Button>
               </div>
             </div>
           </header>
