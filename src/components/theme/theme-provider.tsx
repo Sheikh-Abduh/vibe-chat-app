@@ -24,6 +24,8 @@ const defaultLightVars: Record<string, string> = {
   '--border': '0 0% 85%', '--input': '0 0% 92%',
 };
 
+export type UiScale = 'compact' | 'default' | 'comfortable';
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
@@ -38,13 +40,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') { // Ensure this runs only on client
       const root = document.documentElement;
       
-      // Function to apply based on current user or defaults
-      const applyUserTheme = (user: User | null) => {
+      const applyUserThemeAndScale = (user: User | null) => {
         const savedMode = user ? localStorage.getItem(`theme_mode_${user.uid}`) as 'light' | 'dark' | null : null;
         const savedPrimaryAccent = user ? localStorage.getItem(`theme_accent_primary_${user.uid}`) : null;
         const savedPrimaryAccentFg = user ? localStorage.getItem(`theme_accent_primary_fg_${user.uid}`) : null;
         const savedSecondaryAccent = user ? localStorage.getItem(`theme_accent_secondary_${user.uid}`) : null;
         const savedSecondaryAccentFg = user ? localStorage.getItem(`theme_accent_secondary_fg_${user.uid}`) : null;
+        const savedUiScale = user ? localStorage.getItem(`ui_scale_${user.uid}`) as UiScale | null : null;
 
         // Determine mode: saved user preference > system preference > default (dark)
         let activeMode: 'light' | 'dark' = 'dark'; // Default to dark
@@ -54,18 +56,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           activeMode = 'light';
         }
         
-        // Apply base theme variables (light/dark)
         const themeVars = activeMode === 'dark' ? defaultDarkVars : defaultLightVars;
         for (const [key, value] of Object.entries(themeVars)) {
           root.style.setProperty(key, value);
         }
 
-        // Apply primary accent or default
         if (savedPrimaryAccent) {
           root.style.setProperty('--primary', savedPrimaryAccent);
           root.style.setProperty('--ring', savedPrimaryAccent); 
         } else {
-           // Fallback to CSS defined default for primary
           root.style.removeProperty('--primary'); 
           root.style.removeProperty('--ring');
         }
@@ -75,11 +74,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
            root.style.removeProperty('--primary-foreground');
         }
 
-        // Apply secondary accent or default
         if (savedSecondaryAccent) {
           root.style.setProperty('--accent', savedSecondaryAccent);
         } else {
-          // Fallback to CSS defined default for accent
           root.style.removeProperty('--accent');
         }
         if (savedSecondaryAccentFg) {
@@ -87,12 +84,20 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         } else {
           root.style.removeProperty('--accent-foreground');
         }
+
+        // Apply UI Scale
+        root.classList.remove('ui-scale-compact', 'ui-scale-default', 'ui-scale-comfortable');
+        if (savedUiScale) {
+          root.classList.add(`ui-scale-${savedUiScale}`);
+        } else {
+          root.classList.add('ui-scale-default'); // Fallback to default if nothing saved
+        }
       };
 
-      applyUserTheme(currentUser); // Apply on initial load/user change
+      applyUserThemeAndScale(currentUser); 
 
     }
-  }, [currentUser]); // Re-run when currentUser changes
+  }, [currentUser]); 
 
   return <>{children}</>;
 }

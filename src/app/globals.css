@@ -49,6 +49,33 @@
     --sidebar-accent-foreground: 220 3% 10%;
     --sidebar-border: 220 3% 15%; /* Match new muted */
     --sidebar-ring: 127 100% 43%; /* Match new accent */
+
+    /* Base font size for scaling */
+    --font-size-root-default: 16px;
+    --font-size-root-compact: 14px;
+    --font-size-root-comfortable: 17px;
+  }
+
+  /* Default UI Scale */
+  html {
+    font-size: var(--font-size-root-default);
+  }
+
+  html.ui-scale-compact {
+    font-size: var(--font-size-root-compact);
+  }
+  html.ui-scale-comfortable {
+    font-size: var(--font-size-root-comfortable);
+  }
+
+  /* Selection highlight using accent colors */
+  ::selection {
+    background-color: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+  }
+  ::-moz-selection { /* Firefox */
+    background-color: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
   }
 }
 

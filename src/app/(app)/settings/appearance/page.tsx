@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { Sun, Moon, Palette, CheckCircle, Loader2, ArrowLeft } from 'lucide-react';
+import { Sun, Moon, Palette, CheckCircle, Loader2, ArrowLeft, RefreshCcw, Ruler } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { cn } from '@/lib/utils';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
-import Link from 'next/link';
+import type { UiScale } from '@/components/theme/theme-provider';
+
 
 type ThemeMode = 'light' | 'dark';
 
@@ -24,7 +25,6 @@ interface AccentColorOption {
   className: string; // Tailwind class for bg color of swatch
 }
 
-// Shared accent options for primary and secondary
 const accentOptions: AccentColorOption[] = [
   { name: 'Neon Purple', value: '289 85% 45%', foreground: '0 0% 100%', className: 'bg-[hsl(289_85%_45%)]' },
   { name: 'Crimson Red', value: '348 83% 47%', foreground: '0 0% 100%', className: 'bg-[hsl(348_83%_47%)]' },
@@ -32,7 +32,13 @@ const accentOptions: AccentColorOption[] = [
   { name: 'Sunny Yellow', value: '45 100% 51%', foreground: '220 3% 10%', className: 'bg-[hsl(45_100%_51%)]' },
   { name: 'Emerald Green', value: '145 63% 42%', foreground: '0 0% 100%', className: 'bg-[hsl(145_63%_42%)]' },
   { name: 'Vibrant Orange', value: '24 95% 53%', foreground: '0 0% 100%', className: 'bg-[hsl(24_95%_53%)]'},
-  { name: 'Forest Green', value: '127 100% 43%', foreground: '220 3% 10%', className: 'bg-[hsl(127_100%_43%)]' }, // Original Accent
+  { name: 'Forest Green', value: '127 100% 43%', foreground: '220 3% 10%', className: 'bg-[hsl(127_100%_43%)]' }, 
+];
+
+const uiScaleOptions: { label: string; value: UiScale }[] = [
+  { label: 'Compact', value: 'compact' },
+  { label: 'Default', value: 'default' },
+  { label: 'Comfortable', value: 'comfortable' },
 ];
 
 // Default theme values (consistent with globals.css and onboarding/theme)
@@ -53,6 +59,13 @@ const defaultLightVars = {
   '--border': '0 0% 85%', '--input': '0 0% 92%',
 };
 
+const defaultAppTheme = {
+    mode: 'dark' as ThemeMode,
+    primary: accentOptions[0], // Neon Purple
+    secondary: accentOptions[6], // Forest Green
+    scale: 'default' as UiScale,
+};
+
 export default function AppearanceSettingsPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -60,18 +73,20 @@ export default function AppearanceSettingsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  const [selectedMode, setSelectedMode] = useState<ThemeMode>('dark');
-  const [selectedPrimaryAccent, setSelectedPrimaryAccent] = useState<AccentColorOption>(accentOptions[0]);
-  const [selectedSecondaryAccent, setSelectedSecondaryAccent] = useState<AccentColorOption>(accentOptions[6]); // Default to Forest Green
+  const [selectedMode, setSelectedMode] = useState<ThemeMode>(defaultAppTheme.mode);
+  const [selectedPrimaryAccent, setSelectedPrimaryAccent] = useState<AccentColorOption>(defaultAppTheme.primary);
+  const [selectedSecondaryAccent, setSelectedSecondaryAccent] = useState<AccentColorOption>(defaultAppTheme.secondary);
+  const [selectedUiScale, setSelectedUiScale] = useState<UiScale>(defaultAppTheme.scale);
 
-  // Store initial values to revert if user navigates away without saving
+
   const [initialValues, setInitialValues] = useState<{
     mode: ThemeMode;
     primary: AccentColorOption;
     secondary: AccentColorOption;
+    scale: UiScale;
   } | null>(null);
 
-  const applyTheme = useCallback((mode: ThemeMode, primary: AccentColorOption, secondary: AccentColorOption) => {
+  const applyThemeAndScale = useCallback((mode: ThemeMode, primary: AccentColorOption, secondary: AccentColorOption, scale: UiScale) => {
     if (typeof window !== 'undefined') {
       const root = document.documentElement;
       const themeVars = mode === 'dark' ? defaultDarkVars : defaultLightVars;
@@ -84,6 +99,9 @@ export default function AppearanceSettingsPage() {
       root.style.setProperty('--ring', primary.value);
       root.style.setProperty('--accent', secondary.value);
       root.style.setProperty('--accent-foreground', secondary.foreground);
+
+      root.classList.remove('ui-scale-compact', 'ui-scale-default', 'ui-scale-comfortable');
+      root.classList.add(`ui-scale-${scale}`);
     }
   }, []);
 
@@ -96,41 +114,41 @@ export default function AppearanceSettingsPage() {
         const savedPrimaryAccentFgValue = localStorage.getItem(`theme_accent_primary_fg_${user.uid}`);
         const savedSecondaryAccentValue = localStorage.getItem(`theme_accent_secondary_${user.uid}`);
         const savedSecondaryAccentFgValue = localStorage.getItem(`theme_accent_secondary_fg_${user.uid}`);
+        const savedUiScale = localStorage.getItem(`ui_scale_${user.uid}`) as UiScale | null;
 
-        const currentMode = savedMode || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        const currentMode = savedMode || defaultAppTheme.mode;
+        const currentPrimary = accentOptions.find(opt => opt.value === savedPrimaryAccentValue && opt.foreground === savedPrimaryAccentFgValue) || defaultAppTheme.primary;
+        const currentSecondary = accentOptions.find(opt => opt.value === savedSecondaryAccentValue && opt.foreground === savedSecondaryAccentFgValue) || defaultAppTheme.secondary;
+        const currentScale = savedUiScale || defaultAppTheme.scale;
         
-        const currentPrimary = accentOptions.find(opt => opt.value === savedPrimaryAccentValue && opt.foreground === savedPrimaryAccentFgValue) || accentOptions[0];
-        const currentSecondary = accentOptions.find(opt => opt.value === savedSecondaryAccentValue && opt.foreground === savedSecondaryAccentFgValue) || accentOptions[6];
-
         setSelectedMode(currentMode);
         setSelectedPrimaryAccent(currentPrimary);
         setSelectedSecondaryAccent(currentSecondary);
+        setSelectedUiScale(currentScale);
         
-        setInitialValues({ mode: currentMode, primary: currentPrimary, secondary: currentSecondary });
-        applyTheme(currentMode, currentPrimary, currentSecondary); // Apply loaded or default theme initially
+        setInitialValues({ mode: currentMode, primary: currentPrimary, secondary: currentSecondary, scale: currentScale });
+        applyThemeAndScale(currentMode, currentPrimary, currentSecondary, currentScale); 
         setIsCheckingAuth(false);
       } else {
         router.replace('/login');
       }
     });
     return () => unsubscribe();
-  }, [router, applyTheme]);
+  }, [router, applyThemeAndScale]);
 
-  // Live preview effect
   useEffect(() => {
-    if (initialValues) { // Only apply if initial values are set (meaning user data is loaded)
-        applyTheme(selectedMode, selectedPrimaryAccent, selectedSecondaryAccent);
+    if (initialValues) { 
+        applyThemeAndScale(selectedMode, selectedPrimaryAccent, selectedSecondaryAccent, selectedUiScale);
     }
-  }, [selectedMode, selectedPrimaryAccent, selectedSecondaryAccent, applyTheme, initialValues]);
+  }, [selectedMode, selectedPrimaryAccent, selectedSecondaryAccent, selectedUiScale, applyThemeAndScale, initialValues]);
 
-  // Revert to initial theme if component unmounts and changes weren't saved
   useEffect(() => {
     return () => {
-      if (initialValues && !isSubmitting) { // isSubmitting check to prevent revert during save navigation
-        applyTheme(initialValues.mode, initialValues.primary, initialValues.secondary);
+      if (initialValues && !isSubmitting) { 
+        applyThemeAndScale(initialValues.mode, initialValues.primary, initialValues.secondary, initialValues.scale);
       }
     };
-  }, [initialValues, isSubmitting, applyTheme]);
+  }, [initialValues, isSubmitting, applyThemeAndScale]);
 
 
   const handleSaveChanges = () => {
@@ -146,16 +164,16 @@ export default function AppearanceSettingsPage() {
     localStorage.setItem(`theme_accent_primary_fg_${currentUser.uid}`, selectedPrimaryAccent.foreground);
     localStorage.setItem(`theme_accent_secondary_${currentUser.uid}`, selectedSecondaryAccent.value);
     localStorage.setItem(`theme_accent_secondary_fg_${currentUser.uid}`, selectedSecondaryAccent.foreground);
+    localStorage.setItem(`ui_scale_${currentUser.uid}`, selectedUiScale);
+
 
     toast({
       title: "Appearance Settings Saved!",
       description: "Your theme preferences have been updated.",
     });
     
-    // Update initialValues to reflect saved changes so revert doesn't happen
-    setInitialValues({ mode: selectedMode, primary: selectedPrimaryAccent, secondary: selectedSecondaryAccent });
+    setInitialValues({ mode: selectedMode, primary: selectedPrimaryAccent, secondary: selectedSecondaryAccent, scale: selectedUiScale });
 
-    // No need to navigate away immediately, user might want to see changes
     setTimeout(() => {
         setIsSubmitting(false);
     }, 500); 
@@ -163,12 +181,44 @@ export default function AppearanceSettingsPage() {
   
   const handleCancel = () => {
     if (initialValues) {
-      applyTheme(initialValues.mode, initialValues.primary, initialValues.secondary);
+      applyThemeAndScale(initialValues.mode, initialValues.primary, initialValues.secondary, initialValues.scale);
       setSelectedMode(initialValues.mode);
       setSelectedPrimaryAccent(initialValues.primary);
       setSelectedSecondaryAccent(initialValues.secondary);
+      setSelectedUiScale(initialValues.scale);
     }
     router.push('/settings');
+  };
+
+  const handleResetToDefaults = () => {
+    if (!currentUser) {
+      toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in." });
+      return;
+    }
+    setIsSubmitting(true); // Prevent revert on unmount during reset
+
+    localStorage.removeItem(`theme_mode_${currentUser.uid}`);
+    localStorage.removeItem(`theme_accent_primary_${currentUser.uid}`);
+    localStorage.removeItem(`theme_accent_primary_fg_${currentUser.uid}`);
+    localStorage.removeItem(`theme_accent_secondary_${currentUser.uid}`);
+    localStorage.removeItem(`theme_accent_secondary_fg_${currentUser.uid}`);
+    localStorage.removeItem(`ui_scale_${currentUser.uid}`);
+
+    setSelectedMode(defaultAppTheme.mode);
+    setSelectedPrimaryAccent(defaultAppTheme.primary);
+    setSelectedSecondaryAccent(defaultAppTheme.secondary);
+    setSelectedUiScale(defaultAppTheme.scale);
+
+    applyThemeAndScale(defaultAppTheme.mode, defaultAppTheme.primary, defaultAppTheme.secondary, defaultAppTheme.scale);
+    setInitialValues({ mode: defaultAppTheme.mode, primary: defaultAppTheme.primary, secondary: defaultAppTheme.secondary, scale: defaultAppTheme.scale });
+    
+    toast({
+      title: "Settings Reset",
+      description: "Appearance settings have been reset to default.",
+    });
+     setTimeout(() => {
+        setIsSubmitting(false);
+    }, 100); // Shorter timeout just to ensure state updates propagate
   };
 
   if (isCheckingAuth || !initialValues) {
@@ -178,8 +228,8 @@ export default function AppearanceSettingsPage() {
   return (
     <div className="px-4 pb-8">
       <div className="flex items-center my-6">
-        <Button variant="ghost" size="icon" className="mr-2" onClick={() => router.push('/settings')}>
-            <ArrowLeft className="h-5 w-5" />
+        <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
+            <ArrowLeft className="h-5 w-5 text-accent" />
         </Button>
         <Palette className="mr-3 h-8 w-8 text-primary" />
         <h1 className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 4px hsl(var(--primary)/0.6)' }}>
@@ -190,13 +240,15 @@ export default function AppearanceSettingsPage() {
         <CardHeader>
           <CardTitle className="text-2xl text-foreground">Customize Your Vibe</CardTitle>
           <CardDescription className="text-muted-foreground pt-1">
-            Choose your preferred theme mode and accent colors. Changes are previewed live.
+            Choose your preferred theme mode, accent colors, and UI scale. Changes are previewed live.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8 pt-4">
           {/* Theme Mode Selection */}
           <div className="space-y-3">
-            <Label className="text-lg font-semibold text-foreground">Theme Mode</Label>
+            <Label className="text-lg font-semibold text-foreground flex items-center">
+                <Palette className="mr-2 h-5 w-5 text-accent"/> Theme Mode
+            </Label>
             <RadioGroup
               value={selectedMode}
               onValueChange={(value: string) => setSelectedMode(value as ThemeMode)}
@@ -229,9 +281,41 @@ export default function AppearanceSettingsPage() {
             </RadioGroup>
           </div>
 
+          {/* UI Scale Selection */}
+          <div className="space-y-3">
+            <Label className="text-lg font-semibold text-foreground flex items-center">
+                <Ruler className="mr-2 h-5 w-5 text-accent"/> UI Scale
+            </Label>
+            <RadioGroup
+              value={selectedUiScale}
+              onValueChange={(value: string) => setSelectedUiScale(value as UiScale)}
+              className="grid grid-cols-3 gap-4"
+            >
+              {uiScaleOptions.map(opt => (
+                <div key={opt.value}>
+                  <RadioGroupItem value={opt.value} id={`scale-${opt.value}`} className="peer sr-only" />
+                  <Label
+                    htmlFor={`scale-${opt.value}`}
+                    className={cn(
+                      "flex items-center justify-center rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer transition-all text-sm h-16",
+                      "peer-data-[state=checked]:border-primary peer-data-[state=checked]:shadow-[0_0_10px_hsl(var(--primary)/0.5)]"
+                    )}
+                  >
+                    {opt.label}
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
+             <CardDescription className="text-xs text-muted-foreground/80 pt-1">
+                Adjusts the overall size of text and UI elements for readability.
+            </CardDescription>
+          </div>
+
           {/* Primary Accent Color Selection */}
           <div className="space-y-3">
-            <Label className="text-lg font-semibold text-foreground">Primary Accent Color</Label>
+            <Label className="text-lg font-semibold text-foreground flex items-center">
+                <Palette className="mr-2 h-5 w-5 text-accent"/> Primary Accent Color
+            </Label>
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
               {accentOptions.map((accent) => (
                 <Button
@@ -258,7 +342,9 @@ export default function AppearanceSettingsPage() {
 
           {/* Secondary Accent Color Selection */}
           <div className="space-y-3">
-            <Label className="text-lg font-semibold text-foreground">Secondary Accent Color</Label>
+            <Label className="text-lg font-semibold text-foreground flex items-center">
+                 <Palette className="mr-2 h-5 w-5 text-accent"/> Secondary Accent Color
+            </Label>
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
               {accentOptions.map((accent) => (
                 <Button
@@ -283,27 +369,40 @@ export default function AppearanceSettingsPage() {
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex flex-col sm:flex-row justify-end gap-3 pt-8 pb-6">
-          <Button
-            variant="outline"
-            onClick={handleCancel}
-            disabled={isSubmitting}
-            className="w-full sm:w-auto border-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground
-                       shadow-[0_0_8px_hsl(var(--muted)/0.4)] hover:shadow-[0_0_12px_hsl(var(--muted)/0.6)]
-                       transition-all duration-300 ease-in-out"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSaveChanges}
-            disabled={isSubmitting || !currentUser}
-            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold
-                       shadow-[0_0_10px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
-                       transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
-          >
-            {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle className="mr-2 h-5 w-5" /> }
-            {isSubmitting ? 'Saving...' : 'Save Changes'}
-          </Button>
+        <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-8 pb-6">
+            <Button
+                variant="outline"
+                onClick={handleResetToDefaults}
+                disabled={isSubmitting}
+                className="w-full sm:w-auto border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive
+                        shadow-[0_0_8px_hsl(var(--destructive)/0.3)] hover:shadow-[0_0_10px_hsl(var(--destructive)/0.5)]
+                        transition-all duration-300 ease-in-out"
+            >
+                <RefreshCcw className="mr-2 h-4 w-4"/>
+                Reset to Defaults
+            </Button>
+          <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+            <Button
+                variant="outline"
+                onClick={handleCancel}
+                disabled={isSubmitting}
+                className="w-full sm:w-auto border-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground
+                        shadow-[0_0_8px_hsl(var(--muted)/0.4)] hover:shadow-[0_0_12px_hsl(var(--muted)/0.6)]
+                        transition-all duration-300 ease-in-out"
+            >
+                Cancel
+            </Button>
+            <Button
+                onClick={handleSaveChanges}
+                disabled={isSubmitting || !currentUser}
+                className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold
+                        shadow-[0_0_10px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
+                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
+            >
+                {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle className="mr-2 h-5 w-5" /> }
+                {isSubmitting ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
         </CardFooter>
       </Card>
     </div>
