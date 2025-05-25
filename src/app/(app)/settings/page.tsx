@@ -13,6 +13,7 @@ interface SettingsCategory {
   icon: React.ElementType;
   href?: string;
   actionText?: string;
+  disabled?: boolean;
 }
 
 const settingsCategories: SettingsCategory[] = [
@@ -53,8 +54,8 @@ const settingsCategories: SettingsCategory[] = [
     title: "Advanced",
     description: "Manage advanced settings like account deletion or data export.",
     icon: Cog,
-    // href: "/settings/advanced",
-    // actionText: "Advanced Settings",
+    href: "/settings/advanced",
+    actionText: "Advanced Settings",
   },
 ];
 
@@ -83,7 +84,7 @@ export default function SettingsPage() {
               </CardContent>
               <div className="p-4 pt-2">
                 {category.href ? (
-                  <Button variant="outline" className="w-full group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.3)] hover:shadow-[0_0_10px_hsl(var(--accent)/0.5)] transition-all duration-300" asChild>
+                  <Button variant="outline" className="w-full group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.3)] hover:shadow-[0_0_10px_hsl(var(--accent)/0.5)] transition-all duration-300" asChild disabled={category.disabled}>
                     <Link href={category.href}>
                       {category.actionText || `Go to ${category.title}`}
                       <ChevronRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
