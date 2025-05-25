@@ -18,7 +18,7 @@ const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
 const CLOUDINARY_API_KEY = '775545995624823';
 // IMPORTANT: You MUST create an unsigned upload preset in your Cloudinary settings
 // and replace the placeholder below with its name.
-const CLOUDINARY_UPLOAD_PRESET = 'YOUR_UNSIGNED_UPLOAD_PRESET_NAME'; // e.g., 'firebase_studio_unsigned_upload'
+const CLOUDINARY_UPLOAD_PRESET = 'vibe_app'; // e.g., 'firebase_studio_unsigned_upload'
 
 export default function AvatarUploadPage() {
   const router = useRouter();
@@ -121,7 +121,7 @@ export default function AvatarUploadPage() {
     const formData = new FormData();
     formData.append('file', avatarFile);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    formData.append('api_key', CLOUDINARY_API_KEY);
+    formData.append('api_key', CLOUDINARY_API_KEY); // API key is fine for unsigned uploads
 
     try {
       const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
