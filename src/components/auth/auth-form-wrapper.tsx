@@ -12,7 +12,7 @@ interface AuthFormWrapperProps {
 export function AuthFormWrapper({ title, description, children, footerContent }: AuthFormWrapperProps) {
   return (
     <Card className="w-full max-w-md bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
-      <div className="flex justify-center pt-6 pb-2"> {/* Reduced pt from 8 to 6, pb from 4 to 2 */}
+      <div className="flex justify-center pt-4 pb-0"> {/* Reduced pt from 6 to 4, pb from 2 to 0 */}
         <Image
           src="/logo.png"
           alt="VibeCheck Logo"
@@ -25,7 +25,7 @@ export function AuthFormWrapper({ title, description, children, footerContent }:
           data-ai-hint="abstract logo"
         />
       </div>
-      <CardHeader className="text-center pt-0">
+      <CardHeader className="text-center pt-0 pb-4"> {/* Explicitly set pb to 4, default CardHeader p-6 */}
         <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>{title}</CardTitle>
         <CardDescription className="text-muted-foreground pt-1">{description}</CardDescription>
       </CardHeader>
