@@ -60,11 +60,9 @@ export default function LoginPage() {
       await signInWithEmailAndPassword(auth, data.email, data.password);
       toast({
         title: "Login Successful!",
-        description: "Welcome back.",
+        description: "Welcome back. Let's set up your profile.",
       });
-      // TODO: Redirect to a protected dashboard page, e.g., router.push('/dashboard');
-      // For now, redirecting to home, which will show splash then attempt to redirect again.
-      router.push('/'); 
+      router.push('/onboarding/avatar'); 
     } catch (error: any) {
       console.error("Login error:", error);
       let errorMessage = "An unexpected error occurred. Please try again.";

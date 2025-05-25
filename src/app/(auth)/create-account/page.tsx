@@ -58,9 +58,9 @@ export default function CreateAccountPage() {
       // using updateProfile(auth.currentUser, { displayName: data.username });
       toast({
         title: "Account Created Successfully!",
-        description: "You can now log in with your new credentials.",
+        description: "Let's set up your profile.",
       });
-      router.push('/login'); 
+      router.push('/onboarding/avatar'); 
     } catch (error: any) {
       console.error("Create account error:", error);
       let errorMessage = "An unexpected error occurred. Please try again.";
