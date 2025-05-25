@@ -37,8 +37,8 @@ const settingsCategories: SettingsCategory[] = [
     title: "Notifications",
     description: "Configure how and when you receive notifications from the app.",
     icon: Bell,
-    // href: "/settings/notifications",
-    // actionText: "Manage Notifications",
+    href: "/settings/notifications", // Link to the new page
+    actionText: "Manage Notifications",
   },
   {
     id: "integrations",
