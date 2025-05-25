@@ -25,8 +25,8 @@ exports.exportUserData = functions.https.onCall(async (data, context) => {
   // 1. Verify Authentication
   if (!context.auth) {
     throw new functions.https.HttpsError(
-        "unauthenticated",
-        "The function must be called while authenticated.",
+      "unauthenticated",
+      "The function must be called while authenticated.",
     );
   }
   const uid = context.auth.uid;
@@ -80,9 +80,9 @@ exports.exportUserData = functions.https.onCall(async (data, context) => {
       throw error; // Re-throw HttpsError instances
     }
     throw new functions.https.HttpsError(
-        "internal",
-        "An error occurred while exporting your data.",
-        error.message, // Optionally include more detail if safe
+      "internal",
+      "An error occurred while exporting your data.",
+      error.message, // Optionally include more detail if safe
     );
   }
 });
