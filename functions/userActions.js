@@ -1,4 +1,3 @@
-
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
@@ -12,9 +11,9 @@ const db = admin.firestore();
 /**
  * Firebase Cloud Function to delete a user's account and associated data.
  *
- * @param {object} data - Data passed from the client (not used in this version).
+ * @param {object} data - Data passed from the client (not used).
  * @param {functions.https.CallableContext} context - Context of the call.
- * @returns {Promise<object>} - Resolves with { success: true } on success.
+ * @returns {Promise<object>} - Resolves with { success: true }.
  * @throws {functions.https.HttpsError} - Throws on errors.
  */
 exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
@@ -35,27 +34,13 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     // 2. Delete user data from Firestore
     // IMPORTANT: This is a simplified example. In a real application, you must
     // delete ALL data associated with the user across all collections.
-    // This might involve batched writes or more complex recursive deletion logic.
+    // This might involve batched writes or more complex deletion logic.
     const userDocRef = db.collection("users").doc(uid);
     await userDocRef.delete();
     functions.logger.log(`Firestore document for UID ${uid} deleted.`);
 
     // 3. (Placeholder) Delete user files from Cloudinary (or other storage)
-    // This requires Cloudinary Admin API and your API Secret, handled securely
-    // on the backend.
-    // Example conceptual steps:
-    // const cloudinary = require('cloudinary').v2;
-    // cloudinary.config({
-    //   cloud_name: 'YOUR_CLOUD_NAME',
-    //   api_key: 'YOUR_API_KEY',
-    //   api_secret: 'YOUR_API_SECRET'
-    // });
-    // await cloudinary.api.delete_resources_by_prefix(`avatars/${uid}/`);
-    // Or if you store public_ids:
-    // const userAvatarPublicId = ... (fetch from userDoc or other source)
-    // if (userAvatarPublicId) {
-    //   await cloudinary.uploader.destroy(userAvatarPublicId);
-    // }
+    // This needs Cloudinary Admin API & Secret, handled securely on backend.
     functions.logger.log(
         `Placeholder: Cloudinary assets for UID ${uid} would be deleted here.`,
     );

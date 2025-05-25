@@ -26,4 +26,3 @@ exports.deleteUserAccount = userActions.deleteUserAccount;
 //   response.send("Hello from Firebase!");
 // });
 
-    
