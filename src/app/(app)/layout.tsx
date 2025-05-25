@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
-import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search, Users, Edit3, BookOpen, Tag, Sparkles, Heart } from 'lucide-react';
+import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search, Users, Edit3, BookOpen, Tag, Sparkles, Heart, Info } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -30,14 +30,15 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInset,
-  // SidebarTrigger, // Removed as per request
 } from '@/components/ui/sidebar';
 
-interface UserDetails {
+interface UserStoredDetails {
   hobbies: string;
   age: string;
   tags: string;
   passion: string;
+  aboutMe: string;
+  status: string;
 }
 
 export default function AppLayout({
@@ -50,7 +51,7 @@ export default function AppLayout({
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
+  const [userDetails, setUserDetails] = useState<UserStoredDetails | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -60,17 +61,21 @@ export default function AppLayout({
         if (onboardingComplete === 'true') {
           setIsCheckingAuth(false); 
         } else {
-          if (!pathname.startsWith('/onboarding')) {
-            router.replace('/onboarding/avatar'); 
+          // This check handles cases where user might be on an app page but hasn't onboarded
+          // or tries to access onboarding pages after completion
+          if (pathname.startsWith('/onboarding')) {
+             setIsCheckingAuth(false); // Allow access to onboarding pages if not complete
           } else {
-            setIsCheckingAuth(false); 
+            router.replace('/onboarding/avatar'); 
           }
         }
-        // Fetch user details from localStorage
+        // Fetch user details from localStorage for the avatar card
         const storedHobbies = localStorage.getItem(`userInterests_hobbies_${user.uid}`);
         const storedAge = localStorage.getItem(`userInterests_age_${user.uid}`);
         const storedTags = localStorage.getItem(`userInterests_tags_${user.uid}`);
         const storedPassionKey = localStorage.getItem(`userInterests_passion_${user.uid}`);
+        const storedAboutMe = localStorage.getItem(`userProfile_aboutMe_${user.uid}`);
+        const storedStatus = localStorage.getItem(`userProfile_status_${user.uid}`);
         
         const passionDisplay = storedPassionKey ? storedPassionKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Not set";
 
@@ -79,6 +84,8 @@ export default function AppLayout({
           age: storedAge || "Not set",
           tags: storedTags || "Not set",
           passion: passionDisplay,
+          aboutMe: storedAboutMe || "Tell us about yourself...",
+          status: storedStatus || "What's on your mind?",
         });
 
       } else {
@@ -86,7 +93,7 @@ export default function AppLayout({
       }
     });
     return () => unsubscribe();
-  }, [router, pathname]);
+  }, [router, pathname]); // Added pathname to dependencies to re-evaluate if user is on onboarding
 
   const handleLogout = async () => {
     try {
@@ -106,13 +113,16 @@ export default function AppLayout({
   }
 
   if (!currentUser && !pathname.startsWith('/onboarding')) {
+     // If somehow not checking auth, no user, and not on onboarding -> splash (then login)
     return <SplashScreenDisplay />;
   }
   
+  // If user is not authenticated but trying to access onboarding pages, allow children to render (onboarding pages handle their own auth checks)
   if (!currentUser && pathname.startsWith('/onboarding')) {
       return <>{children}</>; 
   }
   
+  // Final fallback if no user after checks (e.g. if onboarding check fails to redirect to /login)
   if (!currentUser) {
       return <SplashScreenDisplay />; 
   }
@@ -121,7 +131,7 @@ export default function AppLayout({
   return (
     <SidebarProvider defaultOpen={false}> 
       <Sidebar side="left" collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-        <SidebarHeader className="flex justify-center items-center"> 
+        <SidebarHeader className="flex justify-center items-center p-1"> 
            <Link href="/dashboard" className="block">
              <Image src="/logo.png" alt="vibe app logo" width={48} height={48} data-ai-hint="abstract logo" priority />
            </Link>
@@ -153,7 +163,7 @@ export default function AppLayout({
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton href="#" isActive={pathname.startsWith('/settings')} tooltip="Settings">
+              <SidebarMenuButton href="/settings" isActive={pathname.startsWith('/settings')} tooltip="Settings">
                 <Settings />
                 Settings
               </SidebarMenuButton>
@@ -184,14 +194,14 @@ export default function AppLayout({
             <DropdownMenuContent 
               side="right" 
               align="start" 
-              className="mb-1 ml-1 min-w-[280px] bg-card border-border shadow-xl rounded-lg p-4" 
+              className="mb-1 ml-1 min-w-[300px] bg-card border-border shadow-xl rounded-lg p-4" 
               sideOffset={12}
             >
-              <DropdownMenuLabel className="font-normal p-0 mb-3">
+              <DropdownMenuLabel className="font-normal p-0 mb-4">
                 <div className="flex items-center space-x-3">
-                   <Avatar className="h-12 w-12">
+                   <Avatar className="h-14 w-14">
                      <AvatarImage src={currentUser.photoURL || undefined} alt={currentUser.displayName || 'User avatar'} />
-                     <AvatarFallback className="bg-muted text-muted-foreground text-lg">
+                     <AvatarFallback className="bg-muted text-muted-foreground text-xl">
                        {(currentUser.displayName || currentUser.email || "U").charAt(0).toUpperCase()}
                      </AvatarFallback>
                    </Avatar>
@@ -208,49 +218,59 @@ export default function AppLayout({
                 </div>
               </DropdownMenuLabel>
               
-              <div className="space-y-2 text-sm text-card-foreground mb-3">
+              <div className="space-y-2.5 text-sm text-card-foreground mb-4 text-left">
+                {userDetails?.aboutMe && (
+                  <div className="flex items-start">
+                    <Info className="mr-2.5 h-4 w-4 text-accent shrink-0 mt-0.5" />
+                    <div>
+                        <span className="text-muted-foreground font-medium">About:</span>
+                        <p className="italic text-card-foreground/90 leading-snug">{userDetails.aboutMe !== "Tell us about yourself..." ? userDetails.aboutMe : <span className="text-muted-foreground">{userDetails.aboutMe}</span>}</p>
+                    </div>
+                  </div>
+                )}
+                 {userDetails?.status && (
+                  <div className="flex items-start">
+                    <MessageSquare className="mr-2.5 h-4 w-4 text-accent shrink-0 mt-0.5" />
+                    <div>
+                        <span className="text-muted-foreground font-medium">Status:</span>
+                        <p className="italic text-card-foreground/90 leading-snug">{userDetails.status !== "What's on your mind?" ? userDetails.status : <span className="text-muted-foreground">{userDetails.status}</span>}</p>
+                    </div>
+                  </div>
+                )}
                 {userDetails?.hobbies && userDetails.hobbies !== "Not set" && (
                   <div className="flex items-center">
-                    <Sparkles className="mr-2 h-4 w-4 text-accent" />
-                    <span className="text-muted-foreground mr-1">Hobbies:</span> {userDetails.hobbies}
+                    <Sparkles className="mr-2.5 h-4 w-4 text-accent shrink-0" />
+                    <span className="text-muted-foreground font-medium mr-1.5">Hobbies:</span> <span className="text-card-foreground/90">{userDetails.hobbies}</span>
                   </div>
                 )}
                 {userDetails?.age && userDetails.age !== "Not set" && (
                   <div className="flex items-center">
-                     <UserCircle className="mr-2 h-4 w-4 text-accent" />
-                    <span className="text-muted-foreground mr-1">Age:</span> {userDetails.age}
+                     <Gift className="mr-2.5 h-4 w-4 text-accent shrink-0" />
+                    <span className="text-muted-foreground font-medium mr-1.5">Age:</span> <span className="text-card-foreground/90">{userDetails.age}</span>
                   </div>
                 )}
                 {userDetails?.tags && userDetails.tags !== "Not set" && (
                   <div className="flex items-center">
-                     <Tag className="mr-2 h-4 w-4 text-accent" />
-                    <span className="text-muted-foreground mr-1">Tags:</span> {userDetails.tags}
+                     <Tag className="mr-2.5 h-4 w-4 text-accent shrink-0" />
+                    <span className="text-muted-foreground font-medium mr-1.5">Tags:</span> <span className="text-card-foreground/90">{userDetails.tags}</span>
                   </div>
                 )}
                 {userDetails?.passion && userDetails.passion !== "Not set" && (
                   <div className="flex items-center">
-                    <Heart className="mr-2 h-4 w-4 text-accent" />
-                    <span className="text-muted-foreground mr-1">Passion:</span> {userDetails.passion}
+                    <Heart className="mr-2.5 h-4 w-4 text-accent shrink-0" />
+                    <span className="text-muted-foreground font-medium mr-1.5">Passion:</span> <span className="text-card-foreground/90">{userDetails.passion}</span>
                   </div>
                 )}
-                 <div className="flex items-center">
-                    <BookOpen className="mr-2 h-4 w-4 text-accent" />
-                    <span className="text-muted-foreground mr-1">About:</span> <span className="italic text-muted-foreground">Tell us about yourself...</span>
-                  </div>
-                  <div className="flex items-center">
-                    <MessageSquare className="mr-2 h-4 w-4 text-accent" />
-                     <span className="text-muted-foreground mr-1">Status:</span> <span className="italic text-muted-foreground">What's on your mind?</span>
-                  </div>
               </div>
 
               <DropdownMenuSeparator className="bg-border/50 my-2" />
               <DropdownMenuItem asChild>
-                <Link href="#" className="flex items-center cursor-pointer text-accent hover:text-accent/80 focus:bg-accent/10">
+                <Link href="/settings/profile" className="flex items-center cursor-pointer text-accent hover:text-accent/80 focus:bg-accent/10 focus:text-accent text-sm py-2">
                   <Edit3 className="mr-2 h-4 w-4" />
                   <span>Edit Profile</span>
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive mt-1">
+              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive mt-1 text-sm py-2">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
               </DropdownMenuItem>
@@ -262,8 +282,8 @@ export default function AppLayout({
       <SidebarInset>
         <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container relative flex h-12 max-w-screen-2xl items-center"> {/* Header height set to h-12 (48px) */}
-              {/* SidebarTrigger removed from here */}
+            <div className="container relative flex h-12 max-w-screen-2xl items-center">
+              {/* SidebarTrigger removed from here as per user request; mobile access might be an issue */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
                   <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} data-ai-hint="typography wordmark" priority />
@@ -286,4 +306,3 @@ export default function AppLayout({
     </SidebarProvider>
   );
 }
-
