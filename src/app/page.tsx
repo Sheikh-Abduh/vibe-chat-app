@@ -17,7 +17,7 @@ export default function SplashScreen() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground p-4 overflow-hidden">
-      <div className="relative mb-0"> {/* Reduced margin-bottom */}
+      <div className="relative mb-0"> {/* Logo container */}
         <Image
           src="/logo.png"
           alt="vibe Logo"
@@ -31,12 +31,12 @@ export default function SplashScreen() {
           data-ai-hint="abstract logo"
         />
       </div>
-      <div className="relative -mt-3"> {/* Added negative margin-top to pull vibe.png up */}
+      <div className="relative -mt-5"> {/* Increased negative margin-top to pull vibe.png further up */}
         <Image
           src="/vibe.png"
           alt="vibe text"
-          width={180} // Significantly decreased width
-          height={43}  // Adjusted height to maintain aspect ratio (180 * 67 / 280 ≈ 43)
+          width={180} 
+          height={43}  
           priority
           style={{
             filter: `drop-shadow(0 0 8px hsl(var(--primary)/0.9)) drop-shadow(0 0 15px hsl(var(--primary)/0.5)) drop-shadow(0 0 25px hsl(var(--accent)/0.3))`
@@ -44,7 +44,7 @@ export default function SplashScreen() {
           data-ai-hint="typography wordmark"
         />
       </div>
-      <p className="mt-1 text-base text-muted-foreground">Initializing your vibe...</p> {/* Reduced margin-top to keep it close */}
+      <p className="mt-0 text-base text-muted-foreground">Initializing your vibe...</p> {/* Reduced margin-top to bring text very close to vibe.png */}
     </div>
   );
 }
