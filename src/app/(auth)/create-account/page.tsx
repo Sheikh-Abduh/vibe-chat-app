@@ -19,9 +19,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AuthFormWrapper } from "@/components/auth/auth-form-wrapper";
-import { Mail, LockKeyhole, User, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Mail, LockKeyhole, User, Eye, EyeOff } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
+import SplashScreenDisplay from "@/components/common/splash-screen-display";
 
 const createAccountSchema = z.object({
   username: z.string().min(3, { message: "Username must be at least 3 characters." }),
@@ -45,13 +46,11 @@ export default function CreateAccountPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        // If user is already logged in, they shouldn't be on create account page.
-        // Check if their onboarding is done to decide where to send them.
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
           router.replace('/dashboard'); 
         } else {
-          router.replace('/onboarding/avatar'); // Or dashboard if create account should not be accessible when logged in
+          router.replace('/onboarding/avatar');
         }
       } else {
         setIsCheckingAuth(false);
@@ -73,7 +72,7 @@ export default function CreateAccountPage() {
 
   const onSubmit = async (data: CreateAccountFormValues) => {
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      await createUserWithEmailAndPassword(auth, data.email, data.password);
       // const user = userCredential.user;
       // Optionally, update profile with username
       // await updateProfile(user, { displayName: data.username });
@@ -82,7 +81,6 @@ export default function CreateAccountPage() {
         title: "Account Created Successfully!",
         description: "Let's set up your profile.",
       });
-      // New users always go to onboarding
       router.push('/onboarding/avatar'); 
     } catch (error: any) {
       console.error("Create account error:", error);
@@ -111,11 +109,7 @@ export default function CreateAccountPage() {
   };
 
   if (isCheckingAuth) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
+    return <SplashScreenDisplay />;
   }
 
   return (
@@ -244,7 +238,10 @@ export default function CreateAccountPage() {
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
-            {form.formState.isSubmitting ? <Loader2 className="animate-spin mr-2"/> : null}
+            {form.formState.isSubmitting && <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>}
             {form.formState.isSubmitting ? "Creating Account..." : "Create Account"}
           </Button>
         </form>

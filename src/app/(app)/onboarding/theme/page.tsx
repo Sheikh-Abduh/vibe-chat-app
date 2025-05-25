@@ -8,10 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { Sun, Moon, Palette, CheckCircle, Loader2 } from 'lucide-react';
+import { Sun, Moon, Palette, CheckCircle } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { cn } from '@/lib/utils';
+import SplashScreenDisplay from '@/components/common/splash-screen-display';
 
 type ThemeMode = 'light' | 'dark';
 
@@ -78,24 +79,19 @@ export default function ThemeSelectionPage() {
 
 
   useEffect(() => {
-    // Capture initial styles from globals.css or applied theme
     if (typeof window !== 'undefined') {
         const rootStyle = getComputedStyle(document.documentElement);
         const bg = rootStyle.getPropertyValue('--background').trim();
-        // A simple check, assuming dark mode has lower lightness for background
-        const currentLightness = bg.split(' ').length === 3 ? parseInt(bg.split(' ')[2].replace('%','')) : 10; // default to dark if parsing fails
+        const currentLightness = bg.split(' ').length === 3 ? parseInt(bg.split(' ')[2].replace('%','')) : 10;
         
-        setInitialMode(currentLightness < 50 ? 'dark' : 'light');
-        setSelectedMode(currentLightness < 50 ? 'dark' : 'light');
+        const mode = currentLightness < 50 ? 'dark' : 'light';
+        setInitialMode(mode);
+        setSelectedMode(mode);
 
         const primaryColor = rootStyle.getPropertyValue('--primary').trim();
         setInitialAccentValue(primaryColor);
         const foundAccent = accentOptions.find(opt => opt.value === primaryColor);
-        if (foundAccent) {
-            setSelectedAccent(foundAccent);
-        } else {
-            setSelectedAccent(accentOptions[0]); // Default if not found
-        }
+        setSelectedAccent(foundAccent || accentOptions[0]);
     }
   }, []);
 
@@ -110,12 +106,12 @@ export default function ThemeSelectionPage() {
       }
       root.style.setProperty('--primary', accent.value);
       root.style.setProperty('--primary-foreground', accent.primaryForeground);
-      root.style.setProperty('--ring', accent.value); // Ring color often matches primary
+      root.style.setProperty('--ring', accent.value); 
     }
   }, []);
 
   useEffect(() => {
-    if (initialMode && initialAccentValue ) { // Only apply if initial values are set
+    if (initialMode && initialAccentValue ) { 
         applyTheme(selectedMode, selectedAccent);
     }
   }, [selectedMode, selectedAccent, applyTheme, initialMode, initialAccentValue]);
@@ -123,18 +119,33 @@ export default function ThemeSelectionPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      setIsCheckingAuth(false);
       if (user) {
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
           router.replace('/dashboard');
+        } else {
+           // Only set checking auth to false if onboarding is not complete AND initial theme values are set
+          if (initialMode && initialAccentValue) {
+            setIsCheckingAuth(false);
+          }
         }
       } else {
         router.replace('/login');
       }
     });
     return () => unsubscribe();
-  }, [router]);
+  }, [router, initialMode, initialAccentValue]);
+
+   // Effect to update isCheckingAuth when initial theme values are loaded
+  useEffect(() => {
+    if (currentUser && initialMode && initialAccentValue) {
+      const onboardingComplete = localStorage.getItem(`onboardingComplete_${currentUser.uid}`);
+      if (onboardingComplete !== 'true') {
+        setIsCheckingAuth(false);
+      }
+    }
+  }, [currentUser, initialMode, initialAccentValue]);
+
 
   const handleSave = () => {
     if (!currentUser) {
@@ -154,11 +165,9 @@ export default function ThemeSelectionPage() {
       description: "Your app experience is now personalized.",
     });
 
-    // For a real app, you might want to force a re-render or reload to apply theme globally
-    // For now, we assume RootLayout will handle loading from localStorage on next visit.
     setTimeout(() => {
       router.push('/dashboard');
-      setIsSubmitting(false);
+      // No need to setIsSubmitting(false) as we are navigating away.
     }, 500);
   };
 
@@ -168,60 +177,53 @@ export default function ThemeSelectionPage() {
       router.push('/login');
       return;
     }
-    // Even if skipped, mark onboarding as complete for this user
     localStorage.setItem(`onboardingComplete_${currentUser.uid}`, 'true');
-    // Default theme (dark, neon purple) will be applied or whatever is in globals.css
     toast({
       title: 'Skipping Theme Customization',
       description: 'Proceeding to the dashboard with default theme.',
     });
+     // Revert to initial theme if skipped
+    if (initialMode && initialAccentValue) {
+        const root = document.documentElement;
+        const themeVars = initialMode === 'dark' ? defaultDarkVars : defaultLightVars;
+        for (const [key, value] of Object.entries(themeVars)) {
+            root.style.setProperty(key, value);
+        }
+        root.style.setProperty('--primary', initialAccentValue);
+        const originalAccentObj = accentOptions.find(opt => opt.value === initialAccentValue);
+        root.style.setProperty('--primary-foreground', originalAccentObj ? originalAccentObj.primaryForeground : (initialMode === 'dark' ? '0 0% 100%' : '0 0% 10%'));
+        root.style.setProperty('--ring', initialAccentValue);
+    }
     router.push('/dashboard');
   };
   
-  // Revert to initial theme when component unmounts if not saved
   useEffect(() => {
     return () => {
-      if (typeof window !== 'undefined' && initialMode && initialAccentValue) {
-        const onboardingComplete = currentUser ? localStorage.getItem(`onboardingComplete_${currentUser.uid}`) : null;
-        // Only revert if onboarding was NOT completed by this component instance
-        // This logic is tricky because we want to persist if saved, but revert if navigated away before saving.
-        // For simplicity, this example will always revert if the user navigates away without saving.
-        // A better approach might be to only revert if isSubmitting is false and onboarding isn't complete.
-
-        // If user has NOT completed onboarding (i.e. didn't click save/skip)
-        // and we have initial values to revert to.
-        if (currentUser && onboardingComplete !== 'true' ) {
+      if (typeof window !== 'undefined' && initialMode && initialAccentValue && currentUser) {
+        const onboardingComplete = localStorage.getItem(`onboardingComplete_${currentUser.uid}`);
+        // Only revert if onboarding was not completed (i.e., user navigated away without Save or Skip)
+        if (onboardingComplete !== 'true' && !isSubmitting) { // Added !isSubmitting check
             const root = document.documentElement;
             const themeVars = initialMode === 'dark' ? defaultDarkVars : defaultLightVars;
              for (const [key, value] of Object.entries(themeVars)) {
                 root.style.setProperty(key, value);
             }
             root.style.setProperty('--primary', initialAccentValue);
-            // Attempt to find the original primary foreground or use a sensible default
             const originalAccentObj = accentOptions.find(opt => opt.value === initialAccentValue);
             root.style.setProperty('--primary-foreground', originalAccentObj ? originalAccentObj.primaryForeground : (initialMode === 'dark' ? '0 0% 100%' : '0 0% 10%'));
             root.style.setProperty('--ring', initialAccentValue);
         }
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialMode, initialAccentValue, currentUser]);
+  }, [initialMode, initialAccentValue, currentUser, isSubmitting]);
 
 
-  if (isCheckingAuth || !initialMode || !initialAccentValue) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
+  if (isCheckingAuth) { // Covers auth check AND initial theme values loading
+    return <SplashScreenDisplay />;
   }
   
-  if (!currentUser) {
-     return (
-       <div className="flex items-center justify-center min-h-screen bg-background">
-         <p>Redirecting to login...</p>
-       </div>
-     );
+  if (!currentUser) { // Fallback if somehow auth check passes but no current user
+     return <SplashScreenDisplay />;
   }
 
   return (
@@ -236,7 +238,6 @@ export default function ThemeSelectionPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8 pt-2">
-          {/* Theme Mode Selection */}
           <div className="space-y-3">
             <Label className="text-lg font-semibold text-foreground flex items-center">
               <Palette className="mr-2 h-6 w-6 text-accent" /> Theme Mode
@@ -275,7 +276,6 @@ export default function ThemeSelectionPage() {
             </RadioGroup>
           </div>
 
-          {/* Accent Color Selection */}
           <div className="space-y-3">
             <Label className="text-lg font-semibold text-foreground flex items-center">
               <Palette className="mr-2 h-6 w-6 text-accent" /> Accent Color (Primary)
@@ -312,7 +312,10 @@ export default function ThemeSelectionPage() {
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
-            {isSubmitting && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+            {isSubmitting && <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>}
             {isSubmitting ? 'Saving...' : 'Save & Finish Onboarding'}
           </Button>
           <Button
@@ -328,5 +331,3 @@ export default function ThemeSelectionPage() {
     </div>
   );
 }
-
-    

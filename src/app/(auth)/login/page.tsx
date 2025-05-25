@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AuthFormWrapper } from "@/components/auth/auth-form-wrapper";
-import { Mail, LockKeyhole, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Mail, LockKeyhole, Eye, EyeOff } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { 
   signInWithEmailAndPassword,
@@ -30,6 +30,7 @@ import {
   onAuthStateChanged,
   type User
 } from "firebase/auth";
+import SplashScreenDisplay from "@/components/common/splash-screen-display";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -50,12 +51,12 @@ export default function LoginPage() {
       if (user) {
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
-          router.replace('/dashboard'); // Redirect if logged in and onboarding done
+          router.replace('/dashboard'); 
         } else {
           // If logged in but onboarding not done, could redirect to onboarding,
           // but typically login page isn't shown if already logged in.
           // For now, we allow login form to attempt login again if they somehow land here.
-          setIsCheckingAuth(false);
+           router.replace('/onboarding/avatar');
         }
       } else {
         setIsCheckingAuth(false);
@@ -124,11 +125,7 @@ export default function LoginPage() {
   };
 
   if (isCheckingAuth) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
+    return <SplashScreenDisplay />;
   }
 
   return (
@@ -224,7 +221,10 @@ export default function LoginPage() {
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
-            {form.formState.isSubmitting ? <Loader2 className="animate-spin mr-2"/> : null}
+            {form.formState.isSubmitting && <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>}
             {form.formState.isSubmitting ? "Logging In..." : "Log In"}
           </Button>
         </form>

@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { auth, storage } from '@/lib/firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { updateProfile, onAuthStateChanged, type User } from 'firebase/auth';
+import SplashScreenDisplay from '@/components/common/splash-screen-display';
 
 export default function AvatarUploadPage() {
   const router = useRouter();
@@ -26,14 +27,14 @@ export default function AvatarUploadPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      setIsCheckingAuth(false);
       if (user) {
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
           router.replace('/dashboard');
+        } else {
+          setIsCheckingAuth(false);
         }
       } else {
-        // If no user, redirect to login, as onboarding requires authentication
         router.replace('/login');
       }
     });
@@ -152,20 +153,12 @@ export default function AvatarUploadPage() {
   };
 
   if (isCheckingAuth) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
+    return <SplashScreenDisplay />;
   }
   
+  // This check might be redundant due to useEffect, but good as a fallback.
   if (!currentUser) {
-     // Should have been redirected by useEffect, but as a fallback
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <p>Redirecting to login...</p>
-      </div>
-    );
+    return <SplashScreenDisplay />; // Or redirect to login
   }
 
   return (

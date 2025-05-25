@@ -29,6 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { BookOpen, Gift, Hash, Heart, UserCircle, Palette, Film, Music, Plane, Code, Loader2 } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, type User } from 'firebase/auth';
+import SplashScreenDisplay from '@/components/common/splash-screen-display';
 
 const interestsSchema = z.object({
   hobbies: z.string().min(1, { message: "Please enter at least one hobby." }).describe("Comma-separated list of hobbies"),
@@ -69,11 +70,12 @@ export default function InterestsPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      setIsCheckingAuth(false);
       if (user) {
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
-          router.replace('/dashboard'); // Should be caught by theme page now
+          router.replace('/dashboard'); 
+        } else {
+          setIsCheckingAuth(false);
         }
       } else {
         router.replace('/login');
@@ -99,17 +101,13 @@ export default function InterestsPage() {
       return;
     }
     setIsSubmitting(true);
-    // Simulate saving data
     console.log("Interests data for user:", currentUser.uid, data);
-    // Here you would typically save this data to Firestore or your backend
-    // For now, we just proceed.
-
+    
     toast({
       title: "Interests Saved!",
       description: "Let's customize your app's theme.",
     });
     
-    // Simulate a short delay before redirecting
     setTimeout(() => {
       router.push('/onboarding/theme'); 
       setIsSubmitting(false);
@@ -130,19 +128,11 @@ export default function InterestsPage() {
   };
   
   if (isCheckingAuth) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
+    return <SplashScreenDisplay />;
   }
 
   if (!currentUser) {
-   return (
-     <div className="flex items-center justify-center min-h-screen bg-background">
-       <p>Redirecting to login...</p>
-     </div>
-   );
+   return <SplashScreenDisplay />; // Or redirect to login
  }
 
 
@@ -287,5 +277,3 @@ export default function InterestsPage() {
     </div>
   );
 }
-
-    
