@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
-import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search } from 'lucide-react';
+import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search, Users, Edit3, BookOpen, Tag, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -33,6 +33,13 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 
+interface UserDetails {
+  hobbies: string;
+  age: string;
+  tags: string;
+  passion: string;
+}
+
 export default function AppLayout({
   children,
 }: {
@@ -43,6 +50,7 @@ export default function AppLayout({
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -58,6 +66,21 @@ export default function AppLayout({
             setIsCheckingAuth(false); 
           }
         }
+        // Fetch user details from localStorage
+        const storedHobbies = localStorage.getItem(`userInterests_hobbies_${user.uid}`);
+        const storedAge = localStorage.getItem(`userInterests_age_${user.uid}`);
+        const storedTags = localStorage.getItem(`userInterests_tags_${user.uid}`);
+        const storedPassionKey = localStorage.getItem(`userInterests_passion_${user.uid}`);
+        // Assuming passionOptions from interests page are available or mapped here if needed for display
+        const passionDisplay = storedPassionKey ? storedPassionKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Not set";
+
+        setUserDetails({
+          hobbies: storedHobbies || "Not set",
+          age: storedAge || "Not set",
+          tags: storedTags || "Not set",
+          passion: passionDisplay,
+        });
+
       } else {
         router.replace('/login'); 
       }
@@ -69,6 +92,7 @@ export default function AppLayout({
     try {
       await firebaseSignOut(auth);
       setCurrentUser(null);
+      setUserDetails(null); // Clear user details on logout
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
       router.push('/login');
     } catch (error) {
@@ -99,7 +123,7 @@ export default function AppLayout({
       <Sidebar side="left" collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <SidebarHeader className="p-1 flex justify-center items-center"> {/* Reduced padding for logo */}
            <Link href="/dashboard" className="block">
-             <Image src="/logo.png" alt="vibe app logo" width={40} height={40} data-ai-hint="abstract logo" priority /> {/* Increased logo size */}
+             <Image src="/logo.png" alt="vibe app logo" width={40} height={40} data-ai-hint="abstract logo" priority />
            </Link>
         </SidebarHeader>
         <SidebarContent className="px-2 pt-6 pb-2"> {/* Added more top padding */}
@@ -116,16 +140,16 @@ export default function AppLayout({
                 Discover
               </SidebarMenuButton>
             </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton href="#" isActive={pathname === '/communities'} tooltip="Communities">
+                <Users />
+                Communities
+              </SidebarMenuButton>
+            </SidebarMenuItem>
              <SidebarMenuItem>
               <SidebarMenuButton href="#" isActive={pathname === '/messages'} tooltip="Messages">
                 <MessageSquare />
                 Messages
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-             <SidebarMenuItem>
-              <SidebarMenuButton href="#" isActive={pathname.startsWith('/profile')} tooltip="Profile">
-                <UserCircle />
-                Profile
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
@@ -139,7 +163,12 @@ export default function AppLayout({
         <SidebarFooter className="p-2 mt-auto border-t border-sidebar-border/50">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-12 w-full rounded-md p-0 flex items-center justify-center group-data-[state=expanded]:justify-start group-data-[state=expanded]:px-2 group-data-[state=expanded]:gap-2">
+              <Button 
+                variant="ghost" 
+                className="relative h-12 w-full rounded-md p-0 flex items-center justify-center 
+                           group-data-[state=expanded]:justify-start group-data-[state=expanded]:px-2 group-data-[state=expanded]:gap-2
+                           focus-visible:ring-0 focus-visible:ring-offset-0 focus:ring-0 focus:ring-offset-0"
+              >
                 <Avatar className="h-9 w-9 avatar-pulse-neon">
                   <AvatarImage src={currentUser.photoURL || undefined} alt={currentUser.displayName || currentUser.email || 'User avatar'} />
                   <AvatarFallback className="bg-muted text-muted-foreground">
@@ -151,40 +180,76 @@ export default function AppLayout({
                 </span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent side="right" align="start" className="mb-1 ml-1 min-w-[220px]" sideOffset={12}>
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none text-foreground">
-                    {currentUser.displayName || currentUser.email?.split('@')[0] || "User"}
-                  </p>
-                  {currentUser.email && (
-                     <p className="text-xs leading-none text-muted-foreground">
-                       {currentUser.email}
-                     </p>
-                  )}
+            <DropdownMenuContent 
+              side="right" 
+              align="start" 
+              className="mb-1 ml-1 min-w-[280px] bg-card border-border shadow-xl rounded-lg p-4" 
+              sideOffset={12}
+            >
+              <DropdownMenuLabel className="font-normal p-0 mb-3">
+                <div className="flex items-center space-x-3">
+                   <Avatar className="h-12 w-12">
+                     <AvatarImage src={currentUser.photoURL || undefined} alt={currentUser.displayName || 'User avatar'} />
+                     <AvatarFallback className="bg-muted text-muted-foreground text-lg">
+                       {(currentUser.displayName || currentUser.email || "U").charAt(0).toUpperCase()}
+                     </AvatarFallback>
+                   </Avatar>
+                   <div>
+                      <p className="text-base font-semibold leading-none text-card-foreground">
+                        {currentUser.displayName || currentUser.email?.split('@')[0] || "User"}
+                      </p>
+                      {currentUser.email && (
+                         <p className="text-xs leading-none text-muted-foreground mt-1">
+                           {currentUser.email}
+                         </p>
+                      )}
+                   </div>
                 </div>
               </DropdownMenuLabel>
-              <DropdownMenuSeparator />
+              
+              <div className="space-y-2 text-sm text-card-foreground mb-3">
+                {userDetails?.hobbies && userDetails.hobbies !== "Not set" && (
+                  <div className="flex items-center">
+                    <Sparkles className="mr-2 h-4 w-4 text-accent" />
+                    <span className="text-muted-foreground mr-1">Hobbies:</span> {userDetails.hobbies}
+                  </div>
+                )}
+                {userDetails?.age && userDetails.age !== "Not set" && (
+                  <div className="flex items-center">
+                     <UserCircle className="mr-2 h-4 w-4 text-accent" />
+                    <span className="text-muted-foreground mr-1">Age:</span> {userDetails.age}
+                  </div>
+                )}
+                {userDetails?.tags && userDetails.tags !== "Not set" && (
+                  <div className="flex items-center">
+                     <Tag className="mr-2 h-4 w-4 text-accent" />
+                    <span className="text-muted-foreground mr-1">Tags:</span> {userDetails.tags}
+                  </div>
+                )}
+                {userDetails?.passion && userDetails.passion !== "Not set" && (
+                  <div className="flex items-center">
+                    <Heart className="mr-2 h-4 w-4 text-accent" />
+                    <span className="text-muted-foreground mr-1">Passion:</span> {userDetails.passion}
+                  </div>
+                )}
+                 <div className="flex items-center">
+                    <BookOpen className="mr-2 h-4 w-4 text-accent" />
+                    <span className="text-muted-foreground mr-1">About:</span> <span className="italic text-muted-foreground">Tell us about yourself...</span>
+                  </div>
+                  <div className="flex items-center">
+                    <MessageSquare className="mr-2 h-4 w-4 text-accent" />
+                     <span className="text-muted-foreground mr-1">Status:</span> <span className="italic text-muted-foreground">What's on your mind?</span>
+                  </div>
+              </div>
+
+              <DropdownMenuSeparator className="bg-border/50 my-2" />
               <DropdownMenuItem asChild>
-                <Link href="/dashboard" className="flex items-center cursor-pointer">
-                  <LayoutDashboard className="mr-2 h-4 w-4" />
-                  <span>Dashboard</span>
+                <Link href="#" className="flex items-center cursor-pointer text-accent hover:text-accent/80 focus:bg-accent/10">
+                  <Edit3 className="mr-2 h-4 w-4" />
+                  <span>Edit Profile</span>
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="#" className="flex items-center cursor-pointer text-muted-foreground hover:text-foreground">
-                  <UserCircle className="mr-2 h-4 w-4" />
-                  <span>Profile</span>
-                </Link>
-              </DropdownMenuItem>
-               <DropdownMenuItem asChild>
-                <Link href="#" className="flex items-center cursor-pointer text-muted-foreground hover:text-foreground">
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Settings</span>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive">
+              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive mt-1">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
               </DropdownMenuItem>
@@ -223,3 +288,5 @@ export default function AppLayout({
     </SidebarProvider>
   );
 }
+
+    
