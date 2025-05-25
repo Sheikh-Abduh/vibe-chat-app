@@ -73,7 +73,7 @@ export default function InterestsPage() {
       if (user) {
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
-          router.replace('/dashboard'); 
+          router.replace('/dashboard');
         } else {
           setIsCheckingAuth(false);
         }
@@ -102,6 +102,12 @@ export default function InterestsPage() {
     }
     setIsSubmitting(true);
     console.log("Interests data for user:", currentUser.uid, data);
+
+    // Save interests to localStorage
+    localStorage.setItem(`userInterests_hobbies_${currentUser.uid}`, data.hobbies);
+    localStorage.setItem(`userInterests_age_${currentUser.uid}`, data.age);
+    localStorage.setItem(`userInterests_tags_${currentUser.uid}`, data.tags);
+    localStorage.setItem(`userInterests_passion_${currentUser.uid}`, data.passion);
     
     toast({
       title: "Interests Saved!",
@@ -120,6 +126,12 @@ export default function InterestsPage() {
         router.push('/login');
         return;
     }
+    // Clear any previously stored interests if skipping
+    localStorage.removeItem(`userInterests_hobbies_${currentUser.uid}`);
+    localStorage.removeItem(`userInterests_age_${currentUser.uid}`);
+    localStorage.removeItem(`userInterests_tags_${currentUser.uid}`);
+    localStorage.removeItem(`userInterests_passion_${currentUser.uid}`);
+
     toast({
       title: 'Skipping Interests',
       description: 'Proceeding to theme selection.',
@@ -132,7 +144,7 @@ export default function InterestsPage() {
   }
 
   if (!currentUser) {
-   return <SplashScreenDisplay />; // Or redirect to login
+   return <SplashScreenDisplay />;
  }
 
 
@@ -277,3 +289,5 @@ export default function InterestsPage() {
     </div>
   );
 }
+
+    
