@@ -1,7 +1,5 @@
 
-const functions = require(
-  "firebase-functions",
-);
+const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
 // Initialize Firebase Admin SDK if not already initialized
@@ -12,77 +10,70 @@ if (admin.apps.length === 0) {
 const db = admin.firestore();
 
 /**
- * Firebase Cloud Function to export user data.
- * This version returns the data directly to the client for download.
+ * Firebase Cloud Function to delete a user's account and associated data.
  *
- * @param {object} data - Data passed from the client.
- * Expected: data.clientSideData (object for localStorage)
+ * @param {object} data - Data passed from the client (not used in this version).
  * @param {functions.https.CallableContext} context - Context of the call.
- * @returns {Promise<object>} - Resolves with { dataString: string } on success,
- * or throws an HttpsError.
+ * @returns {Promise<object>} - Resolves with { success: true } on success.
+ * @throws {functions.https.HttpsError} - Throws on errors.
  */
-exports.exportUserData = functions.https.onCall(async (data, context) => {
+exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
   // 1. Verify Authentication
   if (!context.auth) {
     throw new functions.https.HttpsError(
-      "unauthenticated",
-      "The function must be called while authenticated.",
+        "unauthenticated",
+        "The function must be called while authenticated.",
     );
   }
   const uid = context.auth.uid;
   const email = context.auth.token.email || "unknown_email";
-  functions.logger.log(`Export initiated by UID: ${uid}, Email: ${email}`);
-
-  const clientSideData = data.clientSideData || {};
+  functions.logger.log(
+      `Account deletion initiated by UID: ${uid}, Email: ${email}`,
+  );
 
   try {
-    // 2. Fetch Firestore Data (Adapt to your schema)
-    const firestoreData = {};
+    // 2. Delete user data from Firestore
+    // IMPORTANT: This is a simplified example. In a real application, you must
+    // delete ALL data associated with the user across all collections.
+    // This might involve batched writes or more complex recursive deletion logic.
     const userDocRef = db.collection("users").doc(uid);
-    const userDoc = await userDocRef.get();
-    if (userDoc.exists) {
-      firestoreData.profile = userDoc.data();
-    } else {
-      firestoreData.profile = {
-        message: "No profile document found in Firestore.",
-      };
-    }
+    await userDocRef.delete();
+    functions.logger.log(`Firestore document for UID ${uid} deleted.`);
 
-    // 3. Compile All Data
-    const exportData = {
-      userId: uid,
-      exportedAt: new Date().toISOString(),
-      firestoreData: firestoreData,
-      clientSideData: clientSideData,
-    };
-
-    // 4. Convert to JSON String and Return
-    // null, 2 for pretty printing
-    const jsonDataString = JSON.stringify(exportData, null, 2);
-
+    // 3. (Placeholder) Delete user files from Cloudinary (or other storage)
+    // This requires Cloudinary Admin API and your API Secret, handled securely
+    // on the backend.
+    // Example conceptual steps:
+    // const cloudinary = require('cloudinary').v2;
+    // cloudinary.config({ cloud_name: 'YOUR_CLOUD_NAME', api_key: 'YOUR_API_KEY', api_secret: 'YOUR_API_SECRET' });
+    // await cloudinary.api.delete_resources_by_prefix(`avatars/${uid}/`);
+    // Or if you store public_ids:
+    // const userAvatarPublicId = ... (fetch from userDoc or another source)
+    // if (userAvatarPublicId) await cloudinary.uploader.destroy(userAvatarPublicId);
     functions.logger.log(
-      `User data for UID ${uid} compiled. Size: ${jsonDataString.length} bytes.`,
+        `Placeholder: Cloudinary assets for UID ${uid} would be deleted here.`,
     );
 
-    // Check for potential payload size issues (Cloud Functions have limits)
-    // This is a very rough check, actual limits are for HTTP response.
-    if (jsonDataString.length > 900000) { // Approx 900KB
-      functions.logger.warn(
-        `Export data for UID ${uid} is very large ` +
-        `(${jsonDataString.length} bytes) and might exceed limits.`,
-      );
-    }
 
-    return {dataString: jsonDataString};
+    // 4. Delete the user from Firebase Authentication
+    await admin.auth().deleteUser(uid);
+    functions.logger.log(`Firebase Auth user for UID ${uid} deleted.`);
+
+    return {success: true, message: "Account successfully deleted."};
   } catch (error) {
-    functions.logger.error(`Error exporting data for UID ${uid}:`, error);
+    functions.logger.error(
+        `Error deleting account for UID ${uid}:`,
+        error,
+    );
     if (error instanceof functions.https.HttpsError) {
       throw error; // Re-throw HttpsError instances
     }
     throw new functions.https.HttpsError(
-      "internal",
-      "An error occurred while exporting your data.",
-      error.message, // Optionally include more detail if safe
+        "internal",
+        "An error occurred while deleting your account.",
+        error.message,
     );
   }
 });
+
+    

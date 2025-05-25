@@ -15,7 +15,7 @@
 const userActions = require("./userActions");
 
 // Export the callable function
-exports.exportUserData = userActions.exportUserData;
+exports.deleteUserAccount = userActions.deleteUserAccount;
 
 
 // Create and deploy your first functions
@@ -25,3 +25,5 @@ exports.exportUserData = userActions.exportUserData;
 //   logger.info("Hello logs!", {structuredData: true});
 //   response.send("Hello from Firebase!");
 // });
+
+    

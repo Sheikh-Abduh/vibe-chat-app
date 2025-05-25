@@ -20,7 +20,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Cog, Download, Eye, MessageCircle, ShieldAlert, Trash2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Cog, Eye, MessageCircle, ShieldAlert, Trash2, Loader2 } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, type User, signOut } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
@@ -35,7 +35,6 @@ export default function AdvancedSettingsPage() {
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [isExporting, setIsExporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [dmPreference, setDmPreference] = useState<DmPreference>("anyone");
@@ -89,126 +88,55 @@ export default function AdvancedSettingsPage() {
     }
   };
 
-  const handleExportData = async () => {
+  const handleDeleteAccount = async () => {
     if (!currentUser) {
-      toast({ variant: "destructive", title: "Error", description: "You must be logged in to export data." });
+      toast({ variant: "destructive", title: "Error", description: "You must be logged in to delete your account." });
       return;
     }
-    setIsExporting(true);
-    toast({ title: "Data Export Initiated", description: "We're preparing your data. This may take a moment..." });
+    
+    setIsDeleting(true);
+
+    // CRITICAL FOR PRODUCTION: Implement re-authentication here before calling the delete function.
+    // Example: Prompt user for password, then:
+    // import { EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
+    // const credential = EmailAuthProvider.credential(currentUser.email, enteredPassword);
+    // await reauthenticateWithCredential(currentUser, credential);
+    // If successful, then proceed with the Cloud Function call.
 
     try {
-      // Gather client-side data
-      const clientSideData: Record<string, string | null> = {};
-      const keysToExportFromLocalStorage = [
-        `userProfile_aboutMe_${currentUser.uid}`,
-        `userProfile_status_${currentUser.uid}`,
-        `userInterests_hobbies_${currentUser.uid}`,
-        `userInterests_age_${currentUser.uid}`,
-        `userInterests_gender_${currentUser.uid}`,
-        `userInterests_tags_${currentUser.uid}`,
-        `userInterests_passion_${currentUser.uid}`,
-        `theme_mode_${currentUser.uid}`,
-        `theme_accent_primary_${currentUser.uid}`,
-        `theme_accent_primary_fg_${currentUser.uid}`,
-        `theme_accent_secondary_${currentUser.uid}`,
-        `theme_accent_secondary_fg_${currentUser.uid}`,
-        `ui_scale_${currentUser.uid}`,
-        `advanced_dm_preference_${currentUser.uid}`,
-        `advanced_profile_visibility_${currentUser.uid}`,
-        `notifications_messages_enabled_${currentUser.uid}`,
-        `notifications_friendRequests_enabled_${currentUser.uid}`,
-        `notifications_messageRequests_enabled_${currentUser.uid}`,
-        `notifications_communityInvites_enabled_${currentUser.uid}`,
-        `notifications_delivery_email_enabled_${currentUser.uid}`,
-        `notifications_delivery_push_enabled_${currentUser.uid}`,
-        `notifications_delivery_inApp_enabled_${currentUser.uid}`,
-        `notifications_delivery_notificationCentre_enabled_${currentUser.uid}`,
-        `community_join_preference_${currentUser.uid}`,
-      ];
-
-      keysToExportFromLocalStorage.forEach(key => {
-        clientSideData[key.replace(`_${currentUser.uid}`, '')] = localStorage.getItem(key);
-      });
-      
-      // Add other potentially useful data if needed
-      clientSideData.displayName = currentUser.displayName;
-      clientSideData.email = currentUser.email;
-      clientSideData.photoURL = currentUser.photoURL;
-
-
       const functionsInstance = getFunctions();
-      const exportUserDataFn = httpsCallable(functionsInstance, 'exportUserData');
+      const deleteUserAccountFn = httpsCallable(functionsInstance, 'deleteUserAccount');
       
-      const result = await exportUserDataFn({ clientSideData });
-      const { dataString, error } = result.data as { dataString?: string; error?: string };
+      // The Cloud Function should use context.auth.uid for security, 
+      // but passing uid can be useful for logging or specific scenarios if needed.
+      await deleteUserAccountFn(); // No need to pass UID if function uses context.auth.uid
 
-      if (error) {
-        throw new Error(error || "Unknown error from export function.");
-      }
+      toast({
+        title: "Account Deletion Successful",
+        description: "Your account and associated data have been deleted. You will be logged out.",
+        duration: 5000,
+      });
 
-      if (dataString) {
-        const blob = new Blob([dataString], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `vibe_export_${currentUser.uid}_${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-        URL.revokeObjectURL(url);
-        toast({ title: "Data Export Successful!", description: "Your data has been downloaded." });
-      } else {
-        throw new Error("No data string received from export function.");
-      }
+      await signOut(auth); // Sign out the user from the client
+      
+      // Clear any local storage associated with the user
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes(currentUser.uid)) {
+          localStorage.removeItem(key);
+        }
+      });
+      
+      router.push('/login'); // Redirect to login page
     } catch (error: any) {
-      console.error("Export error:", error);
+      console.error("Delete account error:", error);
       toast({
         variant: "destructive",
-        title: "Export Failed",
-        description: error.message || "Could not export your data. Please try again.",
+        title: "Account Deletion Failed",
+        description: error.message || "Could not delete your account. Please try again later.",
       });
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const handleDeleteAccount = async () => {
-    // Actual deletion would involve re-authentication and backend calls
-    // For now, simulate the process
-    if (!currentUser) return;
-    
-    setIsDeleting(true); // Disable button in dialog
-
-    // Simulate backend call and re-auth
-    // In a real app:
-    // 1. Prompt for password / re-authenticate
-    // 2. Call a Cloud Function to delete all user data from Firestore, Storage, etc.
-    // 3. Call Firebase Auth user.delete()
-    
-    // Simulate a delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    try {
-      // Simulate sign out after "deletion"
-      await signOut(auth);
-      toast({
-        variant: "destructive",
-        title: "Account Deletion Process Initiated (Simulated)",
-        description: "You have been signed out.",
-      });
-      // Clear any sensitive local storage data
-      // Object.keys(localStorage).forEach(key => {
-      //   if (key.includes(currentUser.uid)) {
-      //     localStorage.removeItem(key);
-      //   }
-      // });
-      router.push('/login'); // Redirect to login
-    } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: "Could not complete simulated deletion. " + error.message });
       setIsDeleting(false);
     }
-    // setIsDeleting(false) might not be reached if navigation happens first.
+    // No need to set isDeleting to false if successful, as user is navigated away.
   };
 
   if (isCheckingAuth || !currentUser) {
@@ -281,29 +209,6 @@ export default function AdvancedSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Data Management Card */}
-        <Card className="w-full bg-card border-border/50 shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-xl text-foreground flex items-center">
-              <Download className="mr-2 h-6 w-6 text-accent" /> Data Management
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <Button 
-              variant="outline" 
-              onClick={handleExportData} 
-              disabled={isExporting}
-              className="w-full sm:w-auto border-primary text-primary hover:bg-primary/10 hover:text-primary"
-            >
-              {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-              {isExporting ? "Processing..." : "Export My Data"}
-            </Button>
-            <CardDescription className="text-xs text-muted-foreground mt-2">
-              Download a copy of your account data. This includes data stored in Firestore (simulated) and preferences from local storage.
-            </CardDescription>
-          </CardContent>
-        </Card>
-
         {/* Account Actions Card */}
         <Card className="w-full bg-card border-border/50 shadow-lg">
           <CardHeader>
@@ -322,7 +227,8 @@ export default function AdvancedSettingsPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete your account and remove your data from our servers. (Simulated: This will sign you out.)
+                    This action cannot be undone. This will permanently delete your account and associated data. 
+                    For security, you might be asked to re-enter your password.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -339,7 +245,7 @@ export default function AdvancedSettingsPage() {
               </AlertDialogContent>
             </AlertDialog>
             <CardDescription className="text-xs text-muted-foreground mt-2">
-              Permanently delete your account and all associated data (simulated: signs out).
+              Permanently delete your account and all associated data.
             </CardDescription>
           </CardContent>
         </Card>
@@ -348,4 +254,4 @@ export default function AdvancedSettingsPage() {
   );
 }
 
-      
+    
