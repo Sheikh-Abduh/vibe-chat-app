@@ -21,8 +21,8 @@ export default function SplashScreen() {
         <Image
           src="/logo.png"
           alt="vibe Logo"
-          width={120} // Reduced from 160
-          height={120} // Reduced from 160
+          width={100} // Changed from 120 to 100
+          height={100} // Changed from 120 to 100
           priority
           className="animate-pulse"
           style={{
@@ -35,8 +35,8 @@ export default function SplashScreen() {
         <Image
           src="/vibe.png"
           alt="vibe text"
-          width={400} // Reduced from 500
-          height={96}  // Adjusted proportionally (500/120 * 96 approx)
+          width={333} // Changed from 400
+          height={80}  // Changed from 96
           priority
           style={{
             filter: `drop-shadow(0 0 8px hsl(var(--primary))) drop-shadow(0 0 16px hsl(var(--primary)/0.7)) drop-shadow(0 0 24px hsl(var(--accent)/0.5))`
