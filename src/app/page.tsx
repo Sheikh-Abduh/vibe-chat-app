@@ -20,7 +20,7 @@ export default function SplashScreen() {
       <div className="relative mb-8">
         <Image
           src="/logo.png"
-          alt="Vibe Logo"
+          alt="vibe Logo"
           width={160}
           height={160}
           priority
@@ -34,7 +34,7 @@ export default function SplashScreen() {
       <div className="relative">
         <Image
           src="/vibe.png"
-          alt="Vibe"
+          alt="vibe"
           width={500}
           height={120}
           priority

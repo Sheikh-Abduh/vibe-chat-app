@@ -14,7 +14,7 @@
     --popover: 220 3% 10%; /* Darker */
     --popover-foreground: 0 0% 98%;
 
-    --primary: 289 85% 50%; /* Darker, more saturated neon purple */
+    --primary: 289 85% 45%; /* Darker neon purple */
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 3% 18%; /* Darker */
@@ -23,7 +23,7 @@
     --muted: 220 3% 15%; /* Darker */
     --muted-foreground: 0 0% 70%;
 
-    --accent: 127 100% 48%; /* Darker neon green */
+    --accent: 127 100% 43%; /* Darker neon green */
     --accent-foreground: 220 3% 10%;
 
     --destructive: 0 72% 51%;
@@ -31,24 +31,24 @@
 
     --border: 220 3% 18%; /* Darker */
     --input: 220 3% 13%; /* Darker */
-    --ring: 127 100% 48%; /* Matches new accent */
+    --ring: 127 100% 43%; /* Matches new accent */
 
     --radius: 0.5rem;
 
-    --chart-1: 289 85% 50%; /* Match new primary */
-    --chart-2: 127 100% 48%; /* Match new accent */
+    --chart-1: 289 85% 45%; /* Match new primary */
+    --chart-2: 127 100% 43%; /* Match new accent */
     --chart-3: 220 70% 65%;
     --chart-4: 30 80% 60%;
     --chart-5: 200 75% 55%;
 
     --sidebar-background: 220 3% 8%; /* Even darker */
     --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 289 85% 50%; /* Match new primary */
+    --sidebar-primary: 289 85% 45%; /* Match new primary */
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 127 100% 48%; /* Match new accent */
+    --sidebar-accent: 127 100% 43%; /* Match new accent */
     --sidebar-accent-foreground: 220 3% 10%;
     --sidebar-border: 220 3% 15%; /* Match new muted */
-    --sidebar-ring: 127 100% 48%; /* Match new accent */
+    --sidebar-ring: 127 100% 43%; /* Match new accent */
   }
 }
 

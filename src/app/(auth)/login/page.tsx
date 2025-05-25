@@ -100,7 +100,7 @@ export default function LoginPage() {
   return (
     <AuthFormWrapper
       title="Welcome Back"
-      description="Log in to continue your Vibe."
+      description="Log in to continue your vibe."
       footerContent={
         <p className="text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}
