@@ -97,12 +97,12 @@ export default function AppLayout({
   return (
     <SidebarProvider defaultOpen={false}> {/* Sidebar collapsed by default */}
       <Sidebar side="left" collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-        <SidebarHeader className="p-4 flex justify-center items-center">
+        <SidebarHeader className="p-1 flex justify-center items-center"> {/* Reduced padding for logo */}
            <Link href="/dashboard" className="block">
-             <Image src="/logo.png" alt="vibe app logo" width={70} height={70} data-ai-hint="abstract logo" priority />
+             <Image src="/logo.png" alt="vibe app logo" width={40} height={40} data-ai-hint="abstract logo" priority /> {/* Increased logo size */}
            </Link>
         </SidebarHeader>
-        <SidebarContent className="p-2">
+        <SidebarContent className="px-2 pt-6 pb-2"> {/* Added more top padding */}
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton href="/dashboard" isActive={pathname === '/dashboard'} tooltip="Dashboard">
@@ -196,7 +196,7 @@ export default function AppLayout({
       <SidebarInset>
         <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container relative flex h-16 max-w-screen-2xl items-center">
+            <div className="container relative flex h-12 max-w-screen-2xl items-center"> {/* Header height set to h-12 (48px) */}
               <div className="flex items-center">
                  <SidebarTrigger className="mr-3 lg:hidden" /> 
               </div>
@@ -208,8 +208,6 @@ export default function AppLayout({
               </div>
 
               <div className="ml-auto flex items-center space-x-4">
-                {/* User avatar previously here, now moved to sidebar footer */}
-                {/* Can add other header items here if needed, like a search bar or notifications */}
                  <Button variant="ghost" size="icon" className="rounded-full">
                     <Search className="h-5 w-5" />
                     <span className="sr-only">Search</span>
