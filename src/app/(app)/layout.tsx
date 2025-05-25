@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
-import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search, Users, Edit3, BookOpen, Tag, Sparkles } from 'lucide-react';
+import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search, Users, Edit3, BookOpen, Tag, Sparkles, Heart } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -119,7 +119,7 @@ export default function AppLayout({
 
 
   return (
-    <SidebarProvider defaultOpen={false}> {/* Sidebar collapsed by default */}
+    <SidebarProvider defaultOpen={false}> {/* Sidebar collapsed by default, making it icon-only */}
       <Sidebar side="left" collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <SidebarHeader className="p-1 flex justify-center items-center"> {/* Reduced padding for logo */}
            <Link href="/dashboard" className="block">
@@ -166,6 +166,7 @@ export default function AppLayout({
               <Button 
                 variant="ghost" 
                 className="relative h-12 w-full rounded-md p-0 flex items-center justify-center 
+                           hover:bg-transparent focus:bg-transparent 
                            group-data-[state=expanded]:justify-start group-data-[state=expanded]:px-2 group-data-[state=expanded]:gap-2
                            focus-visible:ring-0 focus-visible:ring-offset-0 focus:ring-0 focus:ring-offset-0"
               >
@@ -288,5 +289,3 @@ export default function AppLayout({
     </SidebarProvider>
   );
 }
-
-    
