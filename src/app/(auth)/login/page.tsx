@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -20,6 +21,8 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AuthFormWrapper } from "@/components/auth/auth-form-wrapper";
 import { Mail, LockKeyhole, Eye, EyeOff } from "lucide-react";
+import { auth } from "@/lib/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -43,15 +46,46 @@ export default function LoginPage() {
     },
   });
 
-  const onSubmit = (data: LoginFormValues) => {
-    // Mock login logic
-    console.log("Login data:", data);
-    toast({
-      title: "Login Attempted",
-      description: "Login functionality is not implemented yet.",
-    });
-    // On successful login, you would redirect:
-    // router.push('/dashboard'); 
+  const onSubmit = async (data: LoginFormValues) => {
+    try {
+      await signInWithEmailAndPassword(auth, data.email, data.password);
+      toast({
+        title: "Login Successful!",
+        description: "Welcome back.",
+      });
+      // TODO: Redirect to a protected dashboard page, e.g., router.push('/dashboard');
+      // For now, redirecting to home, which will show splash then attempt to redirect again.
+      router.push('/'); 
+    } catch (error: any) {
+      console.error("Login error:", error);
+      let errorMessage = "An unexpected error occurred. Please try again.";
+      // Handle Firebase specific auth errors
+      if (error.code) {
+        switch (error.code) {
+          case 'auth/user-not-found':
+          case 'auth/wrong-password':
+          case 'auth/invalid-credential': // More generic error for email/password mismatch
+            errorMessage = "Invalid email or password. Please check your credentials and try again.";
+            break;
+          case 'auth/invalid-email':
+            errorMessage = "The email address you entered is not valid.";
+            break;
+          case 'auth/user-disabled':
+            errorMessage = "This account has been disabled.";
+            break;
+          case 'auth/too-many-requests':
+            errorMessage = "Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.";
+            break;
+          default:
+            errorMessage = "Login failed. Please try again.";
+        }
+      }
+      toast({
+        variant: "destructive",
+        title: "Login Failed",
+        description: errorMessage,
+      });
+    }
   };
 
   return (
@@ -83,6 +117,7 @@ export default function LoginPage() {
                       placeholder="you@example.com"
                       className="pl-10 bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
                       {...field} 
+                      autoComplete="email"
                     />
                   </div>
                 </FormControl>
@@ -104,6 +139,7 @@ export default function LoginPage() {
                       placeholder="••••••••"
                       className="pl-10 pr-10 bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
                       {...field}
+                      autoComplete="current-password"
                     />
                     <button
                       type="button"
@@ -139,12 +175,13 @@ export default function LoginPage() {
           />
           <Button 
             type="submit" 
+            disabled={form.formState.isSubmitting}
             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base py-3
                        shadow-[0_0_10px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_hsl(var(--primary)/0.8)] 
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
-            Log In
+            {form.formState.isSubmitting ? "Logging In..." : "Log In"}
           </Button>
         </form>
       </Form>
