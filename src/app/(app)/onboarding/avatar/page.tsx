@@ -9,9 +9,16 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { UploadCloud, UserCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { auth } from '@/lib/firebase'; // Firebase Storage related imports removed
+import { auth } from '@/lib/firebase';
 import { updateProfile, onAuthStateChanged, type User } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
+
+// Cloudinary configuration (API Key is safe for client-side with unsigned uploads)
+const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
+const CLOUDINARY_API_KEY = '775545995624823';
+// IMPORTANT: You MUST create an unsigned upload preset in your Cloudinary settings
+// and replace the placeholder below with its name.
+const CLOUDINARY_UPLOAD_PRESET = 'YOUR_UNSIGNED_UPLOAD_PRESET_NAME'; // e.g., 'firebase_studio_unsigned_upload'
 
 export default function AvatarUploadPage() {
   const router = useRouter();
@@ -25,8 +32,8 @@ export default function AvatarUploadPage() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
       if (user) {
+        setCurrentUser(user);
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
           router.replace('/dashboard');
@@ -74,8 +81,13 @@ export default function AvatarUploadPage() {
   };
 
   const handleNext = async () => {
-    const userForOperation = auth.currentUser;
-
+    let userForOperation = auth.currentUser;
+    if (!userForOperation) {
+        // Attempt to refresh user state if null, might happen if token expired mid-session
+        await auth.currentUser?.reload();
+        userForOperation = auth.currentUser;
+    }
+    
     if (!userForOperation) {
       toast({
         variant: 'destructive',
@@ -95,59 +107,62 @@ export default function AvatarUploadPage() {
       return;
     }
 
-    setIsUploading(true);
-    try {
-      // Placeholder for third-party upload logic
-      console.log(`Simulating upload of ${avatarFile.name} to a third-party service.`);
-      toast({
-        title: 'Image Selected',
-        description: `Implement third-party upload for ${avatarFile.name} here. Once uploaded, get the public URL. Then, call updateProfile(user, { photoURL: yourNewUrlFromThirdParty });`,
-        duration: 9000, // Longer duration for this instructional toast
-      });
-
-      // Simulate network delay for third-party upload
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // ** IMPORTANT: **
-      // You would replace the above simulation with your actual third-party upload logic.
-      // After getting the `downloadURL` (or equivalent) from your third-party service,
-      // you would then update the Firebase user's profile like this:
-      //
-      // const userForProfileUpdate = auth.currentUser;
-      // if (userForProfileUpdate) {
-      //   try {
-      //     const newAvatarUrlFromThirdParty = "URL_FROM_YOUR_THIRD_PARTY_SERVICE"; // Replace this
-      //     await updateProfile(userForProfileUpdate, { photoURL: newAvatarUrlFromThirdParty });
-      //     toast({
-      //       title: 'Avatar "Uploaded" (Simulated)!',
-      //       description: 'Your profile would be updated with the new avatar URL.',
-      //     });
-      //     router.push('/onboarding/interests');
-      //   } catch (profileError: any) {
-      //     console.error("Profile update failed after third-party upload simulation:", profileError);
-      //     toast({
-      //       variant: 'destructive',
-      //       title: 'Profile Update Failed',
-      //       description: profileError.message || 'Could not save avatar to profile.',
-      //     });
-      //   }
-      // } else {
-      //   // Handle user becoming null
-      // }
-      
-      // For now, we'll just navigate after showing the instructional toast.
-      // If you want the preview to persist in the Firebase auth object for this session (without actual upload)
-      // you could uncomment and adapt the updateProfile block above using avatarPreview (Data URL).
-      // However, Data URLs are not ideal for long-term storage in photoURL.
-      
-      router.push('/onboarding/interests');
-
-    } catch (error: any) {
-      console.error("Error during third-party upload simulation setup:", error);
+    if (CLOUDINARY_UPLOAD_PRESET === 'YOUR_UNSIGNED_UPLOAD_PRESET_NAME') {
       toast({
         variant: 'destructive',
-        title: 'Upload Simulation Error',
-        description: 'An unexpected error occurred during simulation.',
+        title: 'Configuration Needed',
+        description: 'Please update CLOUDINARY_UPLOAD_PRESET in the code with your Cloudinary unsigned upload preset name.',
+        duration: 9000,
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', avatarFile);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    formData.append('api_key', CLOUDINARY_API_KEY);
+
+    try {
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Cloudinary upload failed.');
+      }
+
+      const data = await response.json();
+      const newAvatarUrlFromCloudinary = data.secure_url;
+
+      if (newAvatarUrlFromCloudinary) {
+        let userForProfileUpdate = auth.currentUser; // Re-check current user
+         if (!userForProfileUpdate) {
+            await auth.currentUser?.reload();
+            userForProfileUpdate = auth.currentUser;
+        }
+
+        if (userForProfileUpdate) {
+          await updateProfile(userForProfileUpdate, { photoURL: newAvatarUrlFromCloudinary });
+          toast({
+            title: 'Avatar Uploaded!',
+            description: 'Your profile picture has been updated.',
+          });
+          router.push('/onboarding/interests');
+        } else {
+           toast({ variant: 'destructive', title: 'Error updating profile', description: 'User session lost. Please try again.' });
+        }
+      } else {
+        throw new Error('Cloudinary did not return a URL.');
+      }
+    } catch (error: any) {
+      console.error("Error during Cloudinary upload or profile update:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Upload Failed',
+        description: error.message || 'Could not upload avatar or update profile.',
       });
     } finally {
       setIsUploading(false);
@@ -156,7 +171,8 @@ export default function AvatarUploadPage() {
 
   const handleSkip = () => {
     if (isUploading) return;
-    if (!auth.currentUser) {
+     let userForOperation = auth.currentUser;
+    if (!userForOperation) {
        toast({ variant: 'destructive', title: 'Authentication Error', description: 'Please log in again.' });
        router.push('/login');
        return;
@@ -173,6 +189,8 @@ export default function AvatarUploadPage() {
   }
   
   if (!currentUser) {
+    // This case should ideally be handled by the onAuthStateChanged redirect,
+    // but as a fallback, show splash or redirect.
     return <SplashScreenDisplay />;
   }
 
