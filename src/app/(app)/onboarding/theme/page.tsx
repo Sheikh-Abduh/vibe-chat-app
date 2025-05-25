@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { Sun, Moon, Palette, CheckCircle } from 'lucide-react';
+import { Sun, Moon, Palette, CheckCircle, Loader2 } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { cn } from '@/lib/utils';
@@ -76,20 +76,24 @@ export default function ThemeSelectionPage() {
   
   const [initialMode, setInitialMode] = useState<ThemeMode | null>(null);
   const [initialAccentValue, setInitialAccentValue] = useState<string | null>(null);
+  const [initialAccentFgValue, setInitialAccentFgValue] = useState<string | null>(null);
 
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
         const rootStyle = getComputedStyle(document.documentElement);
         const bg = rootStyle.getPropertyValue('--background').trim();
-        const currentLightness = bg.split(' ').length === 3 ? parseInt(bg.split(' ')[2].replace('%','')) : 10;
+        const currentLightness = bg.split(' ').length === 3 ? parseInt(bg.split(' ')[2].replace('%','')) : (bg === '0 0% 100%' ? 100 : 10) ; // Handle cases where HSL might not be 3 parts
         
         const mode = currentLightness < 50 ? 'dark' : 'light';
         setInitialMode(mode);
         setSelectedMode(mode);
 
         const primaryColor = rootStyle.getPropertyValue('--primary').trim();
+        const primaryFgColor = rootStyle.getPropertyValue('--primary-foreground').trim();
         setInitialAccentValue(primaryColor);
+        setInitialAccentFgValue(primaryFgColor);
+
         const foundAccent = accentOptions.find(opt => opt.value === primaryColor);
         setSelectedAccent(foundAccent || accentOptions[0]);
     }
@@ -124,7 +128,6 @@ export default function ThemeSelectionPage() {
         if (onboardingComplete === 'true') {
           router.replace('/dashboard');
         } else {
-           // Only set checking auth to false if onboarding is not complete AND initial theme values are set
           if (initialMode && initialAccentValue) {
             setIsCheckingAuth(false);
           }
@@ -136,7 +139,6 @@ export default function ThemeSelectionPage() {
     return () => unsubscribe();
   }, [router, initialMode, initialAccentValue]);
 
-   // Effect to update isCheckingAuth when initial theme values are loaded
   useEffect(() => {
     if (currentUser && initialMode && initialAccentValue) {
       const onboardingComplete = localStorage.getItem(`onboardingComplete_${currentUser.uid}`);
@@ -158,15 +160,15 @@ export default function ThemeSelectionPage() {
     localStorage.setItem(`theme_mode_${currentUser.uid}`, selectedMode);
     localStorage.setItem(`theme_accent_primary_${currentUser.uid}`, selectedAccent.value);
     localStorage.setItem(`theme_accent_primary_fg_${currentUser.uid}`, selectedAccent.primaryForeground);
-    localStorage.setItem(`onboardingComplete_${currentUser.uid}`, 'true');
+    // OnboardingComplete flag will be set in the next step
 
     toast({
       title: "Theme Preferences Saved!",
-      description: "Your app experience is now personalized.",
+      description: "One last step to personalize your experience.",
     });
 
     setTimeout(() => {
-      router.push('/dashboard');
+      router.push('/onboarding/community-preference');
       // No need to setIsSubmitting(false) as we are navigating away.
     }, 500);
   };
@@ -177,52 +179,52 @@ export default function ThemeSelectionPage() {
       router.push('/login');
       return;
     }
-    localStorage.setItem(`onboardingComplete_${currentUser.uid}`, 'true');
+    // OnboardingComplete flag will be set in the next step
     toast({
       title: 'Skipping Theme Customization',
-      description: 'Proceeding to the dashboard with default theme.',
+      description: 'Proceeding to the final onboarding step with default theme.',
     });
-     // Revert to initial theme if skipped
-    if (initialMode && initialAccentValue) {
+    // Revert to initial theme if skipped, so the next page also uses the initial (default) theme
+    if (initialMode && initialAccentValue && initialAccentFgValue) {
         const root = document.documentElement;
         const themeVars = initialMode === 'dark' ? defaultDarkVars : defaultLightVars;
         for (const [key, value] of Object.entries(themeVars)) {
             root.style.setProperty(key, value);
         }
         root.style.setProperty('--primary', initialAccentValue);
-        const originalAccentObj = accentOptions.find(opt => opt.value === initialAccentValue);
-        root.style.setProperty('--primary-foreground', originalAccentObj ? originalAccentObj.primaryForeground : (initialMode === 'dark' ? '0 0% 100%' : '0 0% 10%'));
+        root.style.setProperty('--primary-foreground', initialAccentFgValue);
         root.style.setProperty('--ring', initialAccentValue);
     }
-    router.push('/dashboard');
+    router.push('/onboarding/community-preference');
   };
   
   useEffect(() => {
+    // This effect handles reverting theme changes if the user navigates away
+    // from this page WITHOUT saving or skipping (e.g., using browser back button).
     return () => {
-      if (typeof window !== 'undefined' && initialMode && initialAccentValue && currentUser) {
+      if (typeof window !== 'undefined' && initialMode && initialAccentValue && initialAccentFgValue && currentUser) {
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${currentUser.uid}`);
-        // Only revert if onboarding was not completed (i.e., user navigated away without Save or Skip)
-        if (onboardingComplete !== 'true' && !isSubmitting) { // Added !isSubmitting check
+        // Only revert if onboarding was not completed AND we are not in the process of submitting/saving.
+        if (onboardingComplete !== 'true' && !isSubmitting) { 
             const root = document.documentElement;
             const themeVars = initialMode === 'dark' ? defaultDarkVars : defaultLightVars;
              for (const [key, value] of Object.entries(themeVars)) {
                 root.style.setProperty(key, value);
             }
             root.style.setProperty('--primary', initialAccentValue);
-            const originalAccentObj = accentOptions.find(opt => opt.value === initialAccentValue);
-            root.style.setProperty('--primary-foreground', originalAccentObj ? originalAccentObj.primaryForeground : (initialMode === 'dark' ? '0 0% 100%' : '0 0% 10%'));
+            root.style.setProperty('--primary-foreground', initialAccentFgValue);
             root.style.setProperty('--ring', initialAccentValue);
         }
       }
     };
-  }, [initialMode, initialAccentValue, currentUser, isSubmitting]);
+  }, [initialMode, initialAccentValue, initialAccentFgValue, currentUser, isSubmitting]);
 
 
-  if (isCheckingAuth) { // Covers auth check AND initial theme values loading
+  if (isCheckingAuth) {
     return <SplashScreenDisplay />;
   }
   
-  if (!currentUser) { // Fallback if somehow auth check passes but no current user
+  if (!currentUser) {
      return <SplashScreenDisplay />;
   }
 
@@ -312,11 +314,8 @@ export default function ThemeSelectionPage() {
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
-            {isSubmitting && <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>}
-            {isSubmitting ? 'Saving...' : 'Save & Finish Onboarding'}
+            {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle className="mr-2 h-5 w-5" /> }
+            {isSubmitting ? 'Saving...' : 'Save & Continue'}
           </Button>
           <Button
             variant="ghost"
@@ -331,3 +330,5 @@ export default function ThemeSelectionPage() {
     </div>
   );
 }
+
+    
