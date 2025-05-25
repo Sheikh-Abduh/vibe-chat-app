@@ -31,7 +31,7 @@
 
     --border: 220 3% 18%; /* Darker */
     --input: 220 3% 13%; /* Darker */
-    --ring: 127 100% 43%; /* Matches new accent */
+    --ring: hsl(var(--accent)); /* Changed from 127 100% 43% to use accent */
 
     --radius: 0.5rem;
 
@@ -43,12 +43,12 @@
 
     --sidebar-background: 220 3% 8%; /* Even darker */
     --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 289 85% 45%; /* Match new primary */
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 127 100% 43%; /* Match new accent */
-    --sidebar-accent-foreground: 220 3% 10%;
+    --sidebar-primary: hsl(var(--primary)); /* Use app primary */
+    --sidebar-primary-foreground: hsl(var(--primary-foreground)); /* Use app primary foreground */
+    --sidebar-accent: hsl(var(--accent)); /* Use app's secondary accent */
+    --sidebar-accent-foreground: hsl(var(--accent-foreground)); /* Use app's secondary accent foreground */
     --sidebar-border: 220 3% 15%; /* Match new muted */
-    --sidebar-ring: 127 100% 43%; /* Match new accent */
+    --sidebar-ring: hsl(var(--accent)); /* Use app's secondary accent for ring */
 
     /* Base font size for scaling */
     --font-size-root-default: 16px;
@@ -70,11 +70,11 @@
 
   /* Selection highlight using accent colors */
   ::selection {
-    background-color: hsl(var(--accent));
+    background-color: hsl(var(--accent)); /* Uses secondary accent */
     color: hsl(var(--accent-foreground));
   }
   ::-moz-selection { /* Firefox */
-    background-color: hsl(var(--accent));
+    background-color: hsl(var(--accent)); /* Uses secondary accent */
     color: hsl(var(--accent-foreground));
   }
 }
