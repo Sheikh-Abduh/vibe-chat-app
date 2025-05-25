@@ -30,7 +30,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInset,
-  SidebarTrigger,
+  // SidebarTrigger, // Removed as per request
 } from '@/components/ui/sidebar';
 
 interface UserDetails {
@@ -262,11 +262,8 @@ export default function AppLayout({
       <SidebarInset>
         <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container relative flex h-12 max-w-screen-2xl items-center"> 
-              <div className="flex items-center">
-                 <SidebarTrigger className="mr-3 lg:hidden" /> 
-              </div>
-              
+            <div className="container relative flex h-12 max-w-screen-2xl items-center"> {/* Header height set to h-12 (48px) */}
+              {/* SidebarTrigger removed from here */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
                   <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} data-ai-hint="typography wordmark" priority />
@@ -274,7 +271,7 @@ export default function AppLayout({
               </div>
 
               <div className="ml-auto flex items-center space-x-4">
-                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-accent">
+                <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground">
                   <Search className="h-5 w-5" />
                   <span className="sr-only">Search</span>
                 </Button>
@@ -289,3 +286,4 @@ export default function AppLayout({
     </SidebarProvider>
   );
 }
+
