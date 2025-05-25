@@ -31,7 +31,7 @@ export default function SplashScreen() {
           data-ai-hint="abstract logo"
         />
       </div>
-      <div className="relative -mt-5"> {/* Increased negative margin-top to pull vibe.png further up */}
+      <div className="relative -mt-8"> {/* Increased negative margin-top to pull vibe.png further up */}
         <Image
           src="/vibe.png"
           alt="vibe text"
