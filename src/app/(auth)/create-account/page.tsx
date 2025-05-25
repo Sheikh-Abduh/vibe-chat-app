@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,9 +19,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AuthFormWrapper } from "@/components/auth/auth-form-wrapper";
-import { Mail, LockKeyhole, User, Eye, EyeOff } from "lucide-react";
+import { Mail, LockKeyhole, User, Eye, EyeOff, Loader2 } from "lucide-react";
 import { auth } from "@/lib/firebase";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 
 const createAccountSchema = z.object({
   username: z.string().min(3, { message: "Username must be at least 3 characters." }),
@@ -30,7 +30,7 @@ const createAccountSchema = z.object({
   confirmPassword: z.string().min(1, { message: "Please confirm your password." }),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match.",
-  path: ["confirmPassword"], // path to show error under confirmPassword field
+  path: ["confirmPassword"],
 });
 
 type CreateAccountFormValues = z.infer<typeof createAccountSchema>;
@@ -40,6 +40,26 @@ export default function CreateAccountPage() {
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        // If user is already logged in, they shouldn't be on create account page.
+        // Check if their onboarding is done to decide where to send them.
+        const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
+        if (onboardingComplete === 'true') {
+          router.replace('/dashboard'); 
+        } else {
+          router.replace('/onboarding/avatar'); // Or dashboard if create account should not be accessible when logged in
+        }
+      } else {
+        setIsCheckingAuth(false);
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
 
   const form = useForm<CreateAccountFormValues>({
     resolver: zodResolver(createAccountSchema),
@@ -53,13 +73,16 @@ export default function CreateAccountPage() {
 
   const onSubmit = async (data: CreateAccountFormValues) => {
     try {
-      await createUserWithEmailAndPassword(auth, data.email, data.password);
-      // TODO: Optionally, you could also update the user's profile with the username here
-      // using updateProfile(auth.currentUser, { displayName: data.username });
+      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      // const user = userCredential.user;
+      // Optionally, update profile with username
+      // await updateProfile(user, { displayName: data.username });
+      
       toast({
         title: "Account Created Successfully!",
         description: "Let's set up your profile.",
       });
+      // New users always go to onboarding
       router.push('/onboarding/avatar'); 
     } catch (error: any) {
       console.error("Create account error:", error);
@@ -86,6 +109,14 @@ export default function CreateAccountPage() {
       });
     }
   };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <AuthFormWrapper
@@ -213,6 +244,7 @@ export default function CreateAccountPage() {
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
+            {form.formState.isSubmitting ? <Loader2 className="animate-spin mr-2"/> : null}
             {form.formState.isSubmitting ? "Creating Account..." : "Create Account"}
           </Button>
         </form>

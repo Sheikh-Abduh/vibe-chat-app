@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -24,10 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { BookOpen, Gift, Hash, Heart, UserCircle, Palette, Film, Music, Plane, Code } from 'lucide-react';
+import { BookOpen, Gift, Hash, Heart, UserCircle, Palette, Film, Music, Plane, Code, Loader2 } from 'lucide-react';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 
 const interestsSchema = z.object({
   hobbies: z.string().min(1, { message: "Please enter at least one hobby." }).describe("Comma-separated list of hobbies"),
@@ -61,6 +62,26 @@ const passionOptions = [
 export default function InterestsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setIsCheckingAuth(false);
+      if (user) {
+        const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
+        if (onboardingComplete === 'true') {
+          router.replace('/dashboard');
+        }
+      } else {
+        // If no user, redirect to login, as onboarding requires authentication
+        router.replace('/login');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
 
   const form = useForm<InterestsFormValues>({
     resolver: zodResolver(interestsSchema),
@@ -73,26 +94,63 @@ export default function InterestsPage() {
   });
 
   const onSubmit = (data: InterestsFormValues) => {
-    // In a real app, you'd save this data to Firebase Firestore or Realtime Database
+    if (!currentUser) {
+      toast({ variant: "destructive", title: "Error", description: "You must be logged in." });
+      router.push('/login');
+      return;
+    }
+    setIsSubmitting(true);
+    // Simulate saving data
+    console.log("Interests data for user:", currentUser.uid, data);
+
+    // Mark onboarding as complete in localStorage
+    localStorage.setItem(`onboardingComplete_${currentUser.uid}`, 'true');
+
     toast({
-      title: "Profile Details Updated (Simulated)",
-      description: (
-        <pre className="mt-2 w-[340px] rounded-md bg-slate-950 p-4">
-          <code className="text-white">{JSON.stringify(data, null, 2)}</code>
-        </pre>
-      ),
+      title: "Profile Details Updated!",
+      description: "Your interests have been saved.",
     });
-    console.log("Interests data:", data);
-    router.push('/dashboard'); // Navigate to a dashboard or home page
+    
+    // Simulate a short delay before redirecting
+    setTimeout(() => {
+      router.push('/dashboard'); 
+      setIsSubmitting(false);
+    }, 1000);
   };
 
   const handleSkip = () => {
+    if (!currentUser) {
+        toast({ variant: "destructive", title: "Error", description: "You must be logged in." });
+        router.push('/login');
+        return;
+    }
+    // Mark onboarding as complete even if skipped, so they don't see it again.
+    // Alternatively, you might want a different flag or logic for skipped onboarding.
+    localStorage.setItem(`onboardingComplete_${currentUser.uid}`, 'true'); 
     toast({
       title: 'Skipping Profile Details',
-      description: 'Proceeding to the next step. You can complete your profile later.',
+      description: 'Proceeding to the dashboard. You can complete your profile later.',
     });
     router.push('/dashboard');
   };
+  
+  if (isCheckingAuth) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    // Should have been redirected by useEffect, but as a fallback
+   return (
+     <div className="flex items-center justify-center min-h-screen bg-background">
+       <p>Redirecting to login...</p>
+     </div>
+   );
+ }
+
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
@@ -213,16 +271,19 @@ export default function InterestsPage() {
         <CardFooter className="flex flex-col space-y-3 pt-6">
           <Button
             onClick={form.handleSubmit(onSubmit)}
+            disabled={isSubmitting || !currentUser}
             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base py-3
                        shadow-[0_0_10px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
-            Save Profile & Continue
+            {isSubmitting && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+            {isSubmitting ? 'Saving...' : 'Save Profile & Continue'}
           </Button>
           <Button
             variant="ghost"
             onClick={handleSkip}
+            disabled={isSubmitting || !currentUser}
             className="w-full text-muted-foreground hover:text-accent/80"
           >
             Skip for now
@@ -232,5 +293,3 @@ export default function InterestsPage() {
     </div>
   );
 }
-
-    

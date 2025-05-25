@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, type ChangeEvent, useRef } from 'react';
+import { useState, type ChangeEvent, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { UploadCloud, UserCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { auth, storage } from '@/lib/firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { updateProfile } from 'firebase/auth';
+import { updateProfile, onAuthStateChanged, type User } from 'firebase/auth';
 
 export default function AvatarUploadPage() {
   const router = useRouter();
@@ -20,6 +20,25 @@ export default function AvatarUploadPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setIsCheckingAuth(false);
+      if (user) {
+        const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
+        if (onboardingComplete === 'true') {
+          router.replace('/dashboard');
+        }
+      } else {
+        // If no user, redirect to login, as onboarding requires authentication
+        router.replace('/login');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -55,6 +74,16 @@ export default function AvatarUploadPage() {
   };
 
   const handleNext = async () => {
+    if (!currentUser) {
+      toast({
+        variant: 'destructive',
+        title: 'Authentication Error',
+        description: 'You must be logged in. Please log in again.',
+      });
+      router.push('/login');
+      return;
+    }
+
     if (!avatarFile) {
       toast({
         title: 'Skipping Avatar',
@@ -64,29 +93,14 @@ export default function AvatarUploadPage() {
       return;
     }
 
-    if (!auth.currentUser) {
-      toast({
-        variant: 'destructive',
-        title: 'Authentication Error',
-        description: 'You must be logged in to upload an avatar. Please log in again.',
-      });
-      router.push('/login');
-      return;
-    }
-
     setIsUploading(true);
     try {
-      const filePath = `avatars/${auth.currentUser.uid}/${Date.now()}_${avatarFile.name}`;
+      const filePath = `avatars/${currentUser.uid}/${Date.now()}_${avatarFile.name}`;
       const imageRef = storageRef(storage, filePath);
-
       const uploadTask = uploadBytesResumable(imageRef, avatarFile);
 
       uploadTask.on('state_changed',
-        (snapshot) => {
-          // Optional: handle progress
-          // const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          // console.log('Upload is ' + progress + '% done');
-        },
+        (snapshot) => { /* Optional: handle progress */ },
         (error) => {
           console.error("Upload failed:", error);
           toast({
@@ -99,7 +113,7 @@ export default function AvatarUploadPage() {
         async () => {
           try {
             const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            await updateProfile(auth.currentUser!, { photoURL: downloadURL });
+            await updateProfile(currentUser, { photoURL: downloadURL });
             toast({
               title: 'Avatar Uploaded!',
               description: 'Your new avatar looks great.',
@@ -137,6 +151,23 @@ export default function AvatarUploadPage() {
     router.push('/onboarding/interests');
   };
 
+  if (isCheckingAuth) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+  
+  if (!currentUser) {
+     // Should have been redirected by useEffect, but as a fallback
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <p>Redirecting to login...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
       <Card className="w-full max-w-md bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
@@ -158,7 +189,7 @@ export default function AvatarUploadPage() {
             aria-label="Upload profile picture"
             aria-disabled={isUploading}
           >
-            <AvatarImage src={avatarPreview || undefined} alt="User Avatar Preview" className="object-cover"/>
+            <AvatarImage src={avatarPreview || currentUser.photoURL || undefined} alt="User Avatar Preview" className="object-cover"/>
             <AvatarFallback className="bg-muted hover:bg-muted/80">
               <UserCircle className="h-24 w-24 text-muted-foreground/70" />
             </AvatarFallback>
@@ -192,7 +223,7 @@ export default function AvatarUploadPage() {
         <CardFooter className="flex flex-col space-y-3 pt-4">
           <Button
             onClick={handleNext}
-            disabled={isUploading}
+            disabled={isUploading || !currentUser}
             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base py-3
                        shadow-[0_0_10px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
@@ -204,7 +235,7 @@ export default function AvatarUploadPage() {
           <Button
             variant="ghost"
             onClick={handleSkip}
-            disabled={isUploading}
+            disabled={isUploading || !currentUser}
             className="w-full text-muted-foreground hover:text-accent/80"
           >
             Skip for now

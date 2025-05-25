@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,13 +20,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AuthFormWrapper } from "@/components/auth/auth-form-wrapper";
-import { Mail, LockKeyhole, Eye, EyeOff } from "lucide-react";
+import { Mail, LockKeyhole, Eye, EyeOff, Loader2 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { 
   signInWithEmailAndPassword,
   setPersistence,
   browserLocalPersistence,
-  browserSessionPersistence 
+  browserSessionPersistence,
+  onAuthStateChanged,
+  type User
 } from "firebase/auth";
 
 const loginSchema = z.object({
@@ -41,6 +43,26 @@ export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
+        if (onboardingComplete === 'true') {
+          router.replace('/dashboard'); // Redirect if logged in and onboarding done
+        } else {
+          // If logged in but onboarding not done, could redirect to onboarding,
+          // but typically login page isn't shown if already logged in.
+          // For now, we allow login form to attempt login again if they somehow land here.
+          setIsCheckingAuth(false);
+        }
+      } else {
+        setIsCheckingAuth(false);
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -53,25 +75,31 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormValues) => {
     try {
-      // Set Firebase Auth persistence based on "Remember Me" checkbox
       const persistence = data.rememberMe ? browserLocalPersistence : browserSessionPersistence;
       await setPersistence(auth, persistence);
       
-      await signInWithEmailAndPassword(auth, data.email, data.password);
+      const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+      const user = userCredential.user;
+
       toast({
         title: "Login Successful!",
-        description: "Welcome back. Let's set up your profile.",
+        description: "Welcome back.",
       });
-      router.push('/onboarding/avatar'); 
+
+      const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
+      if (onboardingComplete === 'true') {
+        router.push('/dashboard'); 
+      } else {
+        router.push('/onboarding/avatar'); 
+      }
     } catch (error: any) {
       console.error("Login error:", error);
       let errorMessage = "An unexpected error occurred. Please try again.";
-      // Handle Firebase specific auth errors
       if (error.code) {
         switch (error.code) {
           case 'auth/user-not-found':
           case 'auth/wrong-password':
-          case 'auth/invalid-credential': // More generic error for email/password mismatch
+          case 'auth/invalid-credential':
             errorMessage = "Invalid email or password. Please check your credentials and try again.";
             break;
           case 'auth/invalid-email':
@@ -94,6 +122,14 @@ export default function LoginPage() {
       });
     }
   };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <AuthFormWrapper
@@ -188,6 +224,7 @@ export default function LoginPage() {
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
+            {form.formState.isSubmitting ? <Loader2 className="animate-spin mr-2"/> : null}
             {form.formState.isSubmitting ? "Logging In..." : "Log In"}
           </Button>
         </form>
