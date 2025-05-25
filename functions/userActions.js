@@ -8,25 +8,18 @@ if (admin.apps.length === 0) {
 }
 
 const db = admin.firestore();
-const storage = admin.storage();
 
 /**
  * Firebase Cloud Function to export user data.
- *
- * This function will:
- * 1. Verify the user is authenticated.
- * 2. Fetch user data from Firestore.
- * 3. Include client-side data passed from the frontend (e.g., localStorage content).
- * 4. Compile all data into a JSON object.
- * 5. Upload this JSON to a private area in Firebase Storage.
- * 6. Generate a short-lived signed URL for the user to download their data.
+ * This version returns the data directly to the client for download,
+ * as Firebase Storage is not available.
  *
  * @param {object} data - Data passed from the client.
  *                        Expected: data.clientSideData (object containing localStorage values)
  * @param {functions.https.CallableContext} context - Context of the function call.
  *                                                    Includes auth information.
- * @returns {Promise<object>} - Resolves with { downloadUrl: string } on success,
- *                              or throws an error.
+ * @returns {Promise<object>} - Resolves with { dataString: string } on success,
+ *                              or throws an HttpsError.
  */
 exports.exportUserData = functions.https.onCall(async (data, context) => {
   // 1. Verify Authentication
@@ -50,13 +43,15 @@ exports.exportUserData = functions.https.onCall(async (data, context) => {
     if (userDoc.exists) {
       firestoreData.profile = userDoc.data();
     } else {
+      // If you want to ensure a profile is always present, you might create one here
+      // or simply note its absence.
       firestoreData.profile = { message: "No profile document found in Firestore." };
     }
 
     // Example: Fetching another collection related to the user (e.g., 'posts')
     // const postsSnapshot = await db.collection('posts').where('authorUid', '==', uid).get();
     // firestoreData.posts = postsSnapshot.docs.map(doc => doc.data());
-
+    // Add more Firestore data fetching as needed for your app.
 
     // 3. Compile All Data
     const exportData = {
@@ -67,35 +62,18 @@ exports.exportUserData = functions.https.onCall(async (data, context) => {
       // Add any other data sources here
     };
 
-    // 4. Prepare and Upload JSON to Firebase Storage
-    const jsonDataString = JSON.stringify(exportData, null, 2);
-    const fileName = `user_exports/${uid}/export_${Date.now()}.json`;
-    const file = storage.bucket().file(fileName);
+    // 4. Convert to JSON String and Return
+    const jsonDataString = JSON.stringify(exportData, null, 2); // null, 2 for pretty printing
 
-    await file.save(jsonDataString, {
-      contentType: "application/json",
-      // Optional: Add metadata, e.g., to control caching or for your own tracking
-      // metadata: {
-      //   customMetadata: {
-      //     exportedBy: uid,
-      //   }
-      // }
-    });
-    functions.logger.log(`User data for UID ${uid} saved to ${fileName}`);
+    functions.logger.log(`User data for UID ${uid} compiled. Size: ${jsonDataString.length} bytes.`);
 
-    // 5. Generate a Signed URL for Download
-    // URL will be valid for a limited time (e.g., 15 minutes)
-    const [signedUrl] = await file.getSignedUrl({
-      action: "read",
-      expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-    });
+    // Check for potential payload size issues (Cloud Functions have limits)
+    // This is a very rough check, actual limits are around 1MB for HTTP response.
+    if (jsonDataString.length > 900000) { // Approx 900KB
+        functions.logger.warn(`Export data for UID ${uid} is very large (${jsonDataString.length} bytes) and might exceed payload limits.`);
+    }
 
-    functions.logger.log(`Generated signed URL for UID ${uid}: ${signedUrl}`);
-
-    // For potentially long-running exports, you might send an email here instead
-    // and return a success message like { status: "processing" }
-    // For this example, we return the URL directly.
-    return { downloadUrl: signedUrl };
+    return { dataString: jsonDataString };
 
   } catch (error) {
     functions.logger.error(`Error exporting data for UID ${uid}:`, error);
