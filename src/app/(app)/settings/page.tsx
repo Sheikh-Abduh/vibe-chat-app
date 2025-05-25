@@ -19,10 +19,10 @@ const settingsCategories: SettingsCategory[] = [
   {
     id: "appearance",
     title: "Appearance",
-    description: "Customize your app's look and feel, theme, and layout preferences.",
+    description: "Customize your app's look and feel, theme, and accent colors.",
     icon: Palette,
-    // href: "/settings/appearance", // Example for future page
-    // actionText: "Customize Appearance",
+    href: "/settings/appearance",
+    actionText: "Customize Appearance",
   },
   {
     id: "profile",
