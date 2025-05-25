@@ -1,6 +1,7 @@
 
 "use client";
 
+import React from 'react'; // Added this line
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -181,5 +182,3 @@ export default function NotificationSettingsPage() {
     </div>
   );
 }
-
-    
