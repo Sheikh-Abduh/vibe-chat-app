@@ -31,7 +31,7 @@ export default function SplashScreen() {
           data-ai-hint="abstract logo"
         />
       </div>
-      <div className="relative -mt-[57px]"> {/* vibe.png container, moved 10px further up */}
+      <div className="relative -mt-[64px]"> {/* vibe.png container, moved 7px further up */}
         <Image
           src="/vibe.png"
           alt="vibe text"
@@ -44,7 +44,7 @@ export default function SplashScreen() {
           data-ai-hint="typography wordmark"
         />
       </div>
-      <p className="-mt-[38px] text-base text-muted-foreground">Initializing your vibe...</p> {/* Text moved 20px further up */}
+      <p className="-mt-[52px] text-base text-muted-foreground">Initializing your vibe...</p> {/* Text moved 14px further up */}
     </div>
   );
 }
