@@ -22,7 +22,12 @@ import { useToast } from "@/hooks/use-toast";
 import { AuthFormWrapper } from "@/components/auth/auth-form-wrapper";
 import { Mail, LockKeyhole, Eye, EyeOff } from "lucide-react";
 import { auth } from "@/lib/firebase";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { 
+  signInWithEmailAndPassword,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence 
+} from "firebase/auth";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -48,6 +53,10 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormValues) => {
     try {
+      // Set Firebase Auth persistence based on "Remember Me" checkbox
+      const persistence = data.rememberMe ? browserLocalPersistence : browserSessionPersistence;
+      await setPersistence(auth, persistence);
+      
       await signInWithEmailAndPassword(auth, data.email, data.password);
       toast({
         title: "Login Successful!",
