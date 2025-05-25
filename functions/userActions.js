@@ -1,5 +1,7 @@
 
-const functions = require("firebase-functions");
+const functions = require(
+  "firebase-functions",
+);
 const admin = require("firebase-admin");
 
 // Initialize Firebase Admin SDK if not already initialized
@@ -14,17 +16,17 @@ const db = admin.firestore();
  * This version returns the data directly to the client for download.
  *
  * @param {object} data - Data passed from the client.
- *                        Expected: data.clientSideData (object for localStorage)
+ * Expected: data.clientSideData (object for localStorage)
  * @param {functions.https.CallableContext} context - Context of the call.
  * @returns {Promise<object>} - Resolves with { dataString: string } on success,
- *                              or throws an HttpsError.
+ * or throws an HttpsError.
  */
 exports.exportUserData = functions.https.onCall(async (data, context) => {
   // 1. Verify Authentication
   if (!context.auth) {
     throw new functions.https.HttpsError(
-      "unauthenticated",
-      "The function must be called while authenticated.",
+        "unauthenticated",
+        "The function must be called while authenticated.",
     );
   }
   const uid = context.auth.uid;
@@ -78,9 +80,9 @@ exports.exportUserData = functions.https.onCall(async (data, context) => {
       throw error; // Re-throw HttpsError instances
     }
     throw new functions.https.HttpsError(
-      "internal",
-      "An error occurred while exporting your data.",
-      error.message, // Optionally include more detail if safe
+        "internal",
+        "An error occurred while exporting your data.",
+        error.message, // Optionally include more detail if safe
     );
   }
 });
