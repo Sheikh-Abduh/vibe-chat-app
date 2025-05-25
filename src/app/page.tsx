@@ -17,12 +17,12 @@ export default function SplashScreen() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground p-4 overflow-hidden">
-      <div className="relative mb-2"> {/* Reduced margin-bottom from mb-4 */}
+      <div className="relative mb-0"> {/* Reduced margin-bottom */}
         <Image
           src="/logo.png"
           alt="vibe Logo"
-          width={120} // Increased from 110
-          height={120} // Increased from 110
+          width={120} 
+          height={120} 
           priority
           className="animate-pulse"
           style={{
@@ -31,20 +31,20 @@ export default function SplashScreen() {
           data-ai-hint="abstract logo"
         />
       </div>
-      <div className="relative">
+      <div className="relative -mt-3"> {/* Added negative margin-top to pull vibe.png up */}
         <Image
           src="/vibe.png"
           alt="vibe text"
-          width={280} // Decreased from 300
-          height={67}  // Decreased from 72 (maintaining aspect ratio)
+          width={180} // Significantly decreased width
+          height={43}  // Adjusted height to maintain aspect ratio (180 * 67 / 280 ≈ 43)
           priority
           style={{
-            filter: `drop-shadow(0 0 10px hsl(var(--primary))) drop-shadow(0 0 20px hsl(var(--primary)/0.6)) drop-shadow(0 0 30px hsl(var(--accent)/0.4))`
+            filter: `drop-shadow(0 0 8px hsl(var(--primary)/0.9)) drop-shadow(0 0 15px hsl(var(--primary)/0.5)) drop-shadow(0 0 25px hsl(var(--accent)/0.3))`
           }}
           data-ai-hint="typography wordmark"
         />
       </div>
-      <p className="mt-2 text-base text-muted-foreground">Initializing your vibe...</p> {/* Reduced margin-top, changed to text-base */}
+      <p className="mt-1 text-base text-muted-foreground">Initializing your vibe...</p> {/* Reduced margin-top to keep it close */}
     </div>
   );
 }
