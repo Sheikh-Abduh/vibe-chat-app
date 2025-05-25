@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
-import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare } from 'lucide-react';
+import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -30,7 +30,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInset,
-  SidebarTrigger, // Added for mobile toggle if needed by the sidebar component itself
+  SidebarTrigger,
 } from '@/components/ui/sidebar';
 
 export default function AppLayout({
@@ -50,17 +50,16 @@ export default function AppLayout({
         setCurrentUser(user);
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
-          setIsCheckingAuth(false); // User is authenticated and onboarded
+          setIsCheckingAuth(false); 
         } else {
-          // If on an onboarding path, allow it, otherwise redirect to start of onboarding
           if (!pathname.startsWith('/onboarding')) {
             router.replace('/onboarding/avatar'); 
           } else {
-            setIsCheckingAuth(false); // Already on an onboarding path
+            setIsCheckingAuth(false); 
           }
         }
       } else {
-        router.replace('/login'); // No user, redirect to login
+        router.replace('/login'); 
       }
     });
     return () => unsubscribe();
@@ -83,27 +82,25 @@ export default function AppLayout({
   }
 
   if (!currentUser && !pathname.startsWith('/onboarding')) {
-    // This case should ideally be handled by the onAuthStateChanged redirect,
-    // but as a fallback or during the brief moment before redirect:
     return <SplashScreenDisplay />;
   }
   
-  // If user is not fully authenticated but is on an onboarding page, allow rendering children
   if (!currentUser && pathname.startsWith('/onboarding')) {
-      return <>{children}</>; // Render onboarding pages without full layout if user object is momentarily null
+      return <>{children}</>; 
   }
   
   if (!currentUser) {
-      return <SplashScreenDisplay />; // Fallback if logic above doesn't catch it
+      return <SplashScreenDisplay />; 
   }
 
 
   return (
-    <SidebarProvider defaultOpen={false}> {/* Sidebar collapsed by default on desktop */}
+    <SidebarProvider defaultOpen={false}> {/* Sidebar collapsed by default */}
       <Sidebar side="left" collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <SidebarHeader className="p-4 flex justify-center items-center">
-           {/* Optionally, show a smaller logo or icon when sidebar is expanded */}
-           {/* For now, keeping it clean, main logo is in the header */}
+           <Link href="/dashboard" className="block">
+             <Image src="/logo.png" alt="vibe app logo" width={50} height={50} data-ai-hint="abstract logo" priority />
+           </Link>
         </SidebarHeader>
         <SidebarContent className="p-2">
           <SidebarMenu>
@@ -126,21 +123,73 @@ export default function AppLayout({
               </SidebarMenuButton>
             </SidebarMenuItem>
              <SidebarMenuItem>
-              <SidebarMenuButton href="#" isActive={pathname === '/profile'} tooltip="Profile">
+              <SidebarMenuButton href="#" isActive={pathname.startsWith('/profile')} tooltip="Profile">
                 <UserCircle />
                 Profile
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton href="#" isActive={pathname === '/settings'} tooltip="Settings">
+              <SidebarMenuButton href="#" isActive={pathname.startsWith('/settings')} tooltip="Settings">
                 <Settings />
                 Settings
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarContent>
-        <SidebarFooter className="p-4 mt-auto">
-          {/* Could add a logout button here too or other footer content */}
+        <SidebarFooter className="p-2 mt-auto border-t border-sidebar-border/50">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="relative h-12 w-full rounded-md p-0 flex items-center justify-center group-data-[state=expanded]:justify-start group-data-[state=expanded]:px-2 group-data-[state=expanded]:gap-2">
+                <Avatar className="h-9 w-9 avatar-pulse-neon">
+                  <AvatarImage src={currentUser.photoURL || undefined} alt={currentUser.displayName || currentUser.email || 'User avatar'} />
+                  <AvatarFallback className="bg-muted text-muted-foreground">
+                    <UserCircle className="h-6 w-6" />
+                  </AvatarFallback>
+                </Avatar>
+                <span className="hidden group-data-[state=expanded]:inline text-sm text-sidebar-foreground truncate">
+                  {currentUser.displayName || currentUser.email?.split('@')[0] || "User"}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="start" className="mb-1 ml-1 min-w-[220px]" sideOffset={12}>
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none text-foreground">
+                    {currentUser.displayName || currentUser.email?.split('@')[0] || "User"}
+                  </p>
+                  {currentUser.email && (
+                     <p className="text-xs leading-none text-muted-foreground">
+                       {currentUser.email}
+                     </p>
+                  )}
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard" className="flex items-center cursor-pointer">
+                  <LayoutDashboard className="mr-2 h-4 w-4" />
+                  <span>Dashboard</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="#" className="flex items-center cursor-pointer text-muted-foreground hover:text-foreground">
+                  <UserCircle className="mr-2 h-4 w-4" />
+                  <span>Profile</span>
+                </Link>
+              </DropdownMenuItem>
+               <DropdownMenuItem asChild>
+                <Link href="#" className="flex items-center cursor-pointer text-muted-foreground hover:text-foreground">
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive">
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </SidebarFooter>
       </Sidebar>
 
@@ -148,73 +197,23 @@ export default function AppLayout({
         <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container relative flex h-16 max-w-screen-2xl items-center">
-              {/* Left: App Icon (logo.png) and Mobile Sidebar Trigger */}
               <div className="flex items-center">
-                 <SidebarTrigger className="mr-3 lg:hidden" /> {/* Visible on smaller than lg screens */}
-                <Link href="/dashboard" className="flex items-center">
-                  <Image src="/logo.png" alt="vibe app logo" width={40} height={40} data-ai-hint="abstract logo" priority />
-                </Link>
+                 <SidebarTrigger className="mr-3 lg:hidden" /> 
               </div>
               
-              {/* Center: Text Logo (vibe.png) */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
                   <Image src="/vibe.png" alt="vibe text logo" width={100} height={24} data-ai-hint="typography wordmark" priority />
                 </Link>
               </div>
 
-              {/* Right: User Avatar Dropdown */}
               <div className="ml-auto flex items-center space-x-4">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
-                      <Avatar className="h-9 w-9 border-2 border-primary/70 hover:border-primary transition-colors">
-                        <AvatarImage src={currentUser.photoURL || undefined} alt={currentUser.displayName || currentUser.email || 'User avatar'} />
-                        <AvatarFallback className="bg-muted text-muted-foreground">
-                          <UserCircle className="h-6 w-6" />
-                        </AvatarFallback>
-                      </Avatar>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56" align="end" forceMount>
-                    <DropdownMenuLabel className="font-normal">
-                      <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-medium leading-none text-foreground">
-                          {currentUser.displayName || currentUser.email?.split('@')[0] || "User"}
-                        </p>
-                        {currentUser.email && (
-                           <p className="text-xs leading-none text-muted-foreground">
-                             {currentUser.email}
-                           </p>
-                        )}
-                      </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/dashboard" className="flex items-center cursor-pointer">
-                        <LayoutDashboard className="mr-2 h-4 w-4" />
-                        <span>Dashboard</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="#" className="flex items-center cursor-pointer text-muted-foreground hover:text-foreground">
-                        <UserCircle className="mr-2 h-4 w-4" />
-                        <span>Profile</span>
-                      </Link>
-                    </DropdownMenuItem>
-                     <DropdownMenuItem asChild>
-                      <Link href="#" className="flex items-center cursor-pointer text-muted-foreground hover:text-foreground">
-                        <Settings className="mr-2 h-4 w-4" />
-                        <span>Settings</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive">
-                      <LogOut className="mr-2 h-4 w-4" />
-                      <span>Log out</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {/* User avatar previously here, now moved to sidebar footer */}
+                {/* Can add other header items here if needed, like a search bar or notifications */}
+                 <Button variant="ghost" size="icon" className="rounded-full">
+                    <Search className="h-5 w-5" />
+                    <span className="sr-only">Search</span>
+                  </Button>
               </div>
             </div>
           </header>
