@@ -137,33 +137,43 @@ export default function AppLayout({
         <SidebarContent className="px-2 pt-6 pb-2"> 
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton href="/dashboard" isActive={pathname === '/dashboard'} tooltip="Dashboard">
-                <LayoutDashboard />
-                Dashboard
+              <SidebarMenuButton asChild isActive={pathname === '/dashboard'} tooltip="Dashboard">
+                <Link href="/dashboard">
+                  <LayoutDashboard />
+                  Dashboard
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton href="#" isActive={pathname === '/discover'} tooltip="Discover">
-                <Compass />
-                Discover
+              <SidebarMenuButton asChild isActive={pathname === '/discover'} tooltip="Discover">
+                <Link href="#">
+                  <Compass />
+                  Discover
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
              <SidebarMenuItem>
-              <SidebarMenuButton href="#" isActive={pathname === '/communities'} tooltip="Communities">
-                <Users />
-                Communities
+              <SidebarMenuButton asChild isActive={pathname === '/communities'} tooltip="Communities">
+                <Link href="#">
+                  <Users />
+                  Communities
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
              <SidebarMenuItem>
-              <SidebarMenuButton href="#" isActive={pathname === '/messages'} tooltip="Messages">
-                <MessageSquare />
-                Messages
+              <SidebarMenuButton asChild isActive={pathname === '/messages'} tooltip="Messages">
+                <Link href="#">
+                  <MessageSquare />
+                  Messages
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton href="/settings" isActive={pathname.startsWith('/settings')} tooltip="Settings">
-                <Settings />
-                Settings
+              <SidebarMenuButton asChild isActive={pathname.startsWith('/settings')} tooltip="Settings">
+                <Link href="/settings">
+                  <Settings />
+                  Settings
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -287,6 +297,7 @@ export default function AppLayout({
         <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container relative flex h-12 max-w-screen-2xl items-center">
+              {/* SidebarTrigger removed from here */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
                   <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} data-ai-hint="typography wordmark" priority />
