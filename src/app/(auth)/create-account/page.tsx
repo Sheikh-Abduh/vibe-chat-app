@@ -89,7 +89,7 @@ export default function CreateAccountPage() {
 
   return (
     <AuthFormWrapper
-      title="Join VibeCheck"
+      title="Join Vibe"
       description="Create your account to start vibing."
       footerContent={
         <p className="text-sm text-muted-foreground">

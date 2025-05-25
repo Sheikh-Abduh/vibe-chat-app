@@ -15,7 +15,7 @@ export function AuthFormWrapper({ title, description, children, footerContent }:
       <div className="flex justify-center pt-4 pb-0"> {/* Reduced pt from 6 to 4, pb from 2 to 0 */}
         <Image
           src="/logo.png"
-          alt="VibeCheck Logo"
+          alt="Vibe Logo"
           width={100} 
           height={100}
           priority

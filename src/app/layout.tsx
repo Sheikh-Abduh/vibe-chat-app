@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'VibeCheck',
-  description: 'Check your vibe.',
+  title: 'Vibe',
+  description: 'Vibe.',
 };
 
 export default function RootLayout({
