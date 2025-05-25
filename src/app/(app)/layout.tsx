@@ -71,7 +71,7 @@ export default function AppLayout({
         const storedAge = localStorage.getItem(`userInterests_age_${user.uid}`);
         const storedTags = localStorage.getItem(`userInterests_tags_${user.uid}`);
         const storedPassionKey = localStorage.getItem(`userInterests_passion_${user.uid}`);
-        // Assuming passionOptions from interests page are available or mapped here if needed for display
+        
         const passionDisplay = storedPassionKey ? storedPassionKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Not set";
 
         setUserDetails({
@@ -92,7 +92,7 @@ export default function AppLayout({
     try {
       await firebaseSignOut(auth);
       setCurrentUser(null);
-      setUserDetails(null); // Clear user details on logout
+      setUserDetails(null); 
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
       router.push('/login');
     } catch (error) {
@@ -119,14 +119,14 @@ export default function AppLayout({
 
 
   return (
-    <SidebarProvider defaultOpen={false}> {/* Sidebar collapsed by default, making it icon-only */}
+    <SidebarProvider defaultOpen={false}> 
       <Sidebar side="left" collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-        <SidebarHeader className="p-1 flex justify-center items-center"> {/* Reduced padding for logo */}
+        <SidebarHeader className="flex justify-center items-center"> 
            <Link href="/dashboard" className="block">
-             <Image src="/logo.png" alt="vibe app logo" width={40} height={40} data-ai-hint="abstract logo" priority />
+             <Image src="/logo.png" alt="vibe app logo" width={48} height={48} data-ai-hint="abstract logo" priority />
            </Link>
         </SidebarHeader>
-        <SidebarContent className="px-2 pt-6 pb-2"> {/* Added more top padding */}
+        <SidebarContent className="px-2 pt-6 pb-2"> 
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton href="/dashboard" isActive={pathname === '/dashboard'} tooltip="Dashboard">
@@ -140,7 +140,7 @@ export default function AppLayout({
                 Discover
               </SidebarMenuButton>
             </SidebarMenuItem>
-            <SidebarMenuItem>
+             <SidebarMenuItem>
               <SidebarMenuButton href="#" isActive={pathname === '/communities'} tooltip="Communities">
                 <Users />
                 Communities
@@ -262,7 +262,7 @@ export default function AppLayout({
       <SidebarInset>
         <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container relative flex h-12 max-w-screen-2xl items-center"> {/* Header height set to h-12 (48px) */}
+            <div className="container relative flex h-12 max-w-screen-2xl items-center"> 
               <div className="flex items-center">
                  <SidebarTrigger className="mr-3 lg:hidden" /> 
               </div>
@@ -274,10 +274,7 @@ export default function AppLayout({
               </div>
 
               <div className="ml-auto flex items-center space-x-4">
-                 <Button variant="ghost" size="icon" className="rounded-full">
-                    <Search className="h-5 w-5" />
-                    <span className="sr-only">Search</span>
-                  </Button>
+                 {/* Search icon removed from here */}
               </div>
             </div>
           </header>
