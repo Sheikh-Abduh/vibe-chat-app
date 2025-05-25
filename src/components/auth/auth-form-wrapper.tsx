@@ -12,7 +12,7 @@ interface AuthFormWrapperProps {
 export function AuthFormWrapper({ title, description, children, footerContent }: AuthFormWrapperProps) {
   return (
     <Card className="w-full max-w-md bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
-      <div className="flex justify-center pt-8 pb-4">
+      <div className="flex justify-center pt-6 pb-2"> {/* Reduced pt from 8 to 6, pb from 4 to 2 */}
         <Image
           src="/logo.png"
           alt="VibeCheck Logo"
