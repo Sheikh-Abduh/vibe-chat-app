@@ -1,6 +1,8 @@
+
 // Import the functions you need from the SDKs you need
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -12,7 +14,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyA1x_MWgIJlEB8BToP2Mc7LLAZv0pPjtc8",
   authDomain: "vibe-35004.firebaseapp.com",
   projectId: "vibe-35004",
-  storageBucket: "vibe-35004.firebasestorage.app",
+  storageBucket: "vibe-35004.appspot.com", // Ensure this is correct, often ends with .appspot.com
   messagingSenderId: "667054799663",
   appId: "1:667054799663:web:849dc655b5ef124d9fffda"
 };
@@ -20,5 +22,6 @@ const firebaseConfig = {
 // Initialize Firebase
 const app: FirebaseApp = initializeApp(firebaseConfig);
 const auth: Auth = getAuth(app);
+const storage: FirebaseStorage = getStorage(app);
 
-export { app, auth };
+export { app, auth, storage };

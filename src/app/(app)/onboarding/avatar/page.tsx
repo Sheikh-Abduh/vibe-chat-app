@@ -7,14 +7,18 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { UploadCloud, UserCircle } from 'lucide-react';
+import { UploadCloud, UserCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { auth, storage } from '@/lib/firebase';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { updateProfile } from 'firebase/auth';
 
 export default function AvatarUploadPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -46,27 +50,86 @@ export default function AvatarUploadPage() {
   };
 
   const handleUploadButtonClick = () => {
+    if (isUploading) return;
     fileInputRef.current?.click();
   };
 
-  const handleNext = () => {
-    // In a real app, you'd upload avatarFile to Firebase Storage here
-    // and save the URL to the user's profile.
-    if (avatarFile) {
+  const handleNext = async () => {
+    if (!avatarFile) {
       toast({
-        title: 'Avatar Set (Simulated)',
-        description: `Your new avatar "${avatarFile.name}" looks great! (This is a simulation, the file is not actually uploaded yet.)`,
-      });
-    } else {
-      toast({
-        title: 'Skipping Avatar Details',
+        title: 'Skipping Avatar',
         description: 'Proceeding to the next step. You can set an avatar later.',
       });
+      router.push('/onboarding/interests');
+      return;
     }
-    router.push('/onboarding/interests');
+
+    if (!auth.currentUser) {
+      toast({
+        variant: 'destructive',
+        title: 'Authentication Error',
+        description: 'You must be logged in to upload an avatar. Please log in again.',
+      });
+      router.push('/login');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const filePath = `avatars/${auth.currentUser.uid}/${Date.now()}_${avatarFile.name}`;
+      const imageRef = storageRef(storage, filePath);
+
+      const uploadTask = uploadBytesResumable(imageRef, avatarFile);
+
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          // Optional: handle progress
+          // const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          // console.log('Upload is ' + progress + '% done');
+        },
+        (error) => {
+          console.error("Upload failed:", error);
+          toast({
+            variant: 'destructive',
+            title: 'Upload Failed',
+            description: error.message || 'Could not upload your avatar. Please try again.',
+          });
+          setIsUploading(false);
+        },
+        async () => {
+          try {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            await updateProfile(auth.currentUser!, { photoURL: downloadURL });
+            toast({
+              title: 'Avatar Uploaded!',
+              description: 'Your new avatar looks great.',
+            });
+            router.push('/onboarding/interests');
+          } catch (profileError: any) {
+            console.error("Profile update failed:", profileError);
+            toast({
+              variant: 'destructive',
+              title: 'Profile Update Failed',
+              description: profileError.message || 'Could not save your avatar to your profile. Please try again.',
+            });
+          } finally {
+            setIsUploading(false);
+          }
+        }
+      );
+    } catch (error: any) {
+      console.error("Error setting up upload:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Upload Error',
+        description: 'An unexpected error occurred. Please try again.',
+      });
+      setIsUploading(false);
+    }
   };
 
   const handleSkip = () => {
+    if (isUploading) return;
     toast({
       title: 'Skipping Avatar',
       description: 'You can set an avatar from your profile later.',
@@ -86,13 +149,14 @@ export default function AvatarUploadPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col items-center space-y-6 pt-2">
-          <Avatar 
-            className="h-36 w-36 border-4 border-primary shadow-[0_0_15px_hsl(var(--primary)/0.5),_0_0_5px_hsl(var(--accent)/0.3)] cursor-pointer hover:opacity-90 transition-opacity"
+          <Avatar
+            className={`h-36 w-36 border-4 border-primary shadow-[0_0_15px_hsl(var(--primary)/0.5),_0_0_5px_hsl(var(--accent)/0.3)] ${isUploading ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-90'} transition-opacity`}
             onClick={handleUploadButtonClick}
             role="button"
-            tabIndex={0}
-            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleUploadButtonClick()}
+            tabIndex={isUploading ? -1 : 0}
+            onKeyDown={(e) => !isUploading && (e.key === 'Enter' || e.key === ' ') && handleUploadButtonClick()}
             aria-label="Upload profile picture"
+            aria-disabled={isUploading}
           >
             <AvatarImage src={avatarPreview || undefined} alt="User Avatar Preview" className="object-cover"/>
             <AvatarFallback className="bg-muted hover:bg-muted/80">
@@ -106,32 +170,41 @@ export default function AvatarUploadPage() {
             className="hidden"
             accept="image/jpeg,image/png,image/webp,image/gif"
             aria-hidden="true"
+            disabled={isUploading}
           />
           <Button
             variant="outline"
             onClick={handleUploadButtonClick}
-            className="w-full border-accent text-accent hover:bg-accent/10 hover:text-accent 
+            disabled={isUploading}
+            className="w-full border-accent text-accent hover:bg-accent/10 hover:text-accent
                        shadow-[0_0_8px_hsl(var(--accent)/0.4)] hover:shadow-[0_0_12px_hsl(var(--accent)/0.6)]
                        focus:shadow-[0_0_12px_hsl(var(--accent)/0.6)]
                        transition-all duration-300 ease-in-out"
           >
-            <UploadCloud className="mr-2 h-5 w-5" />
-            {avatarFile ? 'Change Picture' : 'Choose a Picture'}
+            {isUploading ? (
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            ) : (
+              <UploadCloud className="mr-2 h-5 w-5" />
+            )}
+            {isUploading ? 'Uploading...' : (avatarFile ? 'Change Picture' : 'Choose a Picture')}
           </Button>
         </CardContent>
         <CardFooter className="flex flex-col space-y-3 pt-4">
           <Button
             onClick={handleNext}
+            disabled={isUploading}
             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base py-3
                        shadow-[0_0_10px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
-            {avatarFile ? 'Save & Continue' : 'Next'}
+            {isUploading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+            {isUploading ? 'Saving...' : (avatarFile ? 'Save & Continue' : 'Next')}
           </Button>
           <Button
             variant="ghost"
             onClick={handleSkip}
+            disabled={isUploading}
             className="w-full text-muted-foreground hover:text-accent/80"
           >
             Skip for now
