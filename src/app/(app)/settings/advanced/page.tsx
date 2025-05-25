@@ -20,10 +20,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Cog, Download, Eye, MessageCircle, ShieldAlert, Trash2 } from 'lucide-react';
+import { ArrowLeft, Cog, Download, Eye, MessageCircle, ShieldAlert, Trash2, Loader2 } from 'lucide-react';
 import { auth } from '@/lib/firebase';
-import { onAuthStateChanged, type User } from 'firebase/auth';
+import { onAuthStateChanged, type User, signOut } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
+import { getFunctions, httpsCallable } from "firebase/functions";
+
 
 type DmPreference = "anyone" | "friends" | "none";
 type ProfileVisibility = "public" | "friends" | "private";
@@ -33,6 +35,8 @@ export default function AdvancedSettingsPage() {
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [dmPreference, setDmPreference] = useState<DmPreference>("anyone");
   const [profileVisibility, setProfileVisibility] = useState<ProfileVisibility>("public");
@@ -47,11 +51,17 @@ export default function AdvancedSettingsPage() {
       if (user) {
         setCurrentUser(user);
         
-        const savedDmPref = localStorage.getItem(getStorageKey('dm_preference')!) as DmPreference | null;
-        if (savedDmPref) setDmPreference(savedDmPref);
+        const savedDmPrefKey = getStorageKey('dm_preference');
+        if (savedDmPrefKey) {
+          const savedDmPref = localStorage.getItem(savedDmPrefKey) as DmPreference | null;
+          if (savedDmPref) setDmPreference(savedDmPref);
+        }
         
-        const savedProfileVis = localStorage.getItem(getStorageKey('profile_visibility')!) as ProfileVisibility | null;
-        if (savedProfileVis) setProfileVisibility(savedProfileVis);
+        const savedProfileVisKey = getStorageKey('profile_visibility');
+        if (savedProfileVisKey) {
+          const savedProfileVis = localStorage.getItem(savedProfileVisKey) as ProfileVisibility | null;
+          if (savedProfileVis) setProfileVisibility(savedProfileVis);
+        }
 
         setIsCheckingAuth(false);
       } else {
@@ -79,22 +89,126 @@ export default function AdvancedSettingsPage() {
     }
   };
 
-  const handleExportData = () => {
-    toast({
-      title: "Data Export Initiated (Simulated)",
-      description: "In a real app, your data export would begin processing.",
-    });
+  const handleExportData = async () => {
+    if (!currentUser) {
+      toast({ variant: "destructive", title: "Error", description: "You must be logged in to export data." });
+      return;
+    }
+    setIsExporting(true);
+    toast({ title: "Data Export Initiated", description: "We're preparing your data. This may take a moment..." });
+
+    try {
+      // Gather client-side data
+      const clientSideData: Record<string, string | null> = {};
+      const keysToExportFromLocalStorage = [
+        `userProfile_aboutMe_${currentUser.uid}`,
+        `userProfile_status_${currentUser.uid}`,
+        `userInterests_hobbies_${currentUser.uid}`,
+        `userInterests_age_${currentUser.uid}`,
+        `userInterests_gender_${currentUser.uid}`,
+        `userInterests_tags_${currentUser.uid}`,
+        `userInterests_passion_${currentUser.uid}`,
+        `theme_mode_${currentUser.uid}`,
+        `theme_accent_primary_${currentUser.uid}`,
+        `theme_accent_primary_fg_${currentUser.uid}`,
+        `theme_accent_secondary_${currentUser.uid}`,
+        `theme_accent_secondary_fg_${currentUser.uid}`,
+        `ui_scale_${currentUser.uid}`,
+        `advanced_dm_preference_${currentUser.uid}`,
+        `advanced_profile_visibility_${currentUser.uid}`,
+        `notifications_messages_enabled_${currentUser.uid}`,
+        `notifications_friendRequests_enabled_${currentUser.uid}`,
+        `notifications_messageRequests_enabled_${currentUser.uid}`,
+        `notifications_communityInvites_enabled_${currentUser.uid}`,
+        `notifications_delivery_email_enabled_${currentUser.uid}`,
+        `notifications_delivery_push_enabled_${currentUser.uid}`,
+        `notifications_delivery_inApp_enabled_${currentUser.uid}`,
+        `notifications_delivery_notificationCentre_enabled_${currentUser.uid}`,
+        `community_join_preference_${currentUser.uid}`,
+      ];
+
+      keysToExportFromLocalStorage.forEach(key => {
+        clientSideData[key.replace(`_${currentUser.uid}`, '')] = localStorage.getItem(key);
+      });
+      
+      // Add other potentially useful data if needed
+      clientSideData.displayName = currentUser.displayName;
+      clientSideData.email = currentUser.email;
+      clientSideData.photoURL = currentUser.photoURL;
+
+
+      const functionsInstance = getFunctions();
+      const exportUserDataFn = httpsCallable(functionsInstance, 'exportUserData');
+      
+      const result = await exportUserDataFn({ clientSideData });
+      const { dataString, error } = result.data as { dataString?: string; error?: string };
+
+      if (error) {
+        throw new Error(error || "Unknown error from export function.");
+      }
+
+      if (dataString) {
+        const blob = new Blob([dataString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `vibe_export_${currentUser.uid}_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+        toast({ title: "Data Export Successful!", description: "Your data has been downloaded." });
+      } else {
+        throw new Error("No data string received from export function.");
+      }
+    } catch (error: any) {
+      console.error("Export error:", error);
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: error.message || "Could not export your data. Please try again.",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
     // Actual deletion would involve re-authentication and backend calls
-    toast({
-      variant: "destructive",
-      title: "Account Deletion Process Initiated (Simulated)",
-      description: "Follow further instructions if this were a real deletion.",
-    });
-    // Potentially sign out user and redirect
-    // signOut(auth).then(() => router.push('/login'));
+    // For now, simulate the process
+    if (!currentUser) return;
+    
+    setIsDeleting(true); // Disable button in dialog
+
+    // Simulate backend call and re-auth
+    // In a real app:
+    // 1. Prompt for password / re-authenticate
+    // 2. Call a Cloud Function to delete all user data from Firestore, Storage, etc.
+    // 3. Call Firebase Auth user.delete()
+    
+    // Simulate a delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    try {
+      // Simulate sign out after "deletion"
+      await signOut(auth);
+      toast({
+        variant: "destructive",
+        title: "Account Deletion Process Initiated (Simulated)",
+        description: "You have been signed out.",
+      });
+      // Clear any sensitive local storage data
+      // Object.keys(localStorage).forEach(key => {
+      //   if (key.includes(currentUser.uid)) {
+      //     localStorage.removeItem(key);
+      //   }
+      // });
+      router.push('/login'); // Redirect to login
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: "Could not complete simulated deletion. " + error.message });
+      setIsDeleting(false);
+    }
+    // setIsDeleting(false) might not be reached if navigation happens first.
   };
 
   if (isCheckingAuth || !currentUser) {
@@ -175,11 +289,17 @@ export default function AdvancedSettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-4">
-            <Button variant="outline" onClick={handleExportData} className="w-full sm:w-auto border-primary text-primary hover:bg-primary/10 hover:text-primary">
-              <Download className="mr-2 h-4 w-4" /> Export My Data
+            <Button 
+              variant="outline" 
+              onClick={handleExportData} 
+              disabled={isExporting}
+              className="w-full sm:w-auto border-primary text-primary hover:bg-primary/10 hover:text-primary"
+            >
+              {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              {isExporting ? "Processing..." : "Export My Data"}
             </Button>
             <CardDescription className="text-xs text-muted-foreground mt-2">
-              Download a copy of your account data (simulated).
+              Download a copy of your account data. This includes data stored in Firestore (simulated) and preferences from local storage.
             </CardDescription>
           </CardContent>
         </Card>
@@ -202,19 +322,24 @@ export default function AdvancedSettingsPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete your account and remove your data from our servers.
+                    This action cannot be undone. This will permanently delete your account and remove your data from our servers. (Simulated: This will sign you out.)
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDeleteAccount} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-                    Yes, delete account
+                  <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={handleDeleteAccount} 
+                    disabled={isDeleting}
+                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                  >
+                    {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    {isDeleting ? "Deleting..." : "Yes, delete account"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
             <CardDescription className="text-xs text-muted-foreground mt-2">
-              Permanently delete your account and all associated data (simulated).
+              Permanently delete your account and all associated data (simulated: signs out).
             </CardDescription>
           </CardContent>
         </Card>
@@ -222,3 +347,5 @@ export default function AdvancedSettingsPage() {
     </div>
   );
 }
+
+      
