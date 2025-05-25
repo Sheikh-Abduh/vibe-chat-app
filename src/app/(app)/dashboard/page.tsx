@@ -28,7 +28,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-12">
       {/* Tailored Communities Section */}
-      <section>
+      <section className="px-4">
         <div className="flex items-center justify-between mb-6">
             <h2 className="text-3xl font-bold tracking-tight text-primary flex items-center" style={{ textShadow: '0 0 4px hsl(var(--primary)/0.6)'}}>
                 <Users className="mr-3 h-8 w-8 text-primary" />
@@ -64,7 +64,7 @@ export default function DashboardPage() {
       </section>
 
       {/* People with Similar Interests Section */}
-      <section>
+      <section className="px-4">
          <div className="flex items-center justify-between mb-6">
             <h2 className="text-3xl font-bold tracking-tight text-accent flex items-center" style={{ textShadow: '0 0 4px hsl(var(--accent)/0.6)'}}>
                 <Heart className="mr-3 h-8 w-8 text-accent" />

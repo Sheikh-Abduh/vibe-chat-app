@@ -99,7 +99,7 @@ export default function AppLayout({
       <Sidebar side="left" collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <SidebarHeader className="p-4 flex justify-center items-center">
            <Link href="/dashboard" className="block">
-             <Image src="/logo.png" alt="vibe app logo" width={50} height={50} data-ai-hint="abstract logo" priority />
+             <Image src="/logo.png" alt="vibe app logo" width={70} height={70} data-ai-hint="abstract logo" priority />
            </Link>
         </SidebarHeader>
         <SidebarContent className="p-2">
@@ -203,7 +203,7 @@ export default function AppLayout({
               
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
-                  <Image src="/vibe.png" alt="vibe text logo" width={100} height={24} data-ai-hint="typography wordmark" priority />
+                  <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} data-ai-hint="typography wordmark" priority />
                 </Link>
               </div>
 
