@@ -73,10 +73,9 @@ export default function InterestsPage() {
       if (user) {
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
-          router.replace('/dashboard');
+          router.replace('/dashboard'); // Should be caught by theme page now
         }
       } else {
-        // If no user, redirect to login, as onboarding requires authentication
         router.replace('/login');
       }
     });
@@ -102,20 +101,19 @@ export default function InterestsPage() {
     setIsSubmitting(true);
     // Simulate saving data
     console.log("Interests data for user:", currentUser.uid, data);
-
-    // Mark onboarding as complete in localStorage
-    localStorage.setItem(`onboardingComplete_${currentUser.uid}`, 'true');
+    // Here you would typically save this data to Firestore or your backend
+    // For now, we just proceed.
 
     toast({
-      title: "Profile Details Updated!",
-      description: "Your interests have been saved.",
+      title: "Interests Saved!",
+      description: "Let's customize your app's theme.",
     });
     
     // Simulate a short delay before redirecting
     setTimeout(() => {
-      router.push('/dashboard'); 
+      router.push('/onboarding/theme'); 
       setIsSubmitting(false);
-    }, 1000);
+    }, 500);
   };
 
   const handleSkip = () => {
@@ -124,14 +122,11 @@ export default function InterestsPage() {
         router.push('/login');
         return;
     }
-    // Mark onboarding as complete even if skipped, so they don't see it again.
-    // Alternatively, you might want a different flag or logic for skipped onboarding.
-    localStorage.setItem(`onboardingComplete_${currentUser.uid}`, 'true'); 
     toast({
-      title: 'Skipping Profile Details',
-      description: 'Proceeding to the dashboard. You can complete your profile later.',
+      title: 'Skipping Interests',
+      description: 'Proceeding to theme selection.',
     });
-    router.push('/dashboard');
+    router.push('/onboarding/theme');
   };
   
   if (isCheckingAuth) {
@@ -143,7 +138,6 @@ export default function InterestsPage() {
   }
 
   if (!currentUser) {
-    // Should have been redirected by useEffect, but as a fallback
    return (
      <div className="flex items-center justify-center min-h-screen bg-background">
        <p>Redirecting to login...</p>
@@ -278,7 +272,7 @@ export default function InterestsPage() {
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
             {isSubmitting && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-            {isSubmitting ? 'Saving...' : 'Save Profile & Continue'}
+            {isSubmitting ? 'Saving...' : 'Save & Continue'}
           </Button>
           <Button
             variant="ghost"
@@ -293,3 +287,5 @@ export default function InterestsPage() {
     </div>
   );
 }
+
+    
