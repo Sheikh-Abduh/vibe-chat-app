@@ -35,11 +35,12 @@ export default function AvatarUploadPage() {
           setIsCheckingAuth(false);
         }
       } else {
+        // If not authenticated, redirect to login
         router.replace('/login');
       }
     });
     return () => unsubscribe();
-  }, [router]);
+  }, [router]); // Dependency: router
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -75,11 +76,14 @@ export default function AvatarUploadPage() {
   };
 
   const handleNext = async () => {
-    if (!currentUser) {
+    // Use a fresh reference to auth.currentUser for this operation
+    const userForOperation = auth.currentUser;
+
+    if (!userForOperation) {
       toast({
         variant: 'destructive',
         title: 'Authentication Error',
-        description: 'You must be logged in. Please log in again.',
+        description: 'You are not logged in. Please log in again.',
       });
       router.push('/login');
       return;
@@ -96,7 +100,7 @@ export default function AvatarUploadPage() {
 
     setIsUploading(true);
     try {
-      const filePath = `avatars/${currentUser.uid}/${Date.now()}_${avatarFile.name}`;
+      const filePath = `avatars/${userForOperation.uid}/${Date.now()}_${avatarFile.name}`;
       const imageRef = storageRef(storage, filePath);
       const uploadTask = uploadBytesResumable(imageRef, avatarFile);
 
@@ -112,16 +116,30 @@ export default function AvatarUploadPage() {
           setIsUploading(false);
         },
         async () => {
+          // Success callback for uploadTask
+          const userForProfileUpdate = auth.currentUser; // Re-fetch user, in case auth state changed
+          if (!userForProfileUpdate) {
+            console.error("Avatar upload: User became null before profile could be updated.");
+            toast({
+              variant: 'destructive',
+              title: 'Authentication Error',
+              description: 'Your session seems to have expired. Please log in and try again.',
+            });
+            setIsUploading(false);
+            router.push('/login');
+            return;
+          }
+
           try {
             const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            await updateProfile(currentUser, { photoURL: downloadURL });
+            await updateProfile(userForProfileUpdate, { photoURL: downloadURL });
             toast({
               title: 'Avatar Uploaded!',
               description: 'Your new avatar looks great.',
             });
             router.push('/onboarding/interests');
           } catch (profileError: any) {
-            console.error("Profile update failed:", profileError);
+            console.error("Profile update failed after avatar upload:", profileError);
             toast({
               variant: 'destructive',
               title: 'Profile Update Failed',
@@ -145,6 +163,12 @@ export default function AvatarUploadPage() {
 
   const handleSkip = () => {
     if (isUploading) return;
+     // Ensure user is still valid for consistency, though not strictly necessary for skip
+    if (!auth.currentUser) {
+       toast({ variant: 'destructive', title: 'Authentication Error', description: 'Please log in again.' });
+       router.push('/login');
+       return;
+    }
     toast({
       title: 'Skipping Avatar',
       description: 'You can set an avatar from your profile later.',
@@ -156,9 +180,13 @@ export default function AvatarUploadPage() {
     return <SplashScreenDisplay />;
   }
   
-  // This check might be redundant due to useEffect, but good as a fallback.
+  // This check is after isCheckingAuth is false. 
+  // The useEffect for onAuthStateChanged should have redirected if user is null.
+  // However, as a fallback or if currentUser state update is pending:
   if (!currentUser) {
-    return <SplashScreenDisplay />; // Or redirect to login
+     // This state indicates auth check finished, but no user. Typically useEffect redirects.
+     // Showing splash while redirecting is fine.
+    return <SplashScreenDisplay />;
   }
 
   return (
@@ -216,7 +244,7 @@ export default function AvatarUploadPage() {
         <CardFooter className="flex flex-col space-y-3 pt-4">
           <Button
             onClick={handleNext}
-            disabled={isUploading || !currentUser}
+            disabled={isUploading || !currentUser} // currentUser check here is based on state
             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base py-3
                        shadow-[0_0_10px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
@@ -228,7 +256,7 @@ export default function AvatarUploadPage() {
           <Button
             variant="ghost"
             onClick={handleSkip}
-            disabled={isUploading || !currentUser}
+            disabled={isUploading || !currentUser} // currentUser check here is based on state
             className="w-full text-muted-foreground hover:text-accent/80"
           >
             Skip for now
@@ -238,3 +266,4 @@ export default function AvatarUploadPage() {
     </div>
   );
 }
+ 
