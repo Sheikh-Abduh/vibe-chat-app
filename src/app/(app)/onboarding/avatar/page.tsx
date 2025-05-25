@@ -9,8 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { UploadCloud, UserCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { auth, storage } from '@/lib/firebase';
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { auth } from '@/lib/firebase'; // Firebase Storage related imports removed
 import { updateProfile, onAuthStateChanged, type User } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 
@@ -35,12 +34,11 @@ export default function AvatarUploadPage() {
           setIsCheckingAuth(false);
         }
       } else {
-        // If not authenticated, redirect to login
         router.replace('/login');
       }
     });
     return () => unsubscribe();
-  }, [router]); // Dependency: router
+  }, [router]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -76,7 +74,6 @@ export default function AvatarUploadPage() {
   };
 
   const handleNext = async () => {
-    // Use a fresh reference to auth.currentUser for this operation
     const userForOperation = auth.currentUser;
 
     if (!userForOperation) {
@@ -100,70 +97,65 @@ export default function AvatarUploadPage() {
 
     setIsUploading(true);
     try {
-      const filePath = `avatars/${userForOperation.uid}/${Date.now()}_${avatarFile.name}`;
-      const imageRef = storageRef(storage, filePath);
-      const uploadTask = uploadBytesResumable(imageRef, avatarFile);
+      // Placeholder for third-party upload logic
+      console.log(`Simulating upload of ${avatarFile.name} to a third-party service.`);
+      toast({
+        title: 'Image Selected',
+        description: `Implement third-party upload for ${avatarFile.name} here. Once uploaded, get the public URL. Then, call updateProfile(user, { photoURL: yourNewUrlFromThirdParty });`,
+        duration: 9000, // Longer duration for this instructional toast
+      });
 
-      uploadTask.on('state_changed',
-        (snapshot) => { /* Optional: handle progress */ },
-        (error) => {
-          console.error("Upload failed:", error);
-          toast({
-            variant: 'destructive',
-            title: 'Upload Failed',
-            description: error.message || 'Could not upload your avatar. Please try again.',
-          });
-          setIsUploading(false);
-        },
-        async () => {
-          // Success callback for uploadTask
-          const userForProfileUpdate = auth.currentUser; // Re-fetch user, in case auth state changed
-          if (!userForProfileUpdate) {
-            console.error("Avatar upload: User became null before profile could be updated.");
-            toast({
-              variant: 'destructive',
-              title: 'Authentication Error',
-              description: 'Your session seems to have expired. Please log in and try again.',
-            });
-            setIsUploading(false);
-            router.push('/login');
-            return;
-          }
+      // Simulate network delay for third-party upload
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
-          try {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            await updateProfile(userForProfileUpdate, { photoURL: downloadURL });
-            toast({
-              title: 'Avatar Uploaded!',
-              description: 'Your new avatar looks great.',
-            });
-            router.push('/onboarding/interests');
-          } catch (profileError: any) {
-            console.error("Profile update failed after avatar upload:", profileError);
-            toast({
-              variant: 'destructive',
-              title: 'Profile Update Failed',
-              description: profileError.message || 'Could not save your avatar to your profile. Please try again.',
-            });
-          } finally {
-            setIsUploading(false);
-          }
-        }
-      );
+      // ** IMPORTANT: **
+      // You would replace the above simulation with your actual third-party upload logic.
+      // After getting the `downloadURL` (or equivalent) from your third-party service,
+      // you would then update the Firebase user's profile like this:
+      //
+      // const userForProfileUpdate = auth.currentUser;
+      // if (userForProfileUpdate) {
+      //   try {
+      //     const newAvatarUrlFromThirdParty = "URL_FROM_YOUR_THIRD_PARTY_SERVICE"; // Replace this
+      //     await updateProfile(userForProfileUpdate, { photoURL: newAvatarUrlFromThirdParty });
+      //     toast({
+      //       title: 'Avatar "Uploaded" (Simulated)!',
+      //       description: 'Your profile would be updated with the new avatar URL.',
+      //     });
+      //     router.push('/onboarding/interests');
+      //   } catch (profileError: any) {
+      //     console.error("Profile update failed after third-party upload simulation:", profileError);
+      //     toast({
+      //       variant: 'destructive',
+      //       title: 'Profile Update Failed',
+      //       description: profileError.message || 'Could not save avatar to profile.',
+      //     });
+      //   }
+      // } else {
+      //   // Handle user becoming null
+      // }
+      
+      // For now, we'll just navigate after showing the instructional toast.
+      // If you want the preview to persist in the Firebase auth object for this session (without actual upload)
+      // you could uncomment and adapt the updateProfile block above using avatarPreview (Data URL).
+      // However, Data URLs are not ideal for long-term storage in photoURL.
+      
+      router.push('/onboarding/interests');
+
     } catch (error: any) {
-      console.error("Error setting up upload:", error);
+      console.error("Error during third-party upload simulation setup:", error);
       toast({
         variant: 'destructive',
-        title: 'Upload Error',
-        description: 'An unexpected error occurred. Please try again.',
+        title: 'Upload Simulation Error',
+        description: 'An unexpected error occurred during simulation.',
       });
+    } finally {
       setIsUploading(false);
     }
   };
 
   const handleSkip = () => {
     if (isUploading) return;
-     // Ensure user is still valid for consistency, though not strictly necessary for skip
     if (!auth.currentUser) {
        toast({ variant: 'destructive', title: 'Authentication Error', description: 'Please log in again.' });
        router.push('/login');
@@ -180,12 +172,7 @@ export default function AvatarUploadPage() {
     return <SplashScreenDisplay />;
   }
   
-  // This check is after isCheckingAuth is false. 
-  // The useEffect for onAuthStateChanged should have redirected if user is null.
-  // However, as a fallback or if currentUser state update is pending:
   if (!currentUser) {
-     // This state indicates auth check finished, but no user. Typically useEffect redirects.
-     // Showing splash while redirecting is fine.
     return <SplashScreenDisplay />;
   }
 
@@ -238,25 +225,25 @@ export default function AvatarUploadPage() {
             ) : (
               <UploadCloud className="mr-2 h-5 w-5" />
             )}
-            {isUploading ? 'Uploading...' : (avatarFile ? 'Change Picture' : 'Choose a Picture')}
+            {isUploading ? 'Processing...' : (avatarFile ? 'Change Picture' : 'Choose a Picture')}
           </Button>
         </CardContent>
         <CardFooter className="flex flex-col space-y-3 pt-4">
           <Button
             onClick={handleNext}
-            disabled={isUploading || !currentUser} // currentUser check here is based on state
+            disabled={isUploading || !currentUser}
             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base py-3
                        shadow-[0_0_10px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
             {isUploading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-            {isUploading ? 'Saving...' : (avatarFile ? 'Save & Continue' : 'Next')}
+            {isUploading ? 'Processing...' : (avatarFile ? 'Save & Continue' : 'Next')}
           </Button>
           <Button
             variant="ghost"
             onClick={handleSkip}
-            disabled={isUploading || !currentUser} // currentUser check here is based on state
+            disabled={isUploading || !currentUser}
             className="w-full text-muted-foreground hover:text-accent/80"
           >
             Skip for now
@@ -266,4 +253,3 @@ export default function AvatarUploadPage() {
     </div>
   );
 }
- 
