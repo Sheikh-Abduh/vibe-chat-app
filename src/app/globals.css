@@ -43,12 +43,12 @@
 
     --sidebar-background: 220 3% 8%; /* Even darker */
     --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: hsl(var(--primary)); /* Use app primary */
-    --sidebar-primary-foreground: hsl(var(--primary-foreground)); /* Use app primary foreground */
-    --sidebar-accent: hsl(var(--accent)); /* Use app's secondary accent */
-    --sidebar-accent-foreground: hsl(var(--accent-foreground)); /* Use app's secondary accent foreground */
-    --sidebar-border: 220 3% 15%; /* Match new muted */
-    --sidebar-ring: hsl(var(--accent)); /* Use app's secondary accent for ring */
+    --sidebar-primary: var(--primary); /* Use app primary HSL values */
+    --sidebar-primary-foreground: var(--primary-foreground); /* Use app primary foreground HSL values */
+    --sidebar-accent: var(--accent); /* Use app's secondary accent HSL values */
+    --sidebar-accent-foreground: var(--accent-foreground); /* Use app's secondary accent foreground HSL values */
+    --sidebar-border: 220 3% 15%;
+    --sidebar-ring: var(--accent); /* Use app's secondary accent HSL values for ring */
 
     /* Base font size for scaling */
     --font-size-root-default: 16px;
