@@ -1,53 +1,54 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 220 3% 16%; /* #262729 Dark Desaturated Gray */
-    --foreground: 0 0% 98%; /* Light Gray/White */
+    --background: 220 3% 10%; /* Darker */
+    --foreground: 0 0% 98%;
 
-    --card: 220 3% 18%; /* Slightly lighter than background for card */
+    --card: 220 3% 12%; /* Darker */
     --card-foreground: 0 0% 98%;
 
-    --popover: 220 3% 16%;
+    --popover: 220 3% 10%; /* Darker */
     --popover-foreground: 0 0% 98%;
 
-    --primary: 289 82% 55%; /* #BE29EC Electric Purple */
-    --primary-foreground: 0 0% 100%; /* White */
+    --primary: 289 85% 50%; /* Darker, more saturated neon purple */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 3% 25%; /* A bit lighter gray */
+    --secondary: 220 3% 18%; /* Darker */
     --secondary-foreground: 0 0% 98%;
 
-    --muted: 220 3% 22%; /* Muted gray for less emphasis */
-    --muted-foreground: 0 0% 70%; /* Lighter muted text */
+    --muted: 220 3% 15%; /* Darker */
+    --muted-foreground: 0 0% 70%;
 
-    --accent: 127 100% 52%; /* #39FF14 Neon Green */
-    --accent-foreground: 220 3% 10%; /* Dark for contrast on neon green elements */
+    --accent: 127 100% 48%; /* Darker neon green */
+    --accent-foreground: 220 3% 10%;
 
-    --destructive: 0 72% 51%; /* A vibrant red for destructive actions */
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 3% 25%; /* Subtle border color */
-    --input: 220 3% 20%; /* Dark input background */
-    --ring: 127 100% 52%; /* Neon Green for focus rings */
+    --border: 220 3% 18%; /* Darker */
+    --input: 220 3% 13%; /* Darker */
+    --ring: 127 100% 48%; /* Matches new accent */
 
     --radius: 0.5rem;
 
-    --chart-1: 289 82% 55%;
-    --chart-2: 127 100% 52%;
+    --chart-1: 289 85% 50%; /* Match new primary */
+    --chart-2: 127 100% 48%; /* Match new accent */
     --chart-3: 220 70% 65%;
     --chart-4: 30 80% 60%;
     --chart-5: 200 75% 55%;
 
-    --sidebar-background: 220 3% 14%;
+    --sidebar-background: 220 3% 8%; /* Even darker */
     --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 289 82% 55%;
+    --sidebar-primary: 289 85% 50%; /* Match new primary */
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 127 100% 52%;
+    --sidebar-accent: 127 100% 48%; /* Match new accent */
     --sidebar-accent-foreground: 220 3% 10%;
-    --sidebar-border: 220 3% 22%;
-    --sidebar-ring: 127 100% 52%;
+    --sidebar-border: 220 3% 15%; /* Match new muted */
+    --sidebar-ring: 127 100% 48%; /* Match new accent */
   }
 }
 

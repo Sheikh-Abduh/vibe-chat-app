@@ -1,7 +1,8 @@
+
 "use client";
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Waves } from 'lucide-react'; // Using Waves for an "edgy" vibe icon
+import Image from 'next/image';
 
 export default function SplashScreen() {
   const router = useRouter();
@@ -17,20 +18,33 @@ export default function SplashScreen() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground p-4">
       <div className="relative mb-8">
-        <Waves
-          className="h-32 w-32 text-primary animate-pulse"
-          style={{ filter: `drop-shadow(0 0 10px hsl(var(--primary))) drop-shadow(0 0 5px hsl(var(--accent)/0.5))` }}
+        <Image
+          src="/logo.png"
+          alt="VibeCheck Logo"
+          width={160}
+          height={160}
+          priority
+          className="animate-pulse"
+          style={{
+            filter: `drop-shadow(0 0 12px hsl(var(--primary))) drop-shadow(0 0 6px hsl(var(--accent)/0.6))`
+          }}
+          data-ai-hint="abstract logo"
         />
       </div>
-      <h1
-        className="text-5xl md:text-7xl font-bold tracking-tighter"
-        style={{
-          textShadow: '0 0 8px hsl(var(--primary)), 0 0 16px hsl(var(--primary)/0.7), 0 0 24px hsl(var(--accent)/0.5)',
-        }}
-      >
-        VibeCheck
-      </h1>
-      <p className="mt-4 text-lg text-muted-foreground">Initializing your vibe...</p>
+      <div className="relative">
+        <Image
+          src="/vibe.png"
+          alt="VibeCheck"
+          width={500}
+          height={120}
+          priority
+          style={{
+            filter: `drop-shadow(0 0 10px hsl(var(--primary))) drop-shadow(0 0 20px hsl(var(--primary)/0.7)) drop-shadow(0 0 30px hsl(var(--accent)/0.5))`
+          }}
+          data-ai-hint="typography wordmark"
+        />
+      </div>
+      <p className="mt-8 text-lg text-muted-foreground">Initializing your vibe...</p>
     </div>
   );
 }
