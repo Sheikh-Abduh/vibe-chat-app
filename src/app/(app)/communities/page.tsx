@@ -226,25 +226,6 @@ export default function CommunitiesPage() {
     return () => unsubscribe();
   }, []);
 
-  // Placeholder: useEffect for fetching messages when selectedChannel changes
-  // useEffect(() => {
-  //   if (selectedChannel && selectedCommunity && currentUser) {
-  //     // This is where you would set up your Firestore listener for messages
-  //     // e.g., const q = query(collection(firestore, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`), orderBy('timestamp'));
-  //     // const unsubscribe = onSnapshot(q, (querySnapshot) => {
-  //     //   const msgs = querySnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
-  //     //   setMessages(msgs);
-  //     // });
-  //     // return () => unsubscribe();
-  //     // For placeholder:
-  //     setMessages([ 
-  //       { id: 'msg1', senderName: 'UserOne', senderAvatarUrl: 'https://placehold.co/40x40.png?text=U1', text: `Welcome to ${selectedChannel.name}!`, timestamp: '10:00 AM', currentSender: false },
-  //       { id: 'msg2', senderName: userName, senderAvatarUrl: userAvatar || "https://placehold.co/40x40.png?text=Me", text: 'Hi there! Chat UI is ready.', timestamp: '10:01 AM', currentSender: true },
-  //     ]);
-  //   }
-  // }, [selectedChannel, selectedCommunity, currentUser, userName, userAvatar]);
-
-
   const handleSelectCommunity = (community: Community) => {
     setSelectedCommunity(community);
     setSelectedChannel(placeholderChannels[community.id]?.[0] || null);
@@ -261,22 +242,6 @@ export default function CommunitiesPage() {
     });
   };
 
-  // Placeholder: const handleSendMessage = async () => { 
-  //   if (!newMessage.trim() || !currentUser || !selectedCommunity || !selectedChannel) return;
-  //   const messageData = {
-  //     text: newMessage,
-  //     senderId: currentUser.uid,
-  //     senderName: currentUser.displayName || currentUser.email?.split('@')[0],
-  //     senderAvatarUrl: currentUser.photoURL,
-  //     timestamp: serverTimestamp(), // from 'firebase/firestore'
-  //     type: 'text',
-  //   };
-  //   // await addDoc(collection(firestore, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`), messageData);
-  //   // setNewMessage("");
-  //   toast({ title: "Message Sent (Simulated)"});
-  //   setNewMessage("");
-  // }
-
   const currentChannels = selectedCommunity ? placeholderChannels[selectedCommunity.id] || [] : [];
   const currentMembers = selectedCommunity ? placeholderMembers[selectedCommunity.id] || [] : [];
 
@@ -287,7 +252,7 @@ export default function CommunitiesPage() {
     <div className="flex h-full overflow-hidden bg-background">
       {/* Column 1: Community Server List */}
       <ScrollArea className="h-full w-20 bg-muted/20 border-r border-border/30">
-        <div className="p-2 space-y-3"> {/* Padding moved inside ScrollArea */}
+        <div className="p-2 space-y-3">
           {placeholderCommunities.map((community) => (
             <button
               key={community.id}
@@ -305,14 +270,14 @@ export default function CommunitiesPage() {
       </ScrollArea>
 
       {/* Column 2: Channel List */}
-      <div className="h-full w-64 bg-card flex flex-col border-r border-border/40">
+      <div className="h-full w-64 bg-card flex flex-col border-r border-border/40 overflow-hidden">
         {selectedCommunity ? (
           <>
             <div className="p-3 border-b border-border/40 shadow-sm shrink-0">
               <h2 className="text-lg font-semibold text-foreground truncate">{selectedCommunity.name}</h2>
             </div>
             <ScrollArea className="flex-1">
-              <div className="p-3 space-y-1"> {/* Padding moved inside ScrollArea */}
+              <div className="p-3 space-y-1">
                 {currentChannels.map((channel) => (
                   <Button
                     key={channel.id}
@@ -331,8 +296,8 @@ export default function CommunitiesPage() {
             </ScrollArea>
             <div className="p-2 border-t border-border/40 shrink-0">
               {currentUser ? (
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   className="w-full justify-start text-sm text-foreground hover:bg-muted py-2 h-auto"
                   onClick={handleCommunityProfileEdit}
                 >
@@ -358,7 +323,7 @@ export default function CommunitiesPage() {
       </div>
 
       {/* Column 3: Main Content Area (Chat UI) */}
-      <div className="h-full flex-1 bg-background flex flex-col">
+      <div className="h-full flex-1 bg-background flex flex-col overflow-hidden">
         {selectedCommunity && selectedChannel ? (
           <>
             <div className="p-3 border-b border-border/40 shadow-sm flex items-center justify-between shrink-0">
@@ -373,7 +338,7 @@ export default function CommunitiesPage() {
 
             {/* Message display area */}
             <ScrollArea className="flex-1">
-              <div className="p-4 space-y-4"> {/* Padding moved inside ScrollArea */}
+              <div className="p-4 space-y-4">
                 {/* Example messages - Replace with dynamic messages from state */}
                 <div className="flex items-start space-x-3">
                   <Avatar>
@@ -410,9 +375,9 @@ export default function CommunitiesPage() {
                     <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Attach File/Image" onClick={() => toast({title: "Feature Coming Soon", description: "File/Image upload will be implemented."})}>
                         <Paperclip className="h-5 w-5" />
                     </Button>
-                    <Input 
-                        type="text" 
-                        placeholder={`Message #${selectedChannel.name}`} 
+                    <Input
+                        type="text"
+                        placeholder={`Message #${selectedChannel.name}`}
                         className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
                         // value={newMessage}
                         // onChange={(e) => setNewMessage(e.target.value)}
@@ -426,7 +391,7 @@ export default function CommunitiesPage() {
                         <Smile className="h-5 w-5" />
                     </Button>
                     <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" onClick={() => toast({title: "Feature Coming Soon", description: "GIF sending will be implemented."})}>
-                        <Film className="h-5 w-5" /> 
+                        <Film className="h-5 w-5" />
                     </Button>
                 </div>
             </div>
@@ -439,14 +404,14 @@ export default function CommunitiesPage() {
       </div>
 
       {/* Column 4: Right-Hand Info Bar (Restructured for scrollable members) */}
-      <div className="h-full w-72 bg-card border-l border-border/40 hidden lg:flex flex-col">
+      <div className="h-full w-72 bg-card border-l border-border/40 hidden lg:flex flex-col overflow-hidden">
         {selectedCommunity ? (
           <>
             {/* Fixed content: Banner */}
             <div className="relative h-32 w-full shrink-0">
-               <Image 
-                src={selectedCommunity.bannerUrl} 
-                alt={`${selectedCommunity.name} banner`} 
+               <Image
+                src={selectedCommunity.bannerUrl}
+                alt={`${selectedCommunity.name} banner`}
                 fill
                 className="object-cover"
                 data-ai-hint={selectedCommunity.dataAiHintBanner}
@@ -477,10 +442,10 @@ export default function CommunitiesPage() {
               )}
             </div>
             <Separator className="my-2 bg-border/40 shrink-0" />
-            
+
             {/* Scrollable content: Members List */}
-            <ScrollArea className="flex-1"> {/* This ScrollArea will take the remaining space */}
-              <div className="px-4 pb-4 pt-0"> {/* Padding moved inside ScrollArea */}
+            <ScrollArea className="flex-1">
+              <div className="px-4 pb-4 pt-0">
                 <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1">Members ({currentMembers.length})</h4>
                 <div className="space-y-2">
                   {currentMembers.map((member) => (
@@ -510,4 +475,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
