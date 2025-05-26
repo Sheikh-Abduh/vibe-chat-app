@@ -18,6 +18,8 @@ const placeholderCommunities = [
   { id: '2', name: 'Bookworms Corner', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'book open', description: 'Discuss your favorite books, authors, and genres.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'library shelf', tags: ['Books', 'Reading', 'Fiction', 'Non-Fiction', 'Literature'] },
   { id: '3', name: 'Art Collective', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'palette brush', description: 'Share your art, get feedback, and collaborate.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'abstract paint', tags: ['Art', 'Design', 'Illustration', 'Digital Art', 'Painting'] },
   { id: '4', name: 'Tech Hub', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'circuit board', description: 'For developers, enthusiasts, and tech news.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'futuristic city', tags: ['Technology', 'Software', 'Hardware', 'AI', 'Coding'] },
+  { id: '5', name: 'Musicians\' Hangout', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'guitar music', description: 'Collaborate, share music, and discuss gear.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'stage concert', tags: ['Music', 'Instruments', 'Production', 'Songwriting', 'Collaboration'] },
+  { id: '6', name: 'Coders\' Corner', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'code screen', description: 'Talk code, share projects, and learn together.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'binary code', tags: ['Coding', 'WebDev', 'OpenSource', 'Software', 'Projects'] },
 ];
 
 const placeholderChannels = {
@@ -41,6 +43,17 @@ const placeholderChannels = {
     { id: 'c4-2', name: 'code-help', type: 'text', icon: Hash },
     { id: 'c4-3', name: 'tech-news-voice', type: 'voice', icon: Mic },
   ],
+  '5': [ // Musicians' Hangout
+    { id: 'c5-1', name: 'general-jam', type: 'text', icon: Hash },
+    { id: 'c5-2', name: 'gear-talk', type: 'text', icon: Hash },
+    { id: 'c5-3', name: 'collab-voice', type: 'voice', icon: Mic },
+    { id: 'c5-4', name: 'live-performance', type: 'video', icon: Video },
+  ],
+  '6': [ // Coders' Corner
+    { id: 'c6-1', name: 'project-showcase', type: 'text', icon: Hash },
+    { id: 'c6-2', name: 'ask-for-help', type: 'text', icon: Hash },
+    { id: 'c6-3', name: 'pair-programming-voice', type: 'voice', icon: Mic },
+  ],
 };
 
 const placeholderMembers = {
@@ -48,6 +61,8 @@ const placeholderMembers = {
   '2': [{ id: 'm4', name: 'ReaderRiley', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person books' }, { id: 'm5', name: 'NovelNerd', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman library' }],
   '3': [{ id: 'm6', name: 'ArtfulAlex', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'artist painting' }, { id: 'm7', name: 'CreativeCasey', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'designer thinking' }],
   '4': [{ id: 'm8', name: 'CodeWizard', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man code' }, { id: 'm9', name: 'TechieTom', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person computer' }],
+  '5': [{ id: 'm10', name: 'MusicMaestro', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'musician stage' }, { id: 'm11', name: 'BeatMaker', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'dj deck' }, { id: 'm12', name: 'SingerStar', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman microphone' }],
+  '6': [{ id: 'm13', name: 'DevDynamo', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'coder focus' }, { id: 'm14', name: 'ScriptKid', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person laptop' }],
 };
 
 type Community = typeof placeholderCommunities[0];
@@ -74,7 +89,7 @@ export default function CommunitiesPage() {
   const currentMembers = selectedCommunity ? placeholderMembers[selectedCommunity.id] || [] : [];
 
   return (
-    <div className="flex h-full overflow-hidden"> {/* Changed to h-full */}
+    <div className="flex h-full overflow-hidden"> {/* Root div for CommunitiesPage */}
       {/* Column 1: Community Server List */}
       <ScrollArea className="h-full w-20 bg-muted/20 p-2 border-r border-border/30">
         <div className="space-y-3">
@@ -180,7 +195,7 @@ export default function CommunitiesPage() {
                 src={selectedCommunity.bannerUrl} 
                 alt={`${selectedCommunity.name} banner`} 
                 fill
-                className="object-cover rounded-t-lg"
+                className="object-cover" /* Removed rounded-t-lg as ScrollArea might clip it */
                 data-ai-hint={selectedCommunity.dataAiHintBanner}
               />
             </div>
