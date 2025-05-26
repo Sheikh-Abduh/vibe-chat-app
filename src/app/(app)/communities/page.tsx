@@ -189,13 +189,13 @@ export default function CommunitiesPage() {
       {/* Column 4: Right-Hand Info Bar */}
       <ScrollArea className="h-full w-72 bg-card border-l border-border/40 hidden lg:block">
         {selectedCommunity ? (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col"> {/* Removed h-full, allows natural content height for ScrollArea */}
             <div className="relative h-32 w-full">
                <Image 
                 src={selectedCommunity.bannerUrl} 
                 alt={`${selectedCommunity.name} banner`} 
                 fill
-                className="object-cover" /* Removed rounded-t-lg as ScrollArea might clip it */
+                className="object-cover"
                 data-ai-hint={selectedCommunity.dataAiHintBanner}
               />
             </div>
@@ -222,7 +222,7 @@ export default function CommunitiesPage() {
               )}
             </div>
             <Separator className="my-2 bg-border/40" />
-            <div className="p-4 flex-1">
+            <div className="p-4"> {/* Removed flex-1 */}
               <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Members ({currentMembers.length})</h4>
               <div className="space-y-2">
                 {currentMembers.map((member) => (
@@ -236,7 +236,7 @@ export default function CommunitiesPage() {
                 ))}
               </div>
             </div>
-             <div className="p-3 border-t border-border/40">
+             <div className="p-3 border-t border-border/40 mt-auto"> {/* Added mt-auto */}
                 <Button variant="outline" className="w-full text-muted-foreground">
                     <Settings className="mr-2 h-4 w-4" /> Community Settings
                 </Button>
@@ -249,3 +249,5 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+
+    
