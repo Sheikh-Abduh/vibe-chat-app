@@ -4,10 +4,10 @@
 import { useState, useEffect, useRef, FormEvent } from 'react';
 import Image from 'next/image';
 import type { User } from 'firebase/auth';
-import { auth, db } from '@/lib/firebase'; // Import db
+import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNowStrict } from 'date-fns';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore'; // Firestore imports
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -16,8 +16,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+
 
 // Placeholder Data
 const placeholderCommunities = [
@@ -30,33 +32,33 @@ const placeholderCommunities = [
 ];
 
 const placeholderChannels: Record<string, Array<{ id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType }>> = {
-  '1': [ // Gamers Unite
+  '1': [ 
     { id: 'c1-1', name: 'general-chat', type: 'text', icon: Hash },
     { id: 'c1-2', name: 'announcements', type: 'text', icon: ShieldCheck },
     { id: 'c1-3', name: 'squad-voice', type: 'voice', icon: Mic },
     { id: 'c1-4', name: 'game-night-stream', type: 'video', icon: Video },
   ],
-  '2': [ // Bookworms Corner
+  '2': [ 
     { id: 'c2-1', name: 'book-discussions', type: 'text', icon: Hash },
     { id: 'c2-2', name: 'reading-club-voice', type: 'voice', icon: Mic },
   ],
-  '3': [ // Art Collective
+  '3': [ 
     { id: 'c3-1', name: 'showcase', type: 'text', icon: Hash },
     { id: 'c3-2', name: 'critique-corner', type: 'text', icon: Hash },
     { id: 'c3-3', name: 'live-drawing-video', type: 'video', icon: Video },
   ],
-  '4': [ // Tech Hub
+  '4': [ 
     { id: 'c4-1', name: 'dev-talk', type: 'text', icon: Hash },
     { id: 'c4-2', name: 'code-help', type: 'text', icon: Hash },
     { id: 'c4-3', name: 'tech-news-voice', type: 'voice', icon: Mic },
   ],
-  '5': [ // Musicians' Hangout
+  '5': [ 
     { id: 'c5-1', name: 'general-jam', type: 'text', icon: Hash },
     { id: 'c5-2', name: 'gear-talk', type: 'text', icon: Hash },
     { id: 'c5-3', name: 'collab-voice', type: 'voice', icon: Mic },
     { id: 'c5-4', name: 'live-performance', type: 'video', icon: Video },
   ],
-  '6': [ // Coders' Corner
+   '6': [ 
     { id: 'c6-1', name: 'project-showcase', type: 'text', icon: Hash },
     { id: 'c6-2', name: 'ask-for-help', type: 'text', icon: Hash },
     { id: 'c6-3', name: 'pair-programming-voice', type: 'voice', icon: Mic },
@@ -76,7 +78,7 @@ const placeholderMembers: Record<string, Array<{ id: string; name: string; avata
     { id: 'm4', name: 'ReaderRiley', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person books' },
     { id: 'm5', name: 'NovelNerd', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman library' },
   ],
-  '3': [
+   '3': [
     { id: 'm6', name: 'ArtfulAlex', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'artist painting' },
     { id: 'm7', name: 'CreativeCasey', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'designer thinking' },
     { id: 'm7a', name: 'SketchySam', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person drawing' },
@@ -117,6 +119,7 @@ type ChatMessage = {
   fileUrl?: string;
   fileName?: string;
   gifUrl?: string;
+  isPinned?: boolean;
 };
 
 /**
@@ -127,7 +130,7 @@ type ChatMessage = {
  * This page currently simulates chat with client-side state. To make it fully functional,
  * integrate a backend (like Firebase Firestore) and implement several frontend features.
  *
- * 1. Backend Setup (Firebase Firestore - Implemented Below):
+ * 1. Backend Setup (Firebase Firestore - Partially Implemented Below for Text Messages):
  *    - Database Schema:
  *      - `/communities/{communityId}`: Stores community details.
  *      - `/communities/{communityId}/channels/{channelId}`: Stores channel details.
@@ -143,19 +146,22 @@ type ChatMessage = {
  *          - `fileUrl`: string (URL from Cloudinary/Storage for image, file, voice)
  *          - `fileName`: string (for file uploads)
  *          - `gifUrl`: string (URL from Tenor for GIFs)
- *          - Optional: `reactions`, `editedTimestamp`, `isPinned`
+ *          - `isPinned`: boolean (optional, for pinning messages)
+ *          - Optional: `reactions`, `editedTimestamp`
  *    - Firestore Security Rules: Crucial for access control.
  *      - Users can only write messages to channels they are members of.
  *      - Reading messages restricted to members.
  *      - Community/channel management restricted.
+ *      - Deleting messages restricted to the sender.
+ *      - Updating `isPinned` might be restricted to moderators/admins or specific roles.
  *
- * 2. Real-time Message Listening (Frontend - Firebase SDK - Implemented Below):
+ * 2. Real-time Message Listening (Frontend - Firebase SDK - Implemented Below for Text):
  *    - When a text channel is selected (`selectedChannel` changes):
  *      - If there's an existing listener, `unsubscribe()` from it.
  *      - Use Firestore's `onSnapshot` for the channel's `messages` subcollection.
  *      - Convert Firestore Timestamps to JS Date objects when setting state.
  *
- * 3. Sending Text Messages (Frontend - Implemented Below):
+ * 3. Sending Text Messages (Frontend - Implemented Below for Text):
  *    - In `handleSendMessage`:
  *      - If `newMessage.trim()` is empty, return.
  *      - If `!currentUser || !selectedCommunity || !selectedChannel`, return.
@@ -174,7 +180,7 @@ type ChatMessage = {
  *    - Display: Render `<img>` for images, or a link/icon for files in `MessageItem`.
  *
  * 5. GIF Send (Frontend - Tenor API via Backend Proxy):
- *    - **Security Warning:** Do NOT expose your Tenor API key (e.g., AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) in client-side code.
+ *    - **Security Warning:** Do NOT expose your Tenor API key in client-side code.
  *      Create a Firebase Cloud Function to act as a proxy. The frontend calls this function, which then calls the Tenor API.
  *    - When Film icon is clicked, open a GIF picker modal/popover.
  *    - Fetch trending GIFs or search (via your Cloud Function proxy).
@@ -200,14 +206,18 @@ type ChatMessage = {
  *      - Save to Firestore.
  *    - Display: Render an HTML5 `<audio>` player in `MessageItem`.
  *
- * 8. UI/UX Enhancements:
+ * 8. Delete & Pin Message Features (Implemented Below for UI & Firestore interaction):
+ *    - Delete: User can delete their own messages. Requires Firestore rule `allow delete: if request.auth.uid == resource.data.senderId;`.
+ *    - Pin: Any user (or mods - rule dependent) can toggle `isPinned` on a message. Requires Firestore rule.
+ *
+ * 9. UI/UX Enhancements:
  *    - **Loading States:** For message sending, file uploads.
  *    - **Error Handling:** Robust `toast` messages for all operations.
- *    - **MessageItem Component:** Create a dedicated component to render different message types.
+ *    - **MessageItem Component:** A dedicated component to render different message types and actions.
  *    - **Optimistic UI Updates (Advanced):** Add message to local state immediately for perceived speed, then confirm/update from backend.
  *    - **Typing Indicators, Read Receipts, Replies/Threads (Advanced):** Significant complexity.
  *
- * 9. Voice & Video Channels (Advanced - WebRTC):
+ * 10. Voice & Video Channels (Advanced - WebRTC):
  *    - Integrate a WebRTC service (Agora, Twilio Video) or a library with Firebase.
  *    - Manage connections, streams, participants, mute/unmute, camera on/off.
  *    - UI for video feeds, participant lists, voice activity.
@@ -227,6 +237,9 @@ export default function CommunitiesPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
 
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -240,10 +253,9 @@ export default function CommunitiesPage() {
     return () => unsubscribeAuth();
   }, []);
 
-  // Effect for handling channel selection and fetching messages from Firestore
   useEffect(() => {
     if (selectedChannel && selectedCommunity && currentUser && selectedChannel.type === 'text') {
-      setMessages([]); // Clear messages to remove any system/placeholder messages
+      setMessages([]); 
 
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       const q = query(messagesRef, orderBy('timestamp', 'asc'));
@@ -254,11 +266,11 @@ export default function CommunitiesPage() {
           return { 
             id: doc.id, 
             ...data, 
-            timestamp: (data.timestamp as Timestamp)?.toDate() || new Date() // Convert Firestore Timestamp
+            timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
+            isPinned: data.isPinned || false,
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
-        // Focus chat input when messages are loaded for a text channel
         chatInputRef.current?.focus();
       }, (error) => {
         console.error("Error fetching messages: ", error);
@@ -267,7 +279,7 @@ export default function CommunitiesPage() {
             title: "Error loading messages",
             description: "Could not load messages for this channel.",
         });
-        setMessages([{ // Show an error message in chat
+        setMessages([{
             id: 'system-error-' + selectedChannel.id,
             text: `Error loading messages for #${selectedChannel.name}. Please try again later.`,
             senderId: 'system',
@@ -277,9 +289,9 @@ export default function CommunitiesPage() {
         }]);
       });
 
-      return () => unsubscribeFirestore(); // Cleanup Firestore listener
+      return () => unsubscribeFirestore();
 
-    } else if (selectedChannel) { // Handle non-text channels or if user/community not fully loaded
+    } else if (selectedChannel) { 
       setMessages([{
         id: 'channel-info-' + selectedChannel.id,
         text: `This is a ${selectedChannel.type} channel. Chat functionality is for text channels.`,
@@ -289,7 +301,7 @@ export default function CommunitiesPage() {
         type: 'text',
       }]);
     } else {
-      setMessages([]); // Clear messages if no channel or community selected
+      setMessages([]);
     }
   }, [selectedChannel, selectedCommunity, currentUser, toast]);
 
@@ -318,8 +330,9 @@ export default function CommunitiesPage() {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(), // Use Firebase server timestamp
+      timestamp: serverTimestamp(),
       type: 'text' as const,
+      isPinned: false,
     };
 
     try {
@@ -342,6 +355,39 @@ export default function CommunitiesPage() {
       description: "Editing your community-specific profile is a future feature.",
     });
   };
+
+  const handleDeleteMessage = async () => {
+    if (!deletingMessageId || !selectedCommunity || !selectedChannel || !currentUser) {
+        toast({ variant: "destructive", title: "Error", description: "Cannot delete message." });
+        setDeletingMessageId(null);
+        return;
+    }
+    try {
+        const messageRef = doc(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages/${deletingMessageId}`);
+        await deleteDoc(messageRef);
+        toast({ title: "Message Deleted", description: "The message has been removed." });
+    } catch (error) {
+        console.error("Error deleting message: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Could not delete message." });
+    } finally {
+        setDeletingMessageId(null);
+    }
+  };
+
+  const handleTogglePinMessage = async (messageId: string, currentPinnedStatus: boolean) => {
+    if (!selectedCommunity || !selectedChannel || !currentUser) return;
+    try {
+        const messageRef = doc(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages/${messageId}`);
+        await updateDoc(messageRef, {
+            isPinned: !currentPinnedStatus
+        });
+        toast({ title: `Message ${!currentPinnedStatus ? 'Pinned' : 'Unpinned'}`, description: `The message has been ${!currentPinnedStatus ? 'pinned' : 'unpinned'}.` });
+    } catch (error) {
+        console.error("Error pinning/unpinning message: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Could not update pin status." });
+    }
+  };
+
 
   const currentChannels = selectedCommunity ? placeholderChannels[selectedCommunity.id] || [] : [];
   const currentMembers = selectedCommunity ? placeholderMembers[selectedCommunity.id] || [] : [];
@@ -439,52 +485,42 @@ export default function CommunitiesPage() {
               </Button>
             </div>
 
-            <ScrollArea className="flex-1">
-              <div className="p-4 space-y-4">
+            <ScrollArea className="flex-1 bg-card/30">
+              <div className="p-4 space-y-3">
                 {messages.length === 0 && selectedChannel.type === 'text' && (
                   <div className="text-center text-muted-foreground py-4">No messages yet. Be the first to say something!</div>
                 )}
                 {messages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={cn(
-                      "flex items-start space-x-3",
-                      msg.senderId === currentUser?.uid && "justify-end"
-                    )}
+                    className="flex items-start space-x-3 py-2 group relative hover:bg-muted/30 px-2 rounded-md" 
                   >
-                    {msg.senderId !== currentUser?.uid && (
-                       <Avatar className="mt-1">
-                        <AvatarImage src={msg.senderAvatarUrl || "https://placehold.co/40x40.png?text=U"} data-ai-hint="person default" />
-                        <AvatarFallback>{msg.senderName.substring(0,1).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                    )}
-                    <div className={cn(
-                        "max-w-xs lg:max-w-md p-2.5 rounded-lg shadow",
-                        msg.senderId === currentUser?.uid 
-                          ? "bg-primary text-primary-foreground rounded-br-none" 
-                          : "bg-card text-card-foreground rounded-bl-none"
-                      )}
-                    >
-                      {msg.senderId !== currentUser?.uid && (
-                        <p className="font-semibold text-xs mb-0.5 text-accent">
+                    <Avatar className="mt-1 h-8 w-8 shrink-0">
+                      <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
+                      <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <div className="flex items-baseline space-x-2">
+                        <p className="font-semibold text-sm text-foreground">
                           {msg.senderName}
                         </p>
-                      )}
-                      <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>
-                      <p className={cn(
-                          "text-xs mt-1",
-                          msg.senderId === currentUser?.uid ? "text-primary-foreground/70 text-right" : "text-muted-foreground text-left"
-                        )}
-                      >
-                        {formatDistanceToNowStrict(msg.timestamp, { addSuffix: true })}
-                      </p>
+                        <p className="text-xs text-muted-foreground">
+                          {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
+                        </p>
+                        {msg.isPinned && <Pin className="h-3 w-3 text-amber-400" title="Pinned Message"/>}
+                      </div>
+                      <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">{msg.text}</p>
                     </div>
-                     {msg.senderId === currentUser?.uid && (
-                       <Avatar className="mt-1">
-                        <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person happy" />
-                        <AvatarFallback>{msg.senderName.substring(0,1).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                    )}
+                    <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin Message" : "Pin Message"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
+                        {msg.isPinned ? <PinOff className="h-4 w-4 text-amber-500" /> : <Pin className="h-4 w-4 text-muted-foreground hover:text-foreground" />}
+                      </Button>
+                      {currentUser?.uid === msg.senderId && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive/80" title="Delete Message" onClick={() => setDeletingMessageId(msg.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
                 <div ref={messagesEndRef} />
@@ -518,10 +554,9 @@ export default function CommunitiesPage() {
                           <Smile className="h-5 w-5" />
                       </Button>
                       {/* 
-                        Tenor API Key Security Note: 
-                        The API key (e.g., AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) MUST NOT be used directly in client-side code
-                        for production applications. It should be proxied through a backend (e.g., a Firebase Cloud Function)
-                        to protect it from misuse and to manage rate limits or quotas securely.
+                        Tenor API Key (e.g., AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) Security Note:
+                        This key MUST NOT be used directly in client-side code for production.
+                        It should be proxied through a secure backend (e.g., a Firebase Cloud Function).
                       */}
                       <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" onClick={() => toast({title: "Feature Coming Soon", description: "GIF sending (via a secure backend proxy) will be implemented."})}>
                           <Film className="h-5 w-5" />
@@ -560,7 +595,7 @@ export default function CommunitiesPage() {
                 priority
               />
             </div>
-            <div className="p-4 space-y-3 shrink-0">
+            <div className="p-4 space-y-3 shrink-0 border-b border-border/40">
               <div className="flex items-center space-x-3">
                 <Avatar className="h-16 w-16 border-2 border-background shadow-md">
                   <AvatarImage src={selectedCommunity.iconUrl} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint}/>
@@ -582,12 +617,13 @@ export default function CommunitiesPage() {
                 </div>
               )}
             </div>
-            <Separator className="my-2 bg-border/40 shrink-0" />
             
             <ScrollArea className="flex-1">
-              <div className="px-4 pb-4 pt-0">
-                <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1 z-10">Members ({currentMembers.length})</h4>
-                <div className="space-y-2">
+              <div className="px-4 pb-4 pt-2"> {/* Adjusted padding */}
+                <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-4 px-4">
+                  Members ({currentMembers.length})
+                </h4>
+                <div className="space-y-2 pt-2">
                   {currentMembers.map((member) => (
                     <div key={member.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
                       <Avatar className="h-8 w-8">
@@ -611,6 +647,28 @@ export default function CommunitiesPage() {
           <div className="p-4 text-center text-muted-foreground flex-1 flex items-center justify-center">No community selected.</div>
         )}
       </div>
+
+      <AlertDialog open={!!deletingMessageId} onOpenChange={(open) => !open && setDeletingMessageId(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete the message.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setDeletingMessageId(null)}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                    onClick={handleDeleteMessage}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                    Delete
+                </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
+    
