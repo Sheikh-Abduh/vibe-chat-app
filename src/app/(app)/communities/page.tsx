@@ -145,8 +145,8 @@ export default function CommunitiesPage() {
   return (
     <div className="flex h-full overflow-hidden bg-background">
       {/* Column 1: Community Server List */}
-      <ScrollArea className="h-full w-20 bg-muted/20 p-2 border-r border-border/30">
-        <div className="space-y-3">
+      <ScrollArea className="h-full w-20 bg-muted/20 border-r border-border/30">
+        <div className="p-2 space-y-3">
           {placeholderCommunities.map((community) => (
             <button
               key={community.id}
@@ -170,8 +170,8 @@ export default function CommunitiesPage() {
             <div className="p-3 border-b border-border/40 shadow-sm">
               <h2 className="text-lg font-semibold text-foreground truncate">{selectedCommunity.name}</h2>
             </div>
-            <ScrollArea className="flex-1 p-3">
-              <div className="space-y-1">
+            <ScrollArea className="flex-1">
+              <div className="p-3 space-y-1">
                 {currentChannels.map((channel) => (
                   <Button
                     key={channel.id}
@@ -231,8 +231,8 @@ export default function CommunitiesPage() {
             </div>
 
             {/* Message display area */}
-            <ScrollArea className="flex-1 p-4">
-              <div className="space-y-4">
+            <ScrollArea className="flex-1">
+              <div className="p-4 space-y-4">
                 {/* Example messages */}
                 <div className="flex items-start space-x-3">
                   <Avatar>
@@ -343,18 +343,20 @@ export default function CommunitiesPage() {
             <Separator className="my-2 bg-border/40 shrink-0" />
             
             {/* Scrollable content: Members List */}
-            <ScrollArea className="flex-1 px-4 pb-4 pt-0"> {/* Apply padding here for the scrollable content */}
-              <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1">Members ({currentMembers.length})</h4>
-              <div className="space-y-2">
-                {currentMembers.map((member) => (
-                  <div key={member.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={member.avatarUrl} alt={member.name} data-ai-hint={member.dataAiHint}/>
-                      <AvatarFallback>{member.name.substring(0, 1).toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm text-foreground truncate">{member.name}</span>
-                  </div>
-                ))}
+            <ScrollArea className="flex-1">
+              <div className="px-4 pb-4 pt-0">
+                <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1">Members ({currentMembers.length})</h4>
+                <div className="space-y-2">
+                  {currentMembers.map((member) => (
+                    <div key={member.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={member.avatarUrl} alt={member.name} data-ai-hint={member.dataAiHint}/>
+                        <AvatarFallback>{member.name.substring(0, 1).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm text-foreground truncate">{member.name}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </ScrollArea>
 
@@ -372,5 +374,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
-    
