@@ -1,11 +1,12 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import Image from 'next/image';
 import type { User } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+import { formatDistanceToNowStrict } from 'date-fns';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Placeholder Data
@@ -104,108 +105,135 @@ type Community = typeof placeholderCommunities[0];
 type Channel = { id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType };
 type Member = typeof placeholderMembers['1'][0];
 
+type ChatMessage = {
+  id: string;
+  text: string;
+  senderId: string;
+  senderName: string;
+  senderAvatarUrl?: string | null;
+  timestamp: Date;
+  type: 'text' | 'image' | 'file' | 'gif' | 'voice_message';
+  fileUrl?: string;
+  fileName?: string;
+  gifUrl?: string;
+};
+
+
 /**
  * =============================================================================
- * HOW TO IMPLEMENT CHAT FUNCTIONALITY
+ * HOW TO IMPLEMENT CHAT FUNCTIONALITY (Detailed Guide)
  * =============================================================================
  *
- * This page currently uses placeholder data for chat. To make it functional,
- * you'll need to integrate a backend (like Firebase Firestore) and implement
- * several frontend features. Here's a roadmap:
+ * This page currently simulates chat with client-side state. To make it fully functional,
+ * integrate a backend (like Firebase Firestore) and implement several frontend features.
  *
  * 1. Backend Setup (e.g., Firebase Firestore):
  *    - Database Schema:
- *      - `/communities/{communityId}`: Stores community details (name, icon, banner, description, tags).
- *      - `/communities/{communityId}/channels/{channelId}`: Stores channel details (name, type).
- *      - `/communities/{communityId}/members/{memberUserId}`: Stores basic member info (displayName, avatarUrl, roles).
- *      - `/communities/{communityId}/channels/{channelId}/messages/{messageId}`: This is where messages are stored.
+ *      - `/communities/{communityId}`: Stores community details.
+ *      - `/communities/{communityId}/channels/{channelId}`: Stores channel details.
+ *      - `/communities/{communityId}/members/{memberUserId}`: Stores member info.
+ *      - `/communities/{communityId}/channels/{channelId}/messages/{messageId}`:
  *        Each message document should include:
  *          - `text`: string (for text messages)
  *          - `senderId`: string (Firebase User ID)
  *          - `senderName`: string
- *          - `senderAvatarUrl`: string
+ *          - `senderAvatarUrl`: string | null
  *          - `timestamp`: Firebase Server Timestamp (for ordering)
- *          - `type`: 'text' | 'image' | 'file' | 'gif' | 'voice'
- *          - `fileUrl`: string (for image, file, voice uploads - URL from Cloudinary/Storage)
+ *          - `type`: 'text' | 'image' | 'file' | 'gif' | 'voice_message'
+ *          - `fileUrl`: string (URL from Cloudinary/Storage for image, file, voice)
  *          - `fileName`: string (for file uploads)
- *          - `gifUrl`: string (for GIFs - URL from Tenor)
+ *          - `gifUrl`: string (URL from Tenor for GIFs)
  *          - Optional: `reactions`, `editedTimestamp`, `isPinned`
- *    - Firestore Security Rules: Crucial for controlling read/write access.
- *      - Users should only be able to write messages to channels they are members of.
- *      - Reading messages should be restricted to members of the community/channel.
- *      - Community creation/deletion/editing should be restricted (e.g., to admins).
+ *    - Firestore Security Rules: Crucial for access control.
+ *      - Users can only write messages to channels they are members of.
+ *      - Reading messages restricted to members.
+ *      - Community/channel management restricted.
  *
- * 2. Real-time Message Listening (Frontend - using Firebase SDK):
- *    - When a text channel is selected:
- *      - Use Firestore's `onSnapshot` to listen for new messages in that channel's `messages` subcollection.
- *        (e.g., `import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';`)
- *        `const q = query(collection(db, `communities/${communityId}/channels/${channelId}/messages`), orderBy('timestamp'));`
- *        `const unsubscribe = onSnapshot(q, (querySnapshot) => { ... });`
- *      - Order messages by `timestamp`.
- *      - Update a state variable (e.g., `const [messages, setMessages] = useState<YourMessageType[]>([]);`) with the fetched messages.
- *      - Render this `messages` array in the chat display area.
- *      - Ensure you `unsubscribe` from the listener when the component unmounts or the channel changes to prevent memory leaks.
+ * 2. Real-time Message Listening (Frontend - Firebase SDK):
+ *    - When a text channel is selected (`selectedChannel` changes):
+ *      - If there's an existing listener, `unsubscribe()` from it.
+ *      - Use Firestore's `onSnapshot` for the channel's `messages` subcollection.
+ *        `import { collection, query, orderBy, onSnapshot, serverTimestamp, addDoc, Timestamp } from 'firebase/firestore';`
+ *        `import { db } from '@/lib/firebase'; // Assuming db is exported from your firebase config`
+ *        `const messagesRef = collection(db, \`communities/\${selectedCommunity.id}/channels/\${selectedChannel.id}/messages\`);`
+ *        `const q = query(messagesRef, orderBy('timestamp', 'asc'));`
+ *        `const unsubscribe = onSnapshot(q, (querySnapshot) => {`
+ *          `const fetchedMessages = querySnapshot.docs.map(doc => {`
+ *            `const data = doc.data();`
+ *            `return { id: doc.id, ...data, timestamp: (data.timestamp as Timestamp)?.toDate() || new Date() } as ChatMessage;`
+ *          `});`
+ *          `setMessages(fetchedMessages);`
+ *        `});`
+ *      - Store the `unsubscribe` function to call on component unmount or channel change.
+ *      - Convert Firestore Timestamps to JS Date objects when setting state.
  *
  * 3. Sending Text Messages (Frontend):
- *    - Get text from the chat `Input` field.
- *    - On send (e.g., Enter key press or send button click):
- *      - Create a message object: `{ text, senderId, senderName, senderAvatarUrl, timestamp: serverTimestamp(), type: 'text' }`.
- *        (You'll need `import { serverTimestamp, addDoc } from 'firebase/firestore';`)
- *      - Add this object to the Firestore `messages` subcollection for the current channel using `addDoc`.
- *      - Clear the input field.
+ *    - In `handleSendMessage`:
+ *      - If `newMessage.trim()` is empty, return.
+ *      - If `!currentUser || !selectedCommunity || !selectedChannel`, return.
+ *      - Create a message object:
+ *        `const messageData = {`
+ *          `text: newMessage.trim(),`
+ *          `senderId: currentUser.uid,`
+ *          `senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",`
+ *          `senderAvatarUrl: currentUser.photoURL || null,`
+ *          `timestamp: serverTimestamp(), // Use Firebase server timestamp`
+ *          `type: 'text' as const,`
+ *        `};`
+ *      - Get the Firestore collection reference:
+ *        `const messagesRef = collection(db, \`communities/\${selectedCommunity.id}/channels/\${selectedChannel.id}/messages\`);`
+ *      - Add the document: `await addDoc(messagesRef, messageData);`
+ *      - Clear `newMessage`.
+ *      - Handle potential errors with try/catch and `toast`.
  *
- * 4. File/Image Upload (Frontend - e.g., using Cloudinary):
- *    - Trigger an `<input type="file">` when the Paperclip icon is clicked.
- *    - Handle file selection.
- *    - Upload the selected file/image to your chosen storage service (e.g., Cloudinary).
- *    - Get the public URL of the uploaded file from the storage service.
- *    - Create a message object (e.g., `{ type: 'image', fileUrl, fileName (optional), senderId, ... }`).
- *    - Save this message object to Firestore.
- *    - Display: Render an `<img>` tag for images, or a download link/preview for other file types within the chat message component.
+ * 4. File/Image Upload (Frontend - Cloudinary):
+ *    - When Paperclip icon is clicked, trigger `<input type="file" accept="image/*,application/pdf,...">`.
+ *    - On file selection:
+ *      - Upload to Cloudinary (reuse logic from avatar upload, but don't update user profile).
+ *      - Get `secure_url` and `original_filename`.
+ *      - Create a message object (type: 'image' or 'file', `fileUrl`, `fileName`).
+ *      - Save to Firestore (similar to text messages).
+ *    - Display: Render `<img>` for images, or a link/icon for files in `MessageItem`.
  *
- * 5. GIF Send (Frontend - e.g., Tenor API):
- *    - **Security Warning:** Do NOT expose your Tenor API key (AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) directly in client-side code for production.
- *      It should be proxied through a backend (e.g., a Firebase Cloud Function) that makes the actual API call to Tenor.
- *    - UI for GIF picker: When the Film icon is clicked, open a modal or popover.
- *    - Fetch trending GIFs or allow search using the Tenor API (via your backend proxy).
- *    - When a GIF is selected, get its URL.
- *    - Create a message object (e.g., `{ type: 'gif', gifUrl, senderId, ... }`).
+ * 5. GIF Send (Frontend - Tenor API via Backend Proxy):
+ *    - **Security Warning:** Do NOT expose your Tenor API key (AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) in client-side code.
+ *      Create a Firebase Cloud Function to act as a proxy. The frontend calls this function, which then calls the Tenor API.
+ *    - When Film icon is clicked, open a GIF picker modal/popover.
+ *    - Fetch trending GIFs or search (via your Cloud Function proxy).
+ *    - On GIF selection, get its URL.
+ *    - Create message object (type: 'gif', `gifUrl`).
  *    - Save to Firestore.
- *    - Display: Render an `<img>` tag for the GIF in the chat message component.
+ *    - Display: Render `<img>` for the GIF in `MessageItem`.
  *
  * 6. Emoji Send (Frontend):
- *    - Integrate an emoji picker component (e.g., 'emoji-picker-react' or a similar library).
- *    - When the Smile icon is clicked, show the emoji picker.
- *    - Append the selected emoji (which is usually a Unicode character) to the text `Input` field. Emojis are sent as part of the text message.
+ *    - When Smile icon clicked, show an emoji picker (e.g., 'emoji-picker-react').
+ *    - Append selected emoji (Unicode character) to the `newMessage` state.
  *
  * 7. Voice Message Send (Frontend - MediaRecorder API):
- *    - When the Mic icon (in the chat input) is clicked:
- *      - Start audio recording using `navigator.mediaDevices.getUserMedia({ audio: true })` and `MediaRecorder`.
- *      - Provide UI to stop recording (e.g., change icon to a stop button, show a timer).
- *    - On stop, get the audio data (usually a Blob).
- *    - Upload the audio Blob to your storage service (e.g., Cloudinary).
- *    - Get the public URL of the uploaded audio file.
- *    - Create a message object (e.g., `{ type: 'voice', fileUrl, senderId, ... }`).
- *    - Save to Firestore.
- *    - Display: Render an HTML5 `<audio>` player for the voice message within the chat message component.
+ *    - When Mic icon (chat input) clicked:
+ *      - Request audio permission: `navigator.mediaDevices.getUserMedia({ audio: true })`.
+ *      - Initialize `MediaRecorder`. Start recording. Store audio chunks.
+ *      - Update UI (e.g., show stop button, timer).
+ *    - On stop:
+ *      - Create an audio `Blob` from chunks.
+ *      - Upload Blob to Cloudinary (or other storage).
+ *      - Get public URL.
+ *      - Create message object (type: 'voice_message', `fileUrl`).
+ *      - Save to Firestore.
+ *    - Display: Render an HTML5 `<audio>` player in `MessageItem`.
  *
- * 8. Authentication & User Data:
- *    - Ensure `currentUser` details (ID, displayName, photoURL) from `firebase/auth` are readily available for sending messages.
- *    - When rendering messages, you might want to differentiate messages sent by the `currentUser` (e.g., different alignment or background color).
+ * 8. UI/UX Enhancements:
+ *    - **Loading States:** For message sending, file uploads.
+ *    - **Error Handling:** Robust `toast` messages for all operations.
+ *    - **Timestamps:** Format nicely (e.g., `formatDistanceToNowStrict` from `date-fns`).
+ *    - **MessageItem Component:** Create a dedicated component to render different message types.
+ *    - **Optimistic UI Updates (Advanced):** Add message to local state immediately for perceived speed, then confirm/update from backend.
+ *    - **Typing Indicators, Read Receipts, Replies/Threads (Advanced):** Significant complexity.
  *
- * 9. UI/UX Enhancements:
- *    - **Scroll to Bottom:** Automatically scroll the message list to the bottom when new messages arrive or are sent. A `useRef` on the scrollable container and `scrollTo` can achieve this.
- *    - **Loading States:** Indicate when messages are sending or files are uploading.
- *    - **Error Handling:** Implement robust error handling for all operations (network issues, permissions, API errors, etc.) using `toast`.
- *    - **Timestamps:** Display message timestamps in a human-readable format (e.g., "10:00 AM", "Yesterday at 2:30 PM"). Libraries like `date-fns` can help.
- *    - **Message Component:** Create a dedicated `MessageItem` component to render individual messages, handling different message types (`text`, `image`, `gif`, etc.).
- *    - Optional Advanced Features: Typing indicators, read receipts, message editing/deletion, replies/threads (these add significant complexity).
- *
- * 10. Voice & Video Channels (Advanced):
- *     - For voice/video channels, you'd typically integrate a WebRTC-based service like Agora, Twilio Video, or use Firebase with a WebRTC library.
- *     - This involves managing connections, audio/video streams, participant lists, mute/unmute, camera on/off, etc. This is a substantial feature on its own.
- *     - The UI placeholders here would be replaced with actual video feeds or participant lists with voice activity indicators.
- *
+ * 9. Voice & Video Channels (Advanced - WebRTC):
+ *    - Integrate a WebRTC service (Agora, Twilio Video) or a library with Firebase.
+ *    - Manage connections, streams, participants, mute/unmute, camera on/off.
+ *    - UI for video feeds, participant lists, voice activity.
  * =============================================================================
  */
 
@@ -216,8 +244,17 @@ export default function CommunitiesPage() {
   );
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
-  // const [messages, setMessages] = useState<any[]>([]); // For actual chat messages
-  // const [newMessage, setNewMessage] = useState(""); // For chat input
+  
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [newMessage, setNewMessage] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(scrollToBottom, [messages]);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(user => {
@@ -226,13 +263,92 @@ export default function CommunitiesPage() {
     return () => unsubscribe();
   }, []);
 
+  // Effect for handling channel selection and fetching/simulating messages
+  useEffect(() => {
+    if (selectedChannel && selectedCommunity && currentUser) {
+      setMessages([]); // Clear messages when channel changes
+
+      // TODO: Replace with actual Firestore listener
+      // Simulating initial messages for the selected channel
+      const initialMessages: ChatMessage[] = [
+        {
+          id: 'msg1-' + selectedChannel.id,
+          text: `Welcome to #${selectedChannel.name} in ${selectedCommunity.name}! This is a placeholder message.`,
+          senderId: 'system',
+          senderName: 'System',
+          timestamp: new Date(Date.now() - 1000 * 60 * 5), // 5 minutes ago
+          type: 'text',
+        },
+        {
+          id: 'msg2-' + selectedChannel.id,
+          text: 'Feel free to start chatting.',
+          senderId: 'system',
+          senderName: 'System',
+          timestamp: new Date(Date.now() - 1000 * 60 * 4), // 4 minutes ago
+          type: 'text',
+        },
+      ];
+      if (selectedChannel.type === 'text') {
+        setMessages(initialMessages);
+      } else {
+         setMessages([{
+          id: 'voice-video-placeholder-' + selectedChannel.id,
+          text: `This is a ${selectedChannel.type} channel. Chat functionality is for text channels.`,
+          senderId: 'system',
+          senderName: 'System',
+          timestamp: new Date(),
+          type: 'text',
+        }]);
+      }
+      // Focus chat input when channel changes to a text channel
+      if (selectedChannel.type === 'text') {
+        chatInputRef.current?.focus();
+      }
+    } else {
+      setMessages([]); // Clear messages if no channel or community selected
+    }
+    // This is where you would set up your Firestore onSnapshot listener
+    // and return the unsubscribe function.
+    // Example:
+    // const unsubscribe = listenToMessages(selectedCommunity?.id, selectedChannel?.id, setMessages);
+    // return () => unsubscribe?.();
+  }, [selectedChannel, selectedCommunity, currentUser]);
+
+
   const handleSelectCommunity = (community: Community) => {
     setSelectedCommunity(community);
-    setSelectedChannel(placeholderChannels[community.id]?.[0] || null);
+    const firstChannel = placeholderChannels[community.id]?.[0] || null;
+    setSelectedChannel(firstChannel);
   };
 
   const handleSelectChannel = (channel: Channel) => {
     setSelectedChannel(channel);
+  };
+
+  const handleSendMessage = (e?: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLInputElement>) => {
+    if (e && 'preventDefault' in e) {
+      e.preventDefault();
+    }
+
+    if (newMessage.trim() === "" || !currentUser || !selectedChannel || selectedChannel.type !== 'text') {
+      return;
+    }
+
+    const messageToSend: ChatMessage = {
+      id: Date.now().toString(), // Temporary ID, replace with Firestore ID
+      text: newMessage.trim(),
+      senderId: currentUser.uid,
+      senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+      senderAvatarUrl: currentUser.photoURL,
+      timestamp: new Date(),
+      type: 'text',
+    };
+
+    setMessages(prevMessages => [...prevMessages, messageToSend]);
+    setNewMessage("");
+
+    // TODO: Replace with addDoc to Firestore
+    console.log("Sending message to backend:", messageToSend);
   };
 
   const handleCommunityProfileEdit = () => {
@@ -251,23 +367,25 @@ export default function CommunitiesPage() {
   return (
     <div className="flex h-full overflow-hidden bg-background">
       {/* Column 1: Community Server List */}
-      <ScrollArea className="h-full w-20 bg-muted/20 border-r border-border/30">
-        <div className="p-2 space-y-3">
-          {placeholderCommunities.map((community) => (
-            <button
-              key={community.id}
-              onClick={() => handleSelectCommunity(community)}
-              className={cn(
-                "block w-14 h-14 rounded-full overflow-hidden focus:outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150 ease-in-out",
-                selectedCommunity?.id === community.id ? 'ring-2 ring-primary scale-110 rounded-xl' : 'hover:rounded-xl hover:scale-105'
-              )}
-              title={community.name}
-            >
-              <Image src={community.iconUrl} alt={community.name} width={56} height={56} className="object-cover w-full h-full" data-ai-hint={community.dataAiHint} />
-            </button>
-          ))}
-        </div>
-      </ScrollArea>
+      <div className="h-full w-20 bg-muted/20 border-r border-border/30 overflow-hidden">
+        <ScrollArea className="h-full">
+          <div className="p-2 space-y-3">
+            {placeholderCommunities.map((community) => (
+              <button
+                key={community.id}
+                onClick={() => handleSelectCommunity(community)}
+                className={cn(
+                  "block w-14 h-14 rounded-full overflow-hidden focus:outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150 ease-in-out",
+                  selectedCommunity?.id === community.id ? 'ring-2 ring-primary scale-110 rounded-xl' : 'hover:rounded-xl hover:scale-105'
+                )}
+                title={community.name}
+              >
+                <Image src={community.iconUrl} alt={community.name} width={56} height={56} className="object-cover w-full h-full" data-ai-hint={community.dataAiHint} />
+              </button>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
 
       {/* Column 2: Channel List */}
       <div className="h-full w-64 bg-card flex flex-col border-r border-border/40 overflow-hidden">
@@ -285,7 +403,7 @@ export default function CommunitiesPage() {
                     onClick={() => handleSelectChannel(channel)}
                     className={cn(
                       "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted",
-                      selectedChannel?.id === channel.id && 'bg-accent/20 text-accent-foreground'
+                      selectedChannel?.id === channel.id && 'bg-accent text-accent-foreground' // Updated for better contrast
                     )}
                   >
                     <channel.icon className="mr-2 h-4 w-4" />
@@ -339,62 +457,95 @@ export default function CommunitiesPage() {
             {/* Message display area */}
             <ScrollArea className="flex-1">
               <div className="p-4 space-y-4">
-                {/* Example messages - Replace with dynamic messages from state */}
-                <div className="flex items-start space-x-3">
-                  <Avatar>
-                    <AvatarImage src="https://placehold.co/40x40.png?text=U1" data-ai-hint="person thinking" />
-                    <AvatarFallback>U1</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-semibold text-sm text-foreground">
-                      UserOne <span className="text-xs text-muted-foreground ml-1">10:00 AM</span>
-                    </p>
-                    <p className="text-sm text-foreground">Welcome to {selectedChannel.name} in {selectedCommunity.name}! This is a placeholder message.</p>
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={cn(
+                      "flex items-start space-x-3",
+                      msg.senderId === currentUser?.uid && "justify-end"
+                    )}
+                  >
+                    {msg.senderId !== currentUser?.uid && (
+                       <Avatar className="mt-1">
+                        <AvatarImage src={msg.senderAvatarUrl || "https://placehold.co/40x40.png?text=U"} data-ai-hint="person default" />
+                        <AvatarFallback>{msg.senderName.substring(0,1).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                    )}
+                    <div className={cn(
+                        "max-w-xs lg:max-w-md p-2.5 rounded-lg shadow",
+                        msg.senderId === currentUser?.uid 
+                          ? "bg-primary text-primary-foreground rounded-br-none" 
+                          : "bg-card text-card-foreground rounded-bl-none"
+                      )}
+                    >
+                      {msg.senderId !== currentUser?.uid && (
+                        <p className="font-semibold text-xs mb-0.5 text-accent">
+                          {msg.senderName}
+                        </p>
+                      )}
+                      <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>
+                      <p className={cn(
+                          "text-xs mt-1",
+                          msg.senderId === currentUser?.uid ? "text-primary-foreground/70 text-right" : "text-muted-foreground text-left"
+                        )}
+                      >
+                        {formatDistanceToNowStrict(msg.timestamp, { addSuffix: true })}
+                      </p>
+                    </div>
+                     {msg.senderId === currentUser?.uid && (
+                       <Avatar className="mt-1">
+                        <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person happy" />
+                        <AvatarFallback>{msg.senderName.substring(0,1).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                    )}
                   </div>
-                </div>
-                <div className="flex items-start space-x-3">
-                   <Avatar>
-                    <AvatarImage src={userAvatar || "https://placehold.co/40x40.png?text=Me"} data-ai-hint="person happy" />
-                    <AvatarFallback>{userName.substring(0,1).toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-semibold text-sm text-primary">
-                      {userName} <span className="text-xs text-muted-foreground ml-1">10:01 AM</span>
-                    </p>
-                    <p className="text-sm text-foreground">Hi there! Chat functionality is currently a placeholder.</p>
-                  </div>
-                </div>
-                {selectedChannel.type === 'voice' && <p className="text-muted-foreground mt-2 p-2 bg-muted/50 rounded-md text-center">Voice chat UI placeholder. Controls and participant list would go here.</p>}
-                {selectedChannel.type === 'video' && <p className="text-muted-foreground mt-2 p-2 bg-muted/50 rounded-md text-center">Video chat UI placeholder. Video feeds and controls would go here.</p>}
+                ))}
+                <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
 
             {/* Chat input area */}
-            <div className="p-3 border-t border-border/40 shrink-0">
-                <div className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
-                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Attach File/Image" onClick={() => toast({title: "Feature Coming Soon", description: "File/Image upload will be implemented."})}>
-                        <Paperclip className="h-5 w-5" />
-                    </Button>
-                    <Input
-                        type="text"
-                        placeholder={`Message #${selectedChannel.name}`}
-                        className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
-                        // value={newMessage}
-                        // onChange={(e) => setNewMessage(e.target.value)}
-                        // onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey ? (e.preventDefault(), handleSendMessage()) : null}
-                        // disabled={!currentUser}
-                    />
-                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send Voice Message" onClick={() => toast({title: "Feature Coming Soon", description: "Voice messages will be implemented."})}>
-                        <Mic className="h-5 w-5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Open Emoji Picker" onClick={() => toast({title: "Feature Coming Soon", description: "Emoji picker will be implemented."})}>
-                        <Smile className="h-5 w-5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" onClick={() => toast({title: "Feature Coming Soon", description: "GIF sending will be implemented."})}>
-                        <Film className="h-5 w-5" />
-                    </Button>
-                </div>
-            </div>
+            {selectedChannel.type === 'text' ? (
+              <form onSubmit={handleSendMessage} className="p-3 border-t border-border/40 shrink-0">
+                  <div className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
+                      <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Attach File/Image" onClick={() => toast({title: "Feature Coming Soon", description: "File/Image upload will be implemented."})}>
+                          <Paperclip className="h-5 w-5" />
+                      </Button>
+                      <Input
+                          ref={chatInputRef}
+                          type="text"
+                          placeholder={`Message #${selectedChannel.name}`}
+                          className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              handleSendMessage(e);
+                            }
+                          }}
+                          disabled={!currentUser || selectedChannel.type !== 'text'}
+                      />
+                      <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send Voice Message" onClick={() => toast({title: "Feature Coming Soon", description: "Voice messages will be implemented."})}>
+                          <Mic className="h-5 w-5" />
+                      </Button>
+                      <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Open Emoji Picker" onClick={() => toast({title: "Feature Coming Soon", description: "Emoji picker will be implemented."})}>
+                          <Smile className="h-5 w-5" />
+                      </Button>
+                      <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" onClick={() => toast({title: "Feature Coming Soon", description: "GIF sending will be implemented."})}>
+                          <Film className="h-5 w-5" />
+                      </Button>
+                       <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send Message" disabled={!newMessage.trim() || !currentUser || selectedChannel.type !== 'text'}>
+                          <Send className="h-5 w-5" />
+                      </Button>
+                  </div>
+              </form>
+            ) : (
+              <div className="p-3 border-t border-border/40 shrink-0">
+                <p className="text-sm text-muted-foreground text-center">
+                  Voice and video channel interactions are not yet implemented.
+                </p>
+              </div>
+            )}
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-lg p-4">
@@ -403,11 +554,10 @@ export default function CommunitiesPage() {
         )}
       </div>
 
-      {/* Column 4: Right-Hand Info Bar (Restructured for scrollable members) */}
+      {/* Column 4: Right-Hand Info Bar */}
       <div className="h-full w-72 bg-card border-l border-border/40 hidden lg:flex flex-col overflow-hidden">
         {selectedCommunity ? (
           <>
-            {/* Fixed content: Banner */}
             <div className="relative h-32 w-full shrink-0">
                <Image
                 src={selectedCommunity.bannerUrl}
@@ -418,7 +568,6 @@ export default function CommunitiesPage() {
                 priority
               />
             </div>
-            {/* Fixed content: Community Details */}
             <div className="p-4 space-y-3 shrink-0">
               <div className="flex items-center space-x-3">
                 <Avatar className="h-16 w-16 border-2 border-background shadow-md">
@@ -442,11 +591,10 @@ export default function CommunitiesPage() {
               )}
             </div>
             <Separator className="my-2 bg-border/40 shrink-0" />
-
-            {/* Scrollable content: Members List */}
+            
             <ScrollArea className="flex-1">
               <div className="px-4 pb-4 pt-0">
-                <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1">Members ({currentMembers.length})</h4>
+                <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1 z-10">Members ({currentMembers.length})</h4>
                 <div className="space-y-2">
                   {currentMembers.map((member) => (
                     <div key={member.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
@@ -461,7 +609,6 @@ export default function CommunitiesPage() {
               </div>
             </ScrollArea>
 
-            {/* Fixed content: Settings Button */}
              <div className="p-3 border-t border-border/40 mt-auto shrink-0">
                 <Button variant="outline" className="w-full text-muted-foreground" onClick={() => toast({title: "Feature Coming Soon", description: "Community settings will be implemented."})}>
                     <Settings className="mr-2 h-4 w-4" /> Community Settings
@@ -475,3 +622,5 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+
+    
