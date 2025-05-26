@@ -105,69 +105,108 @@ type Channel = { id: string; name: string; type: 'text' | 'voice' | 'video'; ico
 type Member = typeof placeholderMembers['1'][0];
 
 /**
- * To make the chat functional, you would need to implement the following:
+ * =============================================================================
+ * HOW TO IMPLEMENT CHAT FUNCTIONALITY
+ * =============================================================================
+ *
+ * This page currently uses placeholder data for chat. To make it functional,
+ * you'll need to integrate a backend (like Firebase Firestore) and implement
+ * several frontend features. Here's a roadmap:
  *
  * 1. Backend Setup (e.g., Firebase Firestore):
- *    - Database schema for communities, channels, messages, and members.
- *    - Messages collection for each channel (e.g., /communities/{communityId}/channels/{channelId}/messages).
- *    - Each message document should store: text, senderId, senderName, senderAvatarUrl, timestamp, type (text, image, file, gif, voice), fileUrl, fileName, gifUrl.
- *    - Firestore Security Rules to control read/write access.
+ *    - Database Schema:
+ *      - `/communities/{communityId}`: Stores community details (name, icon, banner, description, tags).
+ *      - `/communities/{communityId}/channels/{channelId}`: Stores channel details (name, type).
+ *      - `/communities/{communityId}/members/{memberUserId}`: Stores basic member info (displayName, avatarUrl, roles).
+ *      - `/communities/{communityId}/channels/{channelId}/messages/{messageId}`: This is where messages are stored.
+ *        Each message document should include:
+ *          - `text`: string (for text messages)
+ *          - `senderId`: string (Firebase User ID)
+ *          - `senderName`: string
+ *          - `senderAvatarUrl`: string
+ *          - `timestamp`: Firebase Server Timestamp (for ordering)
+ *          - `type`: 'text' | 'image' | 'file' | 'gif' | 'voice'
+ *          - `fileUrl`: string (for image, file, voice uploads - URL from Cloudinary/Storage)
+ *          - `fileName`: string (for file uploads)
+ *          - `gifUrl`: string (for GIFs - URL from Tenor)
+ *          - Optional: `reactions`, `editedTimestamp`, `isPinned`
+ *    - Firestore Security Rules: Crucial for controlling read/write access.
+ *      - Users should only be able to write messages to channels they are members of.
+ *      - Reading messages should be restricted to members of the community/channel.
+ *      - Community creation/deletion/editing should be restricted (e.g., to admins).
  *
- * 2. Real-time Message Listening (Frontend):
- *    - When a channel is selected, use Firestore's `onSnapshot` to listen for new messages in that channel's `messages` subcollection.
- *    - Order messages by timestamp.
- *    - Update a state variable (e.g., `const [messages, setMessages] = useState([]);`) with the fetched messages.
- *    - Render this `messages` array in the chat display area.
- *    - Unsubscribe from the listener when the component unmounts or the channel changes.
+ * 2. Real-time Message Listening (Frontend - using Firebase SDK):
+ *    - When a text channel is selected:
+ *      - Use Firestore's `onSnapshot` to listen for new messages in that channel's `messages` subcollection.
+ *        (e.g., `import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';`)
+ *        `const q = query(collection(db, `communities/${communityId}/channels/${channelId}/messages`), orderBy('timestamp'));`
+ *        `const unsubscribe = onSnapshot(q, (querySnapshot) => { ... });`
+ *      - Order messages by `timestamp`.
+ *      - Update a state variable (e.g., `const [messages, setMessages] = useState<YourMessageType[]>([]);`) with the fetched messages.
+ *      - Render this `messages` array in the chat display area.
+ *      - Ensure you `unsubscribe` from the listener when the component unmounts or the channel changes to prevent memory leaks.
  *
  * 3. Sending Text Messages (Frontend):
- *    - Get text from the input field.
- *    - On send, create a message object (text, senderId, senderName, senderAvatar, timestamp, type: 'text').
- *    - Add this object to the Firestore `messages` subcollection for the current channel.
- *    - Clear the input field.
+ *    - Get text from the chat `Input` field.
+ *    - On send (e.g., Enter key press or send button click):
+ *      - Create a message object: `{ text, senderId, senderName, senderAvatarUrl, timestamp: serverTimestamp(), type: 'text' }`.
+ *        (You'll need `import { serverTimestamp, addDoc } from 'firebase/firestore';`)
+ *      - Add this object to the Firestore `messages` subcollection for the current channel using `addDoc`.
+ *      - Clear the input field.
  *
  * 4. File/Image Upload (Frontend - e.g., using Cloudinary):
- *    - Handle file selection from an `<input type="file">` triggered by the Paperclip icon.
- *    - Upload the selected file/image to Cloudinary (or your chosen storage service).
- *    - Get the public URL from the storage service.
- *    - Create a message object (type: 'image'/'file', fileUrl, fileName, senderId, etc.).
- *    - Save to Firestore.
- *    - Display: Render `<img>` for images, or a download link for files in the chat.
+ *    - Trigger an `<input type="file">` when the Paperclip icon is clicked.
+ *    - Handle file selection.
+ *    - Upload the selected file/image to your chosen storage service (e.g., Cloudinary).
+ *    - Get the public URL of the uploaded file from the storage service.
+ *    - Create a message object (e.g., `{ type: 'image', fileUrl, fileName (optional), senderId, ... }`).
+ *    - Save this message object to Firestore.
+ *    - Display: Render an `<img>` tag for images, or a download link/preview for other file types within the chat message component.
  *
- * 5. GIF Send (Frontend - Tenor API, ideally via a backend proxy for API key security):
- *    - UI for GIF picker (e.g., a modal that appears when Film icon is clicked).
- *    - Fetch trending GIFs or search GIFs using Tenor API. 
- *      (Your provided key: AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw - IMPORTANT: Do not expose this directly in client code for production. Use a backend proxy or Cloud Function).
+ * 5. GIF Send (Frontend - e.g., Tenor API):
+ *    - **Security Warning:** Do NOT expose your Tenor API key (AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) directly in client-side code for production.
+ *      It should be proxied through a backend (e.g., a Firebase Cloud Function) that makes the actual API call to Tenor.
+ *    - UI for GIF picker: When the Film icon is clicked, open a modal or popover.
+ *    - Fetch trending GIFs or allow search using the Tenor API (via your backend proxy).
  *    - When a GIF is selected, get its URL.
- *    - Create a message object (type: 'gif', gifUrl, senderId, etc.).
+ *    - Create a message object (e.g., `{ type: 'gif', gifUrl, senderId, ... }`).
  *    - Save to Firestore.
- *    - Display: Render `<img>` for the GIF in the chat.
+ *    - Display: Render an `<img>` tag for the GIF in the chat message component.
  *
  * 6. Emoji Send (Frontend):
- *    - Integrate an emoji picker component (e.g., 'emoji-picker-react' or similar).
- *    - When emoji button (Smile icon) is clicked, show the picker.
- *    - Append selected emoji to the text input field. Emojis are typically sent as part of the text message.
+ *    - Integrate an emoji picker component (e.g., 'emoji-picker-react' or a similar library).
+ *    - When the Smile icon is clicked, show the emoji picker.
+ *    - Append the selected emoji (which is usually a Unicode character) to the text `Input` field. Emojis are sent as part of the text message.
  *
  * 7. Voice Message Send (Frontend - MediaRecorder API):
- *    - When Mic icon is clicked, start audio recording using `navigator.mediaDevices.getUserMedia` and `MediaRecorder`.
- *    - Provide UI to stop recording (e.g., change icon, show timer).
- *    - On stop, get the audio data (Blob).
- *    - Upload the audio blob to Cloudinary (or other storage).
- *    - Get the public URL.
- *    - Create a message object (type: 'voice', fileUrl, senderId, etc.).
+ *    - When the Mic icon (in the chat input) is clicked:
+ *      - Start audio recording using `navigator.mediaDevices.getUserMedia({ audio: true })` and `MediaRecorder`.
+ *      - Provide UI to stop recording (e.g., change icon to a stop button, show a timer).
+ *    - On stop, get the audio data (usually a Blob).
+ *    - Upload the audio Blob to your storage service (e.g., Cloudinary).
+ *    - Get the public URL of the uploaded audio file.
+ *    - Create a message object (e.g., `{ type: 'voice', fileUrl, senderId, ... }`).
  *    - Save to Firestore.
- *    - Display: Render an HTML5 `<audio>` player for the voice message in the chat.
+ *    - Display: Render an HTML5 `<audio>` player for the voice message within the chat message component.
  *
  * 8. Authentication & User Data:
- *    - Ensure `currentUser` details (ID, displayName, photoURL) are available for sending messages.
- *    - Handle message display to differentiate current user's messages from others (e.g., different alignment or background color).
+ *    - Ensure `currentUser` details (ID, displayName, photoURL) from `firebase/auth` are readily available for sending messages.
+ *    - When rendering messages, you might want to differentiate messages sent by the `currentUser` (e.g., different alignment or background color).
  *
  * 9. UI/UX Enhancements:
- *    - Automatically scroll to the bottom of the message list when new messages arrive or are sent.
- *    - Loading states for sending messages, uploading files.
- *    - Error handling for all operations (network issues, permissions, etc.).
- *    - Timestamps displayed human-readably for messages.
- *    - Optional: Typing indicators, read receipts (these add more complexity).
+ *    - **Scroll to Bottom:** Automatically scroll the message list to the bottom when new messages arrive or are sent. A `useRef` on the scrollable container and `scrollTo` can achieve this.
+ *    - **Loading States:** Indicate when messages are sending or files are uploading.
+ *    - **Error Handling:** Implement robust error handling for all operations (network issues, permissions, API errors, etc.) using `toast`.
+ *    - **Timestamps:** Display message timestamps in a human-readable format (e.g., "10:00 AM", "Yesterday at 2:30 PM"). Libraries like `date-fns` can help.
+ *    - **Message Component:** Create a dedicated `MessageItem` component to render individual messages, handling different message types (`text`, `image`, `gif`, etc.).
+ *    - Optional Advanced Features: Typing indicators, read receipts, message editing/deletion, replies/threads (these add significant complexity).
+ *
+ * 10. Voice & Video Channels (Advanced):
+ *     - For voice/video channels, you'd typically integrate a WebRTC-based service like Agora, Twilio Video, or use Firebase with a WebRTC library.
+ *     - This involves managing connections, audio/video streams, participant lists, mute/unmute, camera on/off, etc. This is a substantial feature on its own.
+ *     - The UI placeholders here would be replaced with actual video feeds or participant lists with voice activity indicators.
+ *
+ * =============================================================================
  */
 
 export default function CommunitiesPage() {
