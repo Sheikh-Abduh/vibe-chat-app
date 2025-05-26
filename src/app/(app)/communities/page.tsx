@@ -5,18 +5,19 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'; // CardContent is not used here, but keeping for consistency
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, ChevronDown, UserCircle, MessageSquare } from 'lucide-react';
+import { Badge } from '@/components/ui/badge'; // Added Badge import
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare } from 'lucide-react'; // Removed ChevronDown as it was unused
 import { cn } from '@/lib/utils';
 
 // Placeholder Data
 const placeholderCommunities = [
-  { id: '1', name: 'Gamers Unite', iconUrl: 'https://placehold.co/64x64.png?text=GU', dataAiHint: 'controller abstract', description: 'A community for all things gaming, from retro to modern.', bannerUrl: 'https://placehold.co/600x200.png?text=Gaming+Banner', dataAiHintBanner: 'gaming landscape' },
-  { id: '2', name: 'Bookworms Corner', iconUrl: 'https://placehold.co/64x64.png?text=BC', dataAiHint: 'book open', description: 'Discuss your favorite books, authors, and genres.', bannerUrl: 'https://placehold.co/600x200.png?text=Books+Banner', dataAiHintBanner: 'library shelf' },
-  { id: '3', name: 'Art Collective', iconUrl: 'https://placehold.co/64x64.png?text=AC', dataAiHint: 'palette brush', description: 'Share your art, get feedback, and collaborate.', bannerUrl: 'https://placehold.co/600x200.png?text=Art+Banner', dataAiHintBanner: 'abstract paint' },
-  { id: '4', name: 'Tech Hub', iconUrl: 'https://placehold.co/64x64.png?text=TH', dataAiHint: 'circuit board', description: 'For developers, enthusiasts, and tech news.', bannerUrl: 'https://placehold.co/600x200.png?text=Tech+Banner', dataAiHintBanner: 'futuristic city' },
+  { id: '1', name: 'Gamers Unite', iconUrl: 'https://placehold.co/64x64.png?text=GU', dataAiHint: 'controller abstract', description: 'A community for all things gaming, from retro to modern.', bannerUrl: 'https://placehold.co/600x200.png?text=Gaming+Banner', dataAiHintBanner: 'gaming landscape', tags: ['Gaming', 'PC', 'Consoles', 'Retro', 'eSports'] },
+  { id: '2', name: 'Bookworms Corner', iconUrl: 'https://placehold.co/64x64.png?text=BC', dataAiHint: 'book open', description: 'Discuss your favorite books, authors, and genres.', bannerUrl: 'https://placehold.co/600x200.png?text=Books+Banner', dataAiHintBanner: 'library shelf', tags: ['Books', 'Reading', 'Fiction', 'Non-Fiction', 'Literature'] },
+  { id: '3', name: 'Art Collective', iconUrl: 'https://placehold.co/64x64.png?text=AC', dataAiHint: 'palette brush', description: 'Share your art, get feedback, and collaborate.', bannerUrl: 'https://placehold.co/600x200.png?text=Art+Banner', dataAiHintBanner: 'abstract paint', tags: ['Art', 'Design', 'Illustration', 'Digital Art', 'Painting'] },
+  { id: '4', name: 'Tech Hub', iconUrl: 'https://placehold.co/64x64.png?text=TH', dataAiHint: 'circuit board', description: 'For developers, enthusiasts, and tech news.', bannerUrl: 'https://placehold.co/600x200.png?text=Tech+Banner', dataAiHintBanner: 'futuristic city', tags: ['Technology', 'Software', 'Hardware', 'AI', 'Coding'] },
 ];
 
 const placeholderChannels = {
@@ -43,10 +44,10 @@ const placeholderChannels = {
 };
 
 const placeholderMembers = {
-  '1': [{ id: 'm1', name: 'PlayerOne', avatarUrl: 'https://placehold.co/40x40.png?text=P1', dataAiHint: 'person cool' }, { id: 'm2', name: 'GamerGirl', avatarUrl: 'https://placehold.co/40x40.png?text=GG', dataAiHint: 'woman gaming' }],
-  '2': [{ id: 'm3', name: 'ReaderRiley', avatarUrl: 'https://placehold.co/40x40.png?text=RR', dataAiHint: 'person books' }],
-  '3': [{ id: 'm4', name: 'ArtfulAlex', avatarUrl: 'https://placehold.co/40x40.png?text=AA', dataAiHint: 'artist painting' }, { id: 'm5', name: 'CreativeCasey', avatarUrl: 'https://placehold.co/40x40.png?text=CC', dataAiHint: 'designer thinking' }],
-  '4': [{ id: 'm6', name: 'CodeWizard', avatarUrl: 'https://placehold.co/40x40.png?text=CW', dataAiHint: 'man code' }],
+  '1': [{ id: 'm1', name: 'PlayerOne', avatarUrl: 'https://placehold.co/40x40.png?text=P1', dataAiHint: 'person cool' }, { id: 'm2', name: 'GamerGirl', avatarUrl: 'https://placehold.co/40x40.png?text=GG', dataAiHint: 'woman gaming' }, { id: 'm3', name: 'RetroFan', avatarUrl: 'https://placehold.co/40x40.png?text=RF', dataAiHint: 'man pixel' }],
+  '2': [{ id: 'm4', name: 'ReaderRiley', avatarUrl: 'https://placehold.co/40x40.png?text=RR', dataAiHint: 'person books' }, { id: 'm5', name: 'NovelNerd', avatarUrl: 'https://placehold.co/40x40.png?text=NN', dataAiHint: 'woman library' }],
+  '3': [{ id: 'm6', name: 'ArtfulAlex', avatarUrl: 'https://placehold.co/40x40.png?text=AA', dataAiHint: 'artist painting' }, { id: 'm7', name: 'CreativeCasey', avatarUrl: 'https://placehold.co/40x40.png?text=CC', dataAiHint: 'designer thinking' }],
+  '4': [{ id: 'm8', name: 'CodeWizard', avatarUrl: 'https://placehold.co/40x40.png?text=CW', dataAiHint: 'man code' }, { id: 'm9', name: 'TechieTom', avatarUrl: 'https://placehold.co/40x40.png?text=TT', dataAiHint: 'person computer' }],
 };
 
 type Community = typeof placeholderCommunities[0];
@@ -178,9 +179,8 @@ export default function CommunitiesPage() {
                <Image 
                 src={selectedCommunity.bannerUrl} 
                 alt={`${selectedCommunity.name} banner`} 
-                layout="fill" 
-                objectFit="cover" 
-                className="rounded-t-lg" 
+                fill // Changed from layout="fill"
+                className="object-cover rounded-t-lg" // Added object-cover for fill
                 data-ai-hint={selectedCommunity.dataAiHintBanner}
               />
             </div>
@@ -195,6 +195,16 @@ export default function CommunitiesPage() {
                 </div>
               </div>
               <CardDescription className="text-sm">{selectedCommunity.description}</CardDescription>
+              {selectedCommunity.tags && selectedCommunity.tags.length > 0 && (
+                <div className="mt-3">
+                  <h5 className="text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Tags</h5>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedCommunity.tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <Separator className="my-2 bg-border/40" />
             <div className="p-4 flex-1">
@@ -224,3 +234,6 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+
+
+    
