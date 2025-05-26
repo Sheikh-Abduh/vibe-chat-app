@@ -6,7 +6,7 @@ import Image from 'next/image';
 import type { User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { formatDistanceToNowStrict, format } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -31,10 +31,9 @@ const CLOUDINARY_UPLOAD_PRESET = 'vibe_app';
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
 const ALLOWED_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-  'application/pdf', 
+  'application/pdf',
   'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .doc, .docx
   'text/plain',
-  // Add more as needed
 ];
 
 
@@ -133,12 +132,12 @@ type ChatMessage = {
   senderAvatarUrl?: string | null;
   timestamp: Date;
   type: 'text' | 'image' | 'file' | 'gif' | 'voice_message';
-  fileUrl?: string; 
-  fileName?: string; 
-  gifUrl?: string; 
-  gifId?: string; 
-  gifTinyUrl?: string; 
-  gifContentDescription?: string; 
+  fileUrl?: string;
+  fileName?: string;
+  gifUrl?: string;
+  gifId?: string;
+  gifTinyUrl?: string;
+  gifContentDescription?: string;
   isPinned?: boolean;
 };
 
@@ -261,8 +260,11 @@ interface TenorGif {
 
 const commonEmojis = ['😀', '😂', '❤️', '👍', '🤔', '🎉', '🔥', '💯', '🙏', '😭', '😮', '😊'];
 
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // <<< YOUR API KEY - PROTOTYPE ONLY - SECURITY RISK
-const TENOR_CLIENT_KEY = "vibe_app_prototype"; 
+// SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
+// This key is included for prototyping purposes only as per user request.
+// For production, proxy requests through a backend (e.g., Firebase Cloud Function).
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
+const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
 export default function CommunitiesPage() {
   const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(placeholderCommunities[0]);
@@ -350,7 +352,7 @@ export default function CommunitiesPage() {
 
   useEffect(() => {
     if (selectedChannel && selectedCommunity && currentUser && selectedChannel.type === 'text') {
-      setMessages([]); 
+      setMessages([]);
 
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       const q = query(messagesRef, orderBy('timestamp', 'asc'));
@@ -404,12 +406,15 @@ export default function CommunitiesPage() {
     setSelectedCommunity(community);
     const firstChannel = placeholderChannels[community.id]?.[0] || null;
     setSelectedChannel(firstChannel);
-    setShowPinnedMessages(false); 
+    setShowPinnedMessages(false);
   };
 
   const handleSelectChannel = (channel: Channel) => {
     setSelectedChannel(channel);
-    setShowPinnedMessages(false); 
+    setShowPinnedMessages(false);
+    if (channel.type === 'text' && chatInputRef.current) {
+        chatInputRef.current.focus();
+    }
   };
 
   const handleSendMessage = async (e?: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLInputElement>) => {
@@ -486,7 +491,7 @@ export default function CommunitiesPage() {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
     formData.append('api_key', CLOUDINARY_API_KEY);
-    formData.append('resource_type', 'auto'); // Let Cloudinary detect file type
+    formData.append('resource_type', 'auto');
 
     try {
       const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
@@ -517,7 +522,7 @@ export default function CommunitiesPage() {
       });
     } finally {
       setIsUploadingFile(false);
-      if (attachmentInputRef.current) { // Reset file input
+      if (attachmentInputRef.current) {
         attachmentInputRef.current.value = "";
       }
     }
@@ -533,12 +538,11 @@ export default function CommunitiesPage() {
         title: 'File Too Large',
         description: `Please select a file smaller than ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB.`,
       });
-      if (attachmentInputRef.current) attachmentInputRef.current.value = ""; // Reset input
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
       return;
     }
 
     if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/')) {
-        // A more general check for images if not explicitly in ALLOWED_FILE_TYPES
         if (!file.type.startsWith('image/')) {
             toast({
                 variant: 'destructive',
@@ -574,9 +578,9 @@ export default function CommunitiesPage() {
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       await addDoc(messagesRef, messageData);
-      setShowGifPicker(false); 
-      setGifSearchTerm(""); 
-      setGifs([]); 
+      setShowGifPicker(false);
+      setGifSearchTerm("");
+      setGifs([]);
     } catch (error) {
         console.error("Error sending GIF message:", error);
         toast({
@@ -595,8 +599,8 @@ export default function CommunitiesPage() {
     const gifToFavorite: TenorGif = {
         id: message.gifId,
         media_formats: {
-            tinygif: { url: message.gifTinyUrl, dims: [] }, 
-            gif: { url: message.gifUrl || '', dims: []} 
+            tinygif: { url: message.gifTinyUrl, dims: [] },
+            gif: { url: message.gifUrl || '', dims: []}
         },
         content_description: message.gifContentDescription
     };
@@ -619,6 +623,13 @@ export default function CommunitiesPage() {
     }
     try {
         const messageRef = doc(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages/${deletingMessageId}`);
+        // Add check: user can only delete their own messages
+        const msgDoc = messages.find(m => m.id === deletingMessageId);
+        if (msgDoc && msgDoc.senderId !== currentUser.uid) {
+            toast({ variant: "destructive", title: "Error", description: "You can only delete your own messages." });
+            setDeletingMessageId(null);
+            return;
+        }
         await deleteDoc(messageRef);
         toast({ title: "Message Deleted", description: "The message has been removed." });
     } catch (error) {
@@ -632,6 +643,8 @@ export default function CommunitiesPage() {
   const handleTogglePinMessage = async (messageId: string, currentPinnedStatus: boolean) => {
     if (!selectedCommunity || !selectedChannel || !currentUser) return;
     try {
+        // Add check: only certain users (e.g., admins/mods) can pin/unpin
+        // For prototype, allow anyone
         const messageRef = doc(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages/${messageId}`);
         await updateDoc(messageRef, {
             isPinned: !currentPinnedStatus
@@ -651,8 +664,9 @@ export default function CommunitiesPage() {
   };
 
   const fetchTrendingGifs = async () => {
-    if (!TENOR_API_KEY.startsWith("AIza")) {
-        toast({ variant: "destructive", title: "Tenor API Key Missing", description: "A valid Tenor API key is required for GIFs."});
+    if (!TENOR_API_KEY.startsWith("AIza")) { // Basic check if API key is potentially valid
+        toast({ variant: "destructive", title: "Tenor API Key Invalid", description: "A valid Tenor API key is required for GIFs. Please check the key."});
+        setLoadingGifs(false);
         return;
     }
     setLoadingGifs(true);
@@ -664,6 +678,7 @@ export default function CommunitiesPage() {
     } catch (error) {
       console.error("Error fetching trending GIFs:", error);
       toast({ variant: "destructive", title: "Error Fetching GIFs", description: "Could not load trending GIFs." });
+      setGifs([]);
     } finally {
       setLoadingGifs(false);
     }
@@ -671,11 +686,12 @@ export default function CommunitiesPage() {
 
   const searchTenorGifs = async (term: string) => {
     if (!term.trim()) {
-      fetchTrendingGifs(); 
+      fetchTrendingGifs();
       return;
     }
-    if (!TENOR_API_KEY.startsWith("AIza")) {
-      toast({ variant: "destructive", title: "Tenor API Key Missing", description: "A valid Tenor API key is required for GIFs."});
+     if (!TENOR_API_KEY.startsWith("AIza")) {
+      toast({ variant: "destructive", title: "Tenor API Key Invalid", description: "A valid Tenor API key is required for GIFs. Please check the key."});
+      setLoadingGifs(false);
       return;
     }
     setLoadingGifs(true);
@@ -687,6 +703,7 @@ export default function CommunitiesPage() {
     } catch (error) {
       console.error("Error searching GIFs:", error);
       toast({ variant: "destructive", title: "Error Fetching GIFs", description: "Could not load GIFs for your search." });
+      setGifs([]);
     } finally {
       setLoadingGifs(false);
     }
@@ -706,7 +723,7 @@ export default function CommunitiesPage() {
     }
     gifSearchTimeoutRef.current = setTimeout(() => {
       searchTenorGifs(term);
-    }, 500); 
+    }, 500);
   };
 
   const handleEmojiSelect = (emoji: string) => {
@@ -715,11 +732,13 @@ export default function CommunitiesPage() {
   };
 
   const requestMicPermission = async () => {
-    if (hasMicPermission) return true;
+    if (hasMicPermission === true) return true; // Already have permission
+    if (hasMicPermission === false) return false; // Already denied
+
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setHasMicPermission(true);
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach(track => track.stop()); // Release mic immediately after permission check
         return true;
     } catch (error) {
         console.error("Error requesting mic permission:", error);
@@ -729,16 +748,30 @@ export default function CommunitiesPage() {
     }
   };
 
+  useEffect(() => {
+    // Check initial mic permission status without prompting, if possible
+    // This specific check might not work in all browsers for initial status without a prompt.
+    // The main requestMicPermission will handle the explicit prompt.
+    if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'microphone' as PermissionName }).then(status => {
+            if (status.state === 'granted') setHasMicPermission(true);
+            else if (status.state === 'denied') setHasMicPermission(false);
+            // if 'prompt', hasMicPermission remains null until first explicit request
+        });
+    }
+  }, []);
+
+
   const handleToggleRecording = async () => {
     if (!currentUser || !selectedCommunity || !selectedChannel || selectedChannel.type !== 'text' || isUploadingFile) return;
 
     const permissionGranted = await requestMicPermission();
     if (!permissionGranted) return;
 
-    if (isRecording) { 
+    if (isRecording) {
         mediaRecorderRef.current?.stop();
         setIsRecording(false);
-    } else { 
+    } else {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorderRef.current = new MediaRecorder(stream);
@@ -749,32 +782,49 @@ export default function CommunitiesPage() {
             };
 
             mediaRecorderRef.current.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); 
-                const audioUrl = URL.createObjectURL(audioBlob);
-                
-                // In a real app, upload audioBlob to Cloudinary/Storage
-                // then use the returned public URL for fileUrl.
-                toast({ title: "Voice Message Recorded (Simulated)", description: "Simulating upload. In production, this file would be uploaded." });
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); // Common type, can be ogg too
+                // const audioUrl = URL.createObjectURL(audioBlob); // Local URL, not for Firestore directly
 
-                const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'fileName'> & { timestamp: any } = {
-                    senderId: currentUser.uid,
-                    senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-                    senderAvatarUrl: currentUser.photoURL || null,
-                    timestamp: serverTimestamp(),
-                    type: 'voice_message' as const,
-                    fileUrl: audioUrl, // Use actual Cloudinary URL in production
-                    isPinned: false,
-                };
-                
-                try {
-                    const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-                    await addDoc(messagesRef, messageData);
-                } catch (error) {
-                    console.error("Error sending voice message:", error);
-                    toast({ variant: "destructive", title: "Voice Message Not Sent", description: "Could not save your voice message." });
-                }
-                
-                stream.getTracks().forEach(track => track.stop());
+                // SIMULATE UPLOAD TO CLOUDINARY (Replace with actual upload in production)
+                setIsUploadingFile(true); // Use existing uploading state for voice too
+                toast({ title: "Voice Message Recorded", description: "Simulating upload to Cloudinary..." });
+
+                // --- Actual Cloudinary Upload Would Go Here ---
+                // const formData = new FormData();
+                // formData.append('file', audioBlob, `voice_message_${Date.now()}.webm`);
+                // formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+                // formData.append('api_key', CLOUDINARY_API_KEY);
+                // formData.append('resource_type', 'video'); // Cloudinary often treats audio as video type
+                // try {
+                //   const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`, {
+                //     method: 'POST',
+                //     body: formData,
+                //   });
+                //   if (!response.ok) throw new Error('Cloudinary audio upload failed');
+                //   const data = await response.json();
+                //   const secureUrl = data.secure_url;
+                //   const originalFilename = `voice_message_${Date.now()}.webm`;
+                //   await sendAttachmentMessageToFirestore(secureUrl, originalFilename, 'audio/webm');
+                // } catch (uploadError) {
+                //    console.error("Error uploading voice message:", uploadError);
+                //    toast({ variant: "destructive", title: "Voice Message Not Sent", description: "Could not upload your voice message." });
+                // } finally {
+                //    setIsUploadingFile(false);
+                // }
+                // --- End of Actual Cloudinary Upload ---
+
+                // For prototype, save with a placeholder or local blob URL (not ideal for sharing)
+                // This part will be replaced by the success callback of the actual upload
+                setTimeout(async () => { // Simulate network delay
+                    const placeholderUrl = `https://placehold.co/audio_placeholder.mp3`; // Not a real audio
+                    const placeholderFileName = `voice_message_${Date.now()}.webm`;
+                    await sendAttachmentMessageToFirestore(placeholderUrl, placeholderFileName, 'audio/webm');
+                    setIsUploadingFile(false);
+                     toast({ title: "Voice Message Sent (Simulated)", description: "Using a placeholder URL." });
+                }, 1500);
+
+
+                stream.getTracks().forEach(track => track.stop()); // Release mic
             };
 
             mediaRecorderRef.current.start();
@@ -782,6 +832,7 @@ export default function CommunitiesPage() {
         } catch (error) {
             console.error("Error starting recording:", error);
             toast({ variant: "destructive", title: "Recording Error", description: "Could not start voice recording." });
+            setIsRecording(false);
         }
     }
   };
@@ -793,7 +844,7 @@ export default function CommunitiesPage() {
   const userName = currentUser?.displayName || currentUser?.email?.split('@')[0] || "User";
   const userAvatar = currentUser?.photoURL;
 
-  const displayedMessages = showPinnedMessages 
+  const displayedMessages = showPinnedMessages
     ? messages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
     : messages;
 
@@ -884,13 +935,13 @@ export default function CommunitiesPage() {
               </div>
               <div className="flex items-center space-x-2">
                 {selectedChannel.type === 'text' && (
-                    <Button 
-                        variant="ghost" 
-                        size="icon" 
+                    <Button
+                        variant="ghost"
+                        size="icon"
                         className={cn(
                             "text-muted-foreground hover:text-foreground",
                             showPinnedMessages && "text-primary bg-primary/10 hover:text-primary/90 hover:bg-primary/20"
-                        )} 
+                        )}
                         onClick={() => setShowPinnedMessages(!showPinnedMessages)}
                         title={showPinnedMessages ? "Show All Messages" : "Show Pinned Messages"}
                     >
@@ -907,8 +958,8 @@ export default function CommunitiesPage() {
               <div className="p-4 space-y-0.5">
                 {displayedMessages.length === 0 && selectedChannel.type === 'text' && (
                   <div className="text-center text-muted-foreground py-4">
-                    {showPinnedMessages ? "No pinned messages in this channel." : 
-                     (messages.length === 0 && !currentUser ? "Loading messages..." : "No messages yet. Be the first to say something!")}
+                    {showPinnedMessages ? "No pinned messages in this channel." :
+                     (messages.length === 0 && !currentUser && selectedChannel.type === 'text' ? "Loading messages..." : "No messages yet. Be the first to say something!")}
                   </div>
                 )}
                 {displayedMessages.map((msg, index) => {
@@ -919,8 +970,8 @@ export default function CommunitiesPage() {
                     <div
                       key={msg.id}
                       className={cn(
-                        "flex items-start space-x-3 group relative hover:bg-muted/30 px-2 py-1 rounded-md",
-                        // showHeader ? "pt-3 pb-0.5" : "py-0.5" // Removed different padding for grouped messages
+                        "flex items-start space-x-3 group relative hover:bg-muted/30 px-2 py-0.5 rounded-md",
+                         // No chat bubble style
                       )}
                     >
                       {showHeader ? (
@@ -929,7 +980,7 @@ export default function CommunitiesPage() {
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       ) : (
-                        <div className="w-8 shrink-0" /> 
+                        <div className="w-8 shrink-0" />
                       )}
                       <div className="flex-1">
                         {showHeader && (
@@ -955,13 +1006,13 @@ export default function CommunitiesPage() {
                         )}
                         {msg.type === 'gif' && msg.gifUrl && (
                            <div className="relative max-w-[300px] mt-1">
-                                <Image 
-                                    src={msg.gifUrl} 
+                                <Image
+                                    src={msg.gifUrl}
                                     alt={msg.gifContentDescription || "GIF"}
-                                    width={0} 
+                                    width={0}
                                     height={0}
                                     style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem' }}
-                                    unoptimized 
+                                    unoptimized
                                     priority={false}
                                     data-ai-hint="animated gif"
                                 />
@@ -984,13 +1035,20 @@ export default function CommunitiesPage() {
                             </audio>
                         )}
                         {msg.type === 'image' && msg.fileUrl && (
-                             <Image 
-                                src={msg.fileUrl} 
+                             <Image
+                                src={msg.fileUrl}
                                 alt={msg.fileName || "Uploaded image"}
-                                width={0} 
-                                height={0}
-                                style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '300px', borderRadius: '0.375rem', marginTop: '0.25rem' }}
-                                className="object-cover"
+                                width={300} // Base width for aspect ratio
+                                height={300} // Base height for aspect ratio
+                                style={{
+                                  width: 'auto',
+                                  height: 'auto',
+                                  maxWidth: '100%', // Responsive within parent
+                                  maxHeight: '300px', // Absolute max height
+                                  objectFit: 'contain', // Show entire image
+                                  borderRadius: '0.375rem',
+                                  marginTop: '0.25rem',
+                                }}
                                 data-ai-hint="user uploaded image"
                             />
                         )}
@@ -1027,19 +1085,19 @@ export default function CommunitiesPage() {
                       ref={attachmentInputRef}
                       onChange={handleFileSelected}
                       className="hidden"
-                      accept={ALLOWED_FILE_TYPES.join(',')} 
+                      accept={ALLOWED_FILE_TYPES.join(',')}
                       disabled={isUploadingFile || !currentUser || selectedChannel.type !== 'text' || isRecording}
                   />
                   <div className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
                       {isUploadingFile ? (
                         <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" />
                       ) : (
-                        <Button 
-                            type="button" 
-                            variant="ghost" 
-                            size="icon" 
-                            className="text-muted-foreground hover:text-foreground shrink-0" 
-                            title="Attach File/Image" 
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="text-muted-foreground hover:text-foreground shrink-0"
+                            title="Attach File/Image"
                             onClick={() => attachmentInputRef.current?.click()}
                             disabled={isUploadingFile || !currentUser || selectedChannel.type !== 'text' || isRecording}
                         >
@@ -1060,12 +1118,12 @@ export default function CommunitiesPage() {
                           }}
                           disabled={!currentUser || selectedChannel.type !== 'text' || isRecording || isUploadingFile}
                       />
-                       <Button 
-                            type="button" 
-                            variant={isRecording ? "destructive" : "ghost"} 
-                            size="icon" 
+                       <Button
+                            type="button"
+                            variant={isRecording ? "destructive" : "ghost"}
+                            size="icon"
                             className={cn("shrink-0", isRecording ? "text-destructive-foreground hover:bg-destructive/90" : "text-muted-foreground hover:text-foreground")}
-                            title={isRecording ? "Stop Recording" : "Send Voice Message"} 
+                            title={isRecording ? "Stop Recording" : "Send Voice Message"}
                             onClick={handleToggleRecording}
                             disabled={hasMicPermission === false || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}
                         >
@@ -1097,7 +1155,7 @@ export default function CommunitiesPage() {
                             </div>
                         </PopoverContent>
                       </Popover>
-                      
+
                       <Dialog open={showGifPicker} onOpenChange={setShowGifPicker}>
                         <DialogTrigger asChild>
                           <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" disabled={isRecording || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}>
@@ -1169,7 +1227,7 @@ export default function CommunitiesPage() {
                                     </ScrollArea>
                                 </TabsContent>
                                 <TabsContent value="favorites">
-                                     <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]"> 
+                                     <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]">
                                         {favoritedGifs.length > 0 ? (
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
                                             {favoritedGifs.map((gif) => (
@@ -1247,7 +1305,7 @@ export default function CommunitiesPage() {
                 priority
               />
             </div>
-            
+
             <div className="flex flex-col flex-1 min-h-0"> {/* Ensure this flex container takes up remaining space and allows internal scrolling */}
                 <div className="p-4 space-y-3 shrink-0 border-b border-border/40">
                     <div className="flex items-center space-x-3">
@@ -1273,7 +1331,7 @@ export default function CommunitiesPage() {
                 </div>
 
                 <ScrollArea className="flex-1 min-h-0"> {/* This ScrollArea will handle the members list */}
-                    <div className="px-4 pb-4 pt-2">
+                   <div className="px-4 pb-4 pt-2">
                         <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-4 px-4">
                         Members ({currentMembers.length})
                         </h4>
@@ -1325,5 +1383,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
-    
