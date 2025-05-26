@@ -6,7 +6,7 @@ import Image from 'next/image';
 import type { User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { formatDistanceToNowStrict, format } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -32,33 +32,33 @@ const placeholderCommunities = [
 ];
 
 const placeholderChannels: Record<string, Array<{ id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType }>> = {
-  '1': [ 
+  '1': [
     { id: 'c1-1', name: 'general-chat', type: 'text', icon: Hash },
     { id: 'c1-2', name: 'announcements', type: 'text', icon: ShieldCheck },
     { id: 'c1-3', name: 'squad-voice', type: 'voice', icon: Mic },
     { id: 'c1-4', name: 'game-night-stream', type: 'video', icon: Video },
   ],
-  '2': [ 
+  '2': [
     { id: 'c2-1', name: 'book-discussions', type: 'text', icon: Hash },
     { id: 'c2-2', name: 'reading-club-voice', type: 'voice', icon: Mic },
   ],
-  '3': [ 
+  '3': [
     { id: 'c3-1', name: 'showcase', type: 'text', icon: Hash },
     { id: 'c3-2', name: 'critique-corner', type: 'text', icon: Hash },
     { id: 'c3-3', name: 'live-drawing-video', type: 'video', icon: Video },
   ],
-  '4': [ 
+  '4': [
     { id: 'c4-1', name: 'dev-talk', type: 'text', icon: Hash },
     { id: 'c4-2', name: 'code-help', type: 'text', icon: Hash },
     { id: 'c4-3', name: 'tech-news-voice', type: 'voice', icon: Mic },
   ],
-  '5': [ 
+  '5': [
     { id: 'c5-1', name: 'general-jam', type: 'text', icon: Hash },
     { id: 'c5-2', name: 'gear-talk', type: 'text', icon: Hash },
     { id: 'c5-3', name: 'collab-voice', type: 'voice', icon: Mic },
     { id: 'c5-4', name: 'live-performance', type: 'video', icon: Video },
   ],
-   '6': [ 
+   '6': [
     { id: 'c6-1', name: 'project-showcase', type: 'text', icon: Hash },
     { id: 'c6-2', name: 'ask-for-help', type: 'text', icon: Hash },
     { id: 'c6-3', name: 'pair-programming-voice', type: 'voice', icon: Mic },
@@ -224,6 +224,8 @@ type ChatMessage = {
  * =============================================================================
  */
 
+const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
+
 export default function CommunitiesPage() {
   const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(placeholderCommunities[0]);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(
@@ -231,7 +233,7 @@ export default function CommunitiesPage() {
   );
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
-  
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -255,7 +257,7 @@ export default function CommunitiesPage() {
 
   useEffect(() => {
     if (selectedChannel && selectedCommunity && currentUser && selectedChannel.type === 'text') {
-      setMessages([]); 
+      setMessages([]); // Clear previous channel messages
 
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       const q = query(messagesRef, orderBy('timestamp', 'asc'));
@@ -263,9 +265,9 @@ export default function CommunitiesPage() {
       const unsubscribeFirestore = onSnapshot(q, (querySnapshot) => {
         const fetchedMessages = querySnapshot.docs.map(doc => {
           const data = doc.data();
-          return { 
-            id: doc.id, 
-            ...data, 
+          return {
+            id: doc.id,
+            ...data,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
             isPinned: data.isPinned || false,
           } as ChatMessage;
@@ -291,7 +293,7 @@ export default function CommunitiesPage() {
 
       return () => unsubscribeFirestore();
 
-    } else if (selectedChannel) { 
+    } else if (selectedChannel) {
       setMessages([{
         id: 'channel-info-' + selectedChannel.id,
         text: `This is a ${selectedChannel.type} channel. Chat functionality is for text channels.`,
@@ -387,6 +389,21 @@ export default function CommunitiesPage() {
         toast({ variant: "destructive", title: "Error", description: "Could not update pin status." });
     }
   };
+
+  const shouldShowTimestamp = (currentMessage: ChatMessage, previousMessage: ChatMessage | null, nextMessage: ChatMessage | null) => {
+    if (!previousMessage) return true; // Always show for the first message of a sender in the current view or after a system message
+    if (currentMessage.senderId !== previousMessage.senderId) return true; // Different sender
+    if (currentMessage.timestamp.getTime() - previousMessage.timestamp.getTime() > TIMESTAMP_GROUPING_THRESHOLD_MS) return true; // Time gap too large with previous
+    if (nextMessage && nextMessage.senderId === currentMessage.senderId && nextMessage.timestamp.getTime() - currentMessage.timestamp.getTime() < TIMESTAMP_GROUPING_THRESHOLD_MS) return false; // Part of an ongoing group
+    return true; // Default to show if it's the last of a group or standalone
+  };
+
+  const shouldShowFullMessageHeader = (currentMessage: ChatMessage, previousMessage: ChatMessage | null) => {
+    if (!previousMessage) return true;
+    if (currentMessage.senderId !== previousMessage.senderId) return true;
+    if (currentMessage.timestamp.getTime() - previousMessage.timestamp.getTime() > TIMESTAMP_GROUPING_THRESHOLD_MS) return true;
+    return false;
+  }
 
 
   const currentChannels = selectedCommunity ? placeholderChannels[selectedCommunity.id] || [] : [];
@@ -486,43 +503,65 @@ export default function CommunitiesPage() {
             </div>
 
             <ScrollArea className="flex-1 bg-card/30">
-              <div className="p-4 space-y-3">
+              <div className="p-4 space-y-0.5">
                 {messages.length === 0 && selectedChannel.type === 'text' && (
                   <div className="text-center text-muted-foreground py-4">No messages yet. Be the first to say something!</div>
                 )}
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className="flex items-start space-x-3 py-2 group relative hover:bg-muted/30 px-2 rounded-md" 
-                  >
-                    <Avatar className="mt-1 h-8 w-8 shrink-0">
-                      <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
-                      <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <div className="flex items-baseline space-x-2">
-                        <p className="font-semibold text-sm text-foreground">
-                          {msg.senderName}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
-                        </p>
-                        {msg.isPinned && <Pin className="h-3 w-3 text-amber-400" title="Pinned Message"/>}
-                      </div>
-                      <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">{msg.text}</p>
-                    </div>
-                    <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin Message" : "Pin Message"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
-                        {msg.isPinned ? <PinOff className="h-4 w-4 text-amber-500" /> : <Pin className="h-4 w-4 text-muted-foreground hover:text-foreground" />}
-                      </Button>
-                      {currentUser?.uid === msg.senderId && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive/80" title="Delete Message" onClick={() => setDeletingMessageId(msg.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                {messages.map((msg, index) => {
+                  const previousMessage = index > 0 ? messages[index - 1] : null;
+                  const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
+                  const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
+                  const showTs = shouldShowTimestamp(msg, previousMessage, nextMessage);
+
+                  return (
+                    <div
+                      key={msg.id}
+                      className={cn(
+                        "flex items-start space-x-3 group relative hover:bg-muted/30 px-2 rounded-md",
+                        showHeader ? "pt-3 pb-0.5" : "py-0.5"
                       )}
+                    >
+                      {showHeader ? (
+                        <Avatar className="mt-1 h-8 w-8 shrink-0">
+                          <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
+                          <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                      ) : (
+                        <div className="w-8 shrink-0"> {/* Placeholder for avatar alignment */}
+                          {showTs && msg.timestamp && (
+                             <p className="text-xs text-muted-foreground/70 text-center leading-tight pt-0.5">
+                               {format(msg.timestamp, 'HH:mm')}
+                             </p>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        {showHeader && (
+                          <div className="flex items-baseline space-x-2">
+                            <p className="font-semibold text-sm text-foreground">
+                              {msg.senderName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
+                            </p>
+                            {msg.isPinned && <Pin className="h-3 w-3 text-amber-400" title="Pinned Message"/>}
+                          </div>
+                        )}
+                        <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">{msg.text}</p>
+                      </div>
+                      <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin Message" : "Pin Message"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
+                          {msg.isPinned ? <PinOff className="h-4 w-4 text-amber-500" /> : <Pin className="h-4 w-4 text-muted-foreground hover:text-foreground" />}
+                        </Button>
+                        {currentUser?.uid === msg.senderId && (
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive/80" title="Delete Message" onClick={() => setDeletingMessageId(msg.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
@@ -554,9 +593,9 @@ export default function CommunitiesPage() {
                           <Smile className="h-5 w-5" />
                       </Button>
                       {/* 
-                        Tenor API Key (e.g., AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) Security Note:
-                        This key MUST NOT be used directly in client-side code for production.
-                        It should be proxied through a secure backend (e.g., a Firebase Cloud Function).
+                        Tenor API Key Security Note:
+                        An API key like 'AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw' (EXAMPLE ONLY) MUST NOT be used directly in client-side code.
+                        It should be proxied through a secure backend (e.g., a Firebase Cloud Function) to protect it.
                       */}
                       <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" onClick={() => toast({title: "Feature Coming Soon", description: "GIF sending (via a secure backend proxy) will be implemented."})}>
                           <Film className="h-5 w-5" />
@@ -617,13 +656,13 @@ export default function CommunitiesPage() {
                 </div>
               )}
             </div>
-            
+
             <ScrollArea className="flex-1">
-              <div className="px-4 pb-4 pt-2"> {/* Adjusted padding */}
+              <div className="px-4 pb-4 pt-2">
                 <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-4 px-4">
                   Members ({currentMembers.length})
                 </h4>
-                <div className="space-y-2 pt-2">
+                <div className="space-y-2 pt-2"> {/* Adjusted padding from -mx-4 px-4 to here */}
                   {currentMembers.map((member) => (
                     <div key={member.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
                       <Avatar className="h-8 w-8">
@@ -670,5 +709,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
-    
