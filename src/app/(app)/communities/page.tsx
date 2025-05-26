@@ -8,7 +8,7 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
-import Picker from 'emoji-mart/dist-es/components/Picker/Picker.js' // More specific import
+import { Picker } from 'emoji-mart'; // Corrected import
 import data from '@emoji-mart/data'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -549,16 +549,14 @@ export default function CommunitiesPage() {
       return;
     }
 
-    if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/')) {
-        if (!file.type.startsWith('image/')) { 
-            toast({
-                variant: 'destructive',
-                title: 'Invalid File Type',
-                description: 'Please select a supported file type (images, PDF, DOC, TXT).',
-            });
-            if (attachmentInputRef.current) attachmentInputRef.current.value = "";
-            return;
-        }
+    if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/')) { 
+        toast({
+            variant: 'destructive',
+            title: 'Invalid File Type',
+            description: 'Please select a supported file type (images, PDF, DOC, TXT).',
+        });
+        if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+        return;
     }
     uploadFileToCloudinaryAndSend(file);
   };
@@ -1228,7 +1226,7 @@ export default function CommunitiesPage() {
                                 <TabsContent value="search">
                                     <Input
                                         type="text"
-                                        placeholder="Search Tenor GIFs..."
+                                        placeholder="Search Tenor GIFs... (Search not available yet)"
                                         value={gifSearchTerm}
                                         onChange={handleGifSearchChange}
                                         className="my-2"
@@ -1431,3 +1429,5 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+
+    
