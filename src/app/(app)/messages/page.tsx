@@ -24,6 +24,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
+import { Badge } from '@/components/ui/badge'; // Added missing import
 
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -805,3 +806,6 @@ export default function MessagesPage() {
     </div>
   );
 }
+
+
+    
