@@ -4,9 +4,10 @@
 import { useState, useEffect, useRef, FormEvent } from 'react';
 import Image from 'next/image';
 import type { User } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase'; // Import db
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNowStrict } from 'date-fns';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore'; // Firestore imports
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -118,7 +119,6 @@ type ChatMessage = {
   gifUrl?: string;
 };
 
-
 /**
  * =============================================================================
  * HOW TO IMPLEMENT CHAT FUNCTIONALITY (Detailed Guide)
@@ -127,13 +127,13 @@ type ChatMessage = {
  * This page currently simulates chat with client-side state. To make it fully functional,
  * integrate a backend (like Firebase Firestore) and implement several frontend features.
  *
- * 1. Backend Setup (e.g., Firebase Firestore):
+ * 1. Backend Setup (Firebase Firestore - Implemented Below):
  *    - Database Schema:
  *      - `/communities/{communityId}`: Stores community details.
  *      - `/communities/{communityId}/channels/{channelId}`: Stores channel details.
  *      - `/communities/{communityId}/members/{memberUserId}`: Stores member info.
  *      - `/communities/{communityId}/channels/{channelId}/messages/{messageId}`:
- *        Each message document should include:
+ *        Each message document includes:
  *          - `text`: string (for text messages)
  *          - `senderId`: string (Firebase User ID)
  *          - `senderName`: string
@@ -149,40 +149,18 @@ type ChatMessage = {
  *      - Reading messages restricted to members.
  *      - Community/channel management restricted.
  *
- * 2. Real-time Message Listening (Frontend - Firebase SDK):
+ * 2. Real-time Message Listening (Frontend - Firebase SDK - Implemented Below):
  *    - When a text channel is selected (`selectedChannel` changes):
  *      - If there's an existing listener, `unsubscribe()` from it.
  *      - Use Firestore's `onSnapshot` for the channel's `messages` subcollection.
- *        `import { collection, query, orderBy, onSnapshot, serverTimestamp, addDoc, Timestamp } from 'firebase/firestore';`
- *        `import { db } from '@/lib/firebase'; // Assuming db is exported from your firebase config`
- *        `const messagesRef = collection(db, \`communities/\${selectedCommunity.id}/channels/\${selectedChannel.id}/messages\`);`
- *        `const q = query(messagesRef, orderBy('timestamp', 'asc'));`
- *        `const unsubscribe = onSnapshot(q, (querySnapshot) => {`
- *          `const fetchedMessages = querySnapshot.docs.map(doc => {`
- *            `const data = doc.data();`
- *            `return { id: doc.id, ...data, timestamp: (data.timestamp as Timestamp)?.toDate() || new Date() } as ChatMessage;`
- *          `});`
- *          `setMessages(fetchedMessages);`
- *        `});`
- *      - Store the `unsubscribe` function to call on component unmount or channel change.
  *      - Convert Firestore Timestamps to JS Date objects when setting state.
  *
- * 3. Sending Text Messages (Frontend):
+ * 3. Sending Text Messages (Frontend - Implemented Below):
  *    - In `handleSendMessage`:
  *      - If `newMessage.trim()` is empty, return.
  *      - If `!currentUser || !selectedCommunity || !selectedChannel`, return.
- *      - Create a message object:
- *        `const messageData = {`
- *          `text: newMessage.trim(),`
- *          `senderId: currentUser.uid,`
- *          `senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",`
- *          `senderAvatarUrl: currentUser.photoURL || null,`
- *          `timestamp: serverTimestamp(), // Use Firebase server timestamp`
- *          `type: 'text' as const,`
- *        `};`
- *      - Get the Firestore collection reference:
- *        `const messagesRef = collection(db, \`communities/\${selectedCommunity.id}/channels/\${selectedChannel.id}/messages\`);`
- *      - Add the document: `await addDoc(messagesRef, messageData);`
+ *      - Create a message object with `serverTimestamp()`.
+ *      - Add the document to the Firestore `messages` subcollection.
  *      - Clear `newMessage`.
  *      - Handle potential errors with try/catch and `toast`.
  *
@@ -196,7 +174,7 @@ type ChatMessage = {
  *    - Display: Render `<img>` for images, or a link/icon for files in `MessageItem`.
  *
  * 5. GIF Send (Frontend - Tenor API via Backend Proxy):
- *    - **Security Warning:** Do NOT expose your Tenor API key (AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) in client-side code.
+ *    - **Security Warning:** Do NOT expose your Tenor API key (e.g., AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) in client-side code.
  *      Create a Firebase Cloud Function to act as a proxy. The frontend calls this function, which then calls the Tenor API.
  *    - When Film icon is clicked, open a GIF picker modal/popover.
  *    - Fetch trending GIFs or search (via your Cloud Function proxy).
@@ -225,7 +203,6 @@ type ChatMessage = {
  * 8. UI/UX Enhancements:
  *    - **Loading States:** For message sending, file uploads.
  *    - **Error Handling:** Robust `toast` messages for all operations.
- *    - **Timestamps:** Format nicely (e.g., `formatDistanceToNowStrict` from `date-fns`).
  *    - **MessageItem Component:** Create a dedicated component to render different message types.
  *    - **Optimistic UI Updates (Advanced):** Add message to local state immediately for perceived speed, then confirm/update from backend.
  *    - **Typing Indicators, Read Receipts, Replies/Threads (Advanced):** Significant complexity.
@@ -257,62 +234,64 @@ export default function CommunitiesPage() {
   useEffect(scrollToBottom, [messages]);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(user => {
+    const unsubscribeAuth = auth.onAuthStateChanged(user => {
       setCurrentUser(user);
     });
-    return () => unsubscribe();
+    return () => unsubscribeAuth();
   }, []);
 
-  // Effect for handling channel selection and fetching/simulating messages
+  // Effect for handling channel selection and fetching messages from Firestore
   useEffect(() => {
-    if (selectedChannel && selectedCommunity && currentUser) {
-      setMessages([]); // Clear messages when channel changes
+    if (selectedChannel && selectedCommunity && currentUser && selectedChannel.type === 'text') {
+      setMessages([]); // Clear messages to remove any system/placeholder messages
 
-      // TODO: Replace with actual Firestore listener
-      // Simulating initial messages for the selected channel
-      const initialMessages: ChatMessage[] = [
-        {
-          id: 'msg1-' + selectedChannel.id,
-          text: `Welcome to #${selectedChannel.name} in ${selectedCommunity.name}! This is a placeholder message.`,
-          senderId: 'system',
-          senderName: 'System',
-          timestamp: new Date(Date.now() - 1000 * 60 * 5), // 5 minutes ago
-          type: 'text',
-        },
-        {
-          id: 'msg2-' + selectedChannel.id,
-          text: 'Feel free to start chatting.',
-          senderId: 'system',
-          senderName: 'System',
-          timestamp: new Date(Date.now() - 1000 * 60 * 4), // 4 minutes ago
-          type: 'text',
-        },
-      ];
-      if (selectedChannel.type === 'text') {
-        setMessages(initialMessages);
-      } else {
-         setMessages([{
-          id: 'voice-video-placeholder-' + selectedChannel.id,
-          text: `This is a ${selectedChannel.type} channel. Chat functionality is for text channels.`,
-          senderId: 'system',
-          senderName: 'System',
-          timestamp: new Date(),
-          type: 'text',
-        }]);
-      }
-      // Focus chat input when channel changes to a text channel
-      if (selectedChannel.type === 'text') {
+      const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
+      const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+      const unsubscribeFirestore = onSnapshot(q, (querySnapshot) => {
+        const fetchedMessages = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          return { 
+            id: doc.id, 
+            ...data, 
+            timestamp: (data.timestamp as Timestamp)?.toDate() || new Date() // Convert Firestore Timestamp
+          } as ChatMessage;
+        });
+        setMessages(fetchedMessages);
+        // Focus chat input when messages are loaded for a text channel
         chatInputRef.current?.focus();
-      }
+      }, (error) => {
+        console.error("Error fetching messages: ", error);
+        toast({
+            variant: "destructive",
+            title: "Error loading messages",
+            description: "Could not load messages for this channel.",
+        });
+        setMessages([{ // Show an error message in chat
+            id: 'system-error-' + selectedChannel.id,
+            text: `Error loading messages for #${selectedChannel.name}. Please try again later.`,
+            senderId: 'system',
+            senderName: 'System',
+            timestamp: new Date(),
+            type: 'text',
+        }]);
+      });
+
+      return () => unsubscribeFirestore(); // Cleanup Firestore listener
+
+    } else if (selectedChannel) { // Handle non-text channels or if user/community not fully loaded
+      setMessages([{
+        id: 'channel-info-' + selectedChannel.id,
+        text: `This is a ${selectedChannel.type} channel. Chat functionality is for text channels.`,
+        senderId: 'system',
+        senderName: 'System',
+        timestamp: new Date(),
+        type: 'text',
+      }]);
     } else {
       setMessages([]); // Clear messages if no channel or community selected
     }
-    // This is where you would set up your Firestore onSnapshot listener
-    // and return the unsubscribe function.
-    // Example:
-    // const unsubscribe = listenToMessages(selectedCommunity?.id, selectedChannel?.id, setMessages);
-    // return () => unsubscribe?.();
-  }, [selectedChannel, selectedCommunity, currentUser]);
+  }, [selectedChannel, selectedCommunity, currentUser, toast]);
 
 
   const handleSelectCommunity = (community: Community) => {
@@ -325,30 +304,36 @@ export default function CommunitiesPage() {
     setSelectedChannel(channel);
   };
 
-  const handleSendMessage = (e?: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLInputElement>) => {
+  const handleSendMessage = async (e?: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLInputElement>) => {
     if (e && 'preventDefault' in e) {
       e.preventDefault();
     }
 
-    if (newMessage.trim() === "" || !currentUser || !selectedChannel || selectedChannel.type !== 'text') {
+    if (newMessage.trim() === "" || !currentUser || !selectedCommunity || !selectedChannel || selectedChannel.type !== 'text') {
       return;
     }
 
-    const messageToSend: ChatMessage = {
-      id: Date.now().toString(), // Temporary ID, replace with Firestore ID
+    const messageData = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL,
-      timestamp: new Date(),
-      type: 'text',
+      senderAvatarUrl: currentUser.photoURL || null,
+      timestamp: serverTimestamp(), // Use Firebase server timestamp
+      type: 'text' as const,
     };
 
-    setMessages(prevMessages => [...prevMessages, messageToSend]);
-    setNewMessage("");
-
-    // TODO: Replace with addDoc to Firestore
-    console.log("Sending message to backend:", messageToSend);
+    try {
+      const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
+      await addDoc(messagesRef, messageData);
+      setNewMessage("");
+    } catch (error) {
+        console.error("Error sending message:", error);
+        toast({
+            variant: "destructive",
+            title: "Message Not Sent",
+            description: "Could not send your message. Please try again.",
+        });
+    }
   };
 
   const handleCommunityProfileEdit = () => {
@@ -394,7 +379,7 @@ export default function CommunitiesPage() {
             <div className="p-3 border-b border-border/40 shadow-sm shrink-0">
               <h2 className="text-lg font-semibold text-foreground truncate">{selectedCommunity.name}</h2>
             </div>
-            <ScrollArea className="flex-1">
+            <ScrollArea className="h-full">
               <div className="p-3 space-y-1">
                 {currentChannels.map((channel) => (
                   <Button
@@ -403,7 +388,7 @@ export default function CommunitiesPage() {
                     onClick={() => handleSelectChannel(channel)}
                     className={cn(
                       "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted",
-                      selectedChannel?.id === channel.id && 'bg-accent text-accent-foreground' // Updated for better contrast
+                      selectedChannel?.id === channel.id && 'bg-accent text-accent-foreground'
                     )}
                   >
                     <channel.icon className="mr-2 h-4 w-4" />
@@ -454,9 +439,11 @@ export default function CommunitiesPage() {
               </Button>
             </div>
 
-            {/* Message display area */}
             <ScrollArea className="flex-1">
               <div className="p-4 space-y-4">
+                {messages.length === 0 && selectedChannel.type === 'text' && (
+                  <div className="text-center text-muted-foreground py-4">No messages yet. Be the first to say something!</div>
+                )}
                 {messages.map((msg) => (
                   <div
                     key={msg.id}
@@ -504,7 +491,6 @@ export default function CommunitiesPage() {
               </div>
             </ScrollArea>
 
-            {/* Chat input area */}
             {selectedChannel.type === 'text' ? (
               <form onSubmit={handleSendMessage} className="p-3 border-t border-border/40 shrink-0">
                   <div className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
@@ -531,7 +517,13 @@ export default function CommunitiesPage() {
                       <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Open Emoji Picker" onClick={() => toast({title: "Feature Coming Soon", description: "Emoji picker will be implemented."})}>
                           <Smile className="h-5 w-5" />
                       </Button>
-                      <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" onClick={() => toast({title: "Feature Coming Soon", description: "GIF sending will be implemented."})}>
+                      {/* 
+                        Tenor API Key Security Note: 
+                        The API key (e.g., AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) MUST NOT be used directly in client-side code
+                        for production applications. It should be proxied through a backend (e.g., a Firebase Cloud Function)
+                        to protect it from misuse and to manage rate limits or quotas securely.
+                      */}
+                      <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" onClick={() => toast({title: "Feature Coming Soon", description: "GIF sending (via a secure backend proxy) will be implemented."})}>
                           <Film className="h-5 w-5" />
                       </Button>
                        <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send Message" disabled={!newMessage.trim() || !currentUser || selectedChannel.type !== 'text'}>
@@ -622,5 +614,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
-    
