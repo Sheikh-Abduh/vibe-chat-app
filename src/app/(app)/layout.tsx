@@ -146,7 +146,7 @@ export default function AppLayout({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === '/discover'} tooltip="Discover">
-                <Link href="#">
+                <Link href="/discover">
                   <Compass />
                   Discover
                 </Link>
