@@ -16,7 +16,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -112,15 +113,18 @@ type Member = typeof placeholderMembers['1'][0];
 
 type ChatMessage = {
   id: string;
-  text?: string; // Optional for non-text messages
+  text?: string;
   senderId: string;
   senderName: string;
   senderAvatarUrl?: string | null;
   timestamp: Date;
   type: 'text' | 'image' | 'file' | 'gif' | 'voice_message';
-  fileUrl?: string;
-  fileName?: string;
+  fileUrl?: string; // For image, file, voice_message
+  fileName?: string; // For file uploads
   gifUrl?: string; // For GIF messages
+  gifId?: string; // For favoriting GIFs from chat
+  gifTinyUrl?: string; // For favoriting GIFs from chat
+  gifContentDescription?: string; // For favoriting GIFs from chat
   isPinned?: boolean;
 };
 
@@ -148,6 +152,9 @@ type ChatMessage = {
  *          - `fileUrl`: string (URL from Cloudinary/Storage for image, file, voice)
  *          - `fileName`: string (for file uploads)
  *          - `gifUrl`: string (URL from Tenor for GIFs)
+ *          - `gifId`: string (original ID from Tenor, for re-constructing favorite)
+ *          - `gifTinyUrl`: string (tiny GIF URL from Tenor, for favorite reconstruction)
+ *          - `gifContentDescription`: string (description from Tenor, for favorite reconstruction)
  *          - `isPinned`: boolean (optional, for pinning messages)
  *          - Optional: `reactions`, `editedTimestamp`
  *    - Firestore Security Rules: Crucial for access control.
@@ -182,29 +189,29 @@ type ChatMessage = {
  *    - Display: Render `<img>` for images, or a link/icon for files in `MessageItem`.
  *
  * 5. GIF Send (Frontend - Tenor API via Backend Proxy - Partially Implemented Below for UI):
- *    - **SECURITY WARNING: DO NOT EXPOSE YOUR TENOR API KEY (e.g., AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) IN CLIENT-SIDE CODE.**
+ *    - **SECURITY WARNING: DO NOT EXPOSE YOUR TENOR API KEY IN CLIENT-SIDE CODE.**
  *      Create a Firebase Cloud Function to act as a proxy. The frontend calls this function, which then calls the Tenor API with your secret key.
  *      The implementation below uses the API key directly for prototyping only and includes a strong warning.
  *    - When Film icon is clicked, open a GIF picker modal/popover.
  *    - Fetch trending GIFs or search (via your Cloud Function proxy in production, or directly for prototype).
  *    - On GIF selection, get its URL.
- *    - Create message object (type: 'gif', `gifUrl`).
+ *    - Create message object (type: 'gif', `gifUrl`, and also `gifId`, `gifTinyUrl`, `gifContentDescription` for favoriting from chat).
  *    - Save to Firestore.
  *    - Display: Render `<img>` for the GIF in `MessageItem`.
  *
- * 6. Emoji Send (Frontend):
- *    - When Smile icon clicked, show an emoji picker (e.g., 'emoji-picker-react').
+ * 6. Emoji Send (Frontend - Partially Implemented with Popover):
+ *    - When Smile icon clicked, show an emoji picker (e.g., 'emoji-picker-react', or a simple custom popover as implemented).
  *    - Append selected emoji (Unicode character) to the `newMessage` state.
  *
- * 7. Voice Message Send (Frontend - MediaRecorder API):
+ * 7. Voice Message Send (Frontend - MediaRecorder API - Partially Implemented):
  *    - When Mic icon (chat input) clicked:
  *      - Request audio permission: `navigator.mediaDevices.getUserMedia({ audio: true })`.
  *      - Initialize `MediaRecorder`. Start recording. Store audio chunks.
  *      - Update UI (e.g., show stop button, timer).
  *    - On stop:
  *      - Create an audio `Blob` from chunks.
- *      - Upload Blob to Cloudinary (or other storage).
- *      - Get public URL.
+ *      - **Upload Blob to Cloudinary (or other storage) - THIS IS A CRITICAL STEP NOT FULLY IMPLEMENTED BELOW, SIMULATED ONLY.**
+ *      - Get public URL from storage.
  *      - Create message object (type: 'voice_message', `fileUrl`).
  *      - Save to Firestore.
  *    - Display: Render an HTML5 `<audio>` player in `MessageItem`.
@@ -214,7 +221,7 @@ type ChatMessage = {
  *    - Pin: Any user (or mods - rule dependent) can toggle `isPinned` on a message. Requires Firestore rule.
  *
  * 9. UI/UX Enhancements:
- *    - **Loading States:** For message sending, file uploads, GIF fetching.
+ *    - **Loading States:** For message sending, file uploads, GIF fetching, voice recording.
  *    - **Error Handling:** Robust `toast` messages for all operations.
  *    - **MessageItem Component:** A dedicated component to render different message types and actions.
  *    - **Optimistic UI Updates (Advanced):** Add message to local state immediately for perceived speed, then confirm/update from backend.
@@ -226,6 +233,7 @@ type ChatMessage = {
  *    - UI for video feeds, participant lists, voice activity.
  * =============================================================================
  */
+
 
 // =============================================================================
 // TENOR API KEY WARNING - FOR PROTOTYPING ONLY
@@ -247,6 +255,8 @@ interface TenorGif {
   };
   content_description: string;
 }
+
+const commonEmojis = ['😀', '😂', '❤️', '👍', '🤔', '🎉', '🔥', '💯', '🙏', '😭', '😮', '😊'];
 
 export default function CommunitiesPage() {
   const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(placeholderCommunities[0]);
@@ -273,6 +283,12 @@ export default function CommunitiesPage() {
   const [gifPickerView, setGifPickerView] = useState<'search' | 'favorites'>('search');
   const [favoritedGifs, setFavoritedGifs] = useState<TenorGif[]>([]);
 
+  // Voice Message State
+  const [isRecording, setIsRecording] = useState(false);
+  const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -284,7 +300,6 @@ export default function CommunitiesPage() {
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
       setCurrentUser(user);
       if (user) {
-        // Load favorited GIFs from localStorage
         const storedFavorites = localStorage.getItem(`favorited_gifs_${user.uid}`);
         if (storedFavorites) {
           setFavoritedGifs(JSON.parse(storedFavorites));
@@ -343,8 +358,8 @@ export default function CommunitiesPage() {
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
-        if (chatInputRef.current && fetchedMessages.length > 0) { 
-            chatInputRef.current?.focus();
+        if (chatInputRef.current && fetchedMessages.length > 0 && document.activeElement !== chatInputRef.current) { 
+            // chatInputRef.current?.focus(); // Avoid aggressive focus stealing
         }
       }, (error) => {
         console.error("Error fetching messages: ", error);
@@ -401,7 +416,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'fileUrl' | 'fileName' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription'> & { timestamp: any } = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -430,13 +445,16 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'fileUrl' | 'fileName'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(),
       type: 'gif' as const,
-      gifUrl: gif.media_formats.gif.url, // Use the larger GIF format for display in chat
+      gifUrl: gif.media_formats.gif.url,
+      gifId: gif.id,
+      gifTinyUrl: gif.media_formats.tinygif.url,
+      gifContentDescription: gif.content_description,
       isPinned: false,
     };
 
@@ -454,6 +472,22 @@ export default function CommunitiesPage() {
             description: "Could not send your GIF. Please try again.",
         });
     }
+  };
+
+  const handleFavoriteGifFromChat = (message: ChatMessage) => {
+    if (!message.gifId || !message.gifTinyUrl || !message.gifContentDescription) {
+        toast({ variant: "destructive", title: "Cannot Favorite", description: "GIF information missing."});
+        return;
+    }
+    const gifToFavorite: TenorGif = {
+        id: message.gifId,
+        media_formats: {
+            tinygif: { url: message.gifTinyUrl, dims: [] }, // Dims not crucial for favoriting
+            gif: { url: message.gifUrl || '', dims: []} // Full URL also needed
+        },
+        content_description: message.gifContentDescription
+    };
+    handleToggleFavoriteGif(gifToFavorite);
   };
 
 
@@ -561,6 +595,86 @@ export default function CommunitiesPage() {
       searchTenorGifs(term);
     }, 500); 
   };
+
+  const handleEmojiSelect = (emoji: string) => {
+    setNewMessage(prev => prev + emoji);
+    chatInputRef.current?.focus();
+  };
+
+  const requestMicPermission = async () => {
+    if (hasMicPermission) return true;
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setHasMicPermission(true);
+        // Close the stream immediately as we only need permission grant
+        stream.getTracks().forEach(track => track.stop());
+        return true;
+    } catch (error) {
+        console.error("Error requesting mic permission:", error);
+        setHasMicPermission(false);
+        toast({ variant: "destructive", title: "Microphone Access Denied", description: "Please allow microphone access in your browser settings." });
+        return false;
+    }
+  };
+
+  const handleToggleRecording = async () => {
+    if (!currentUser || !selectedCommunity || !selectedChannel || selectedChannel.type !== 'text') return;
+
+    const permissionGranted = await requestMicPermission();
+    if (!permissionGranted) return;
+
+    if (isRecording) { // Stop recording
+        mediaRecorderRef.current?.stop();
+        setIsRecording(false);
+    } else { // Start recording
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorderRef.current = new MediaRecorder(stream);
+            audioChunksRef.current = [];
+
+            mediaRecorderRef.current.ondataavailable = (event) => {
+                audioChunksRef.current.push(event.data);
+            };
+
+            mediaRecorderRef.current.onstop = async () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); // Or 'audio/ogg', 'audio/wav'
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                // **SIMULATED UPLOAD** - In a real app, upload audioBlob to Cloudinary/Storage
+                // then use the returned public URL for fileUrl.
+                toast({ title: "Voice Message Recorded (Simulated)", description: "Simulating upload..." });
+
+                const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'fileName'> & { timestamp: any } = {
+                    senderId: currentUser.uid,
+                    senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+                    senderAvatarUrl: currentUser.photoURL || null,
+                    timestamp: serverTimestamp(),
+                    type: 'voice_message' as const,
+                    fileUrl: audioUrl, // Use actual Cloudinary URL in production
+                    isPinned: false,
+                };
+                
+                try {
+                    const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
+                    await addDoc(messagesRef, messageData);
+                } catch (error) {
+                    console.error("Error sending voice message:", error);
+                    toast({ variant: "destructive", title: "Voice Message Not Sent", description: "Could not save your voice message." });
+                }
+                
+                // Clean up the stream
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorderRef.current.start();
+            setIsRecording(true);
+        } catch (error) {
+            console.error("Error starting recording:", error);
+            toast({ variant: "destructive", title: "Recording Error", description: "Could not start voice recording." });
+        }
+    }
+  };
+
 
   const currentChannels = selectedCommunity ? placeholderChannels[selectedCommunity.id] || [] : [];
   const currentMembers = selectedCommunity ? placeholderMembers[selectedCommunity.id] || [] : [];
@@ -704,7 +818,7 @@ export default function CommunitiesPage() {
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       ) : (
-                        <div className="w-8 shrink-0" /> // Placeholder for avatar alignment
+                        <div className="w-8 shrink-0" /> 
                       )}
                       <div className="flex-1">
                         {showHeader && (
@@ -729,20 +843,55 @@ export default function CommunitiesPage() {
                             <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">{msg.text}</p>
                         )}
                         {msg.type === 'gif' && msg.gifUrl && (
-                            <Image 
-                                src={msg.gifUrl} 
-                                alt="GIF" 
+                           <div className="relative max-w-[300px] mt-1">
+                                <Image 
+                                    src={msg.gifUrl} 
+                                    alt={msg.gifContentDescription || "GIF"}
+                                    width={0} 
+                                    height={0}
+                                    style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem' }}
+                                    unoptimized 
+                                    priority={false}
+                                    data-ai-hint="animated gif"
+                                />
+                                {msg.gifId && (
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                        onClick={() => handleFavoriteGifFromChat(msg)}
+                                        title={isGifFavorited(msg.gifId) ? "Unfavorite" : "Favorite"}
+                                    >
+                                        <Star className={cn("h-4 w-4", isGifFavorited(msg.gifId) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
+                                    </Button>
+                                )}
+                           </div>
+                        )}
+                        {msg.type === 'voice_message' && msg.fileUrl && (
+                            <audio controls src={msg.fileUrl} className="my-2 w-full max-w-xs h-10 rounded-md shadow-sm" data-ai-hint="audio player">
+                                Your browser does not support the audio element.
+                            </audio>
+                        )}
+                        {msg.type === 'image' && msg.fileUrl && (
+                             <Image 
+                                src={msg.fileUrl} 
+                                alt={msg.fileName || "Uploaded image"}
                                 width={0} 
                                 height={0}
-                                style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem', marginTop: '0.25rem' }}
-                                unoptimized 
-                                priority={false}
-                                data-ai-hint="animated gif"
+                                style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '300px', borderRadius: '0.375rem', marginTop: '0.25rem' }}
+                                className="object-cover"
+                                data-ai-hint="user uploaded image"
                             />
                         )}
-                        {/* Add rendering for other message types (image, file, voice_message) here */}
+                        {msg.type === 'file' && msg.fileUrl && (
+                            <div className="mt-1 p-2 border rounded-md bg-muted/50 max-w-xs">
+                                <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
+                                    <Paperclip className="h-4 w-4 mr-2 shrink-0" />
+                                    <span className="truncate">{msg.fileName || "Attached File"}</span>
+                                </a>
+                            </div>
+                        )}
                       </div>
-                      {/* Message Actions (Pin/Delete) */}
                       <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin Message" : "Pin Message"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
                           {msg.isPinned ? <PinOff className="h-4 w-4 text-amber-500" /> : <Pin className="h-4 w-4 text-muted-foreground hover:text-foreground" />}
@@ -769,27 +918,58 @@ export default function CommunitiesPage() {
                       <Input
                           ref={chatInputRef}
                           type="text"
-                          placeholder={`Message #${selectedChannel.name}`}
+                          placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name}`}
                           className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
                           onKeyPress={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
+                            if (e.key === 'Enter' && !e.shiftKey && !isRecording) {
                               handleSendMessage(e);
                             }
                           }}
-                          disabled={!currentUser || selectedChannel.type !== 'text'}
+                          disabled={!currentUser || selectedChannel.type !== 'text' || isRecording}
                       />
-                      <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send Voice Message" onClick={() => toast({title: "Feature Coming Soon", description: "Voice messages will be implemented."})}>
-                          <Mic className="h-5 w-5" />
-                      </Button>
-                      <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Open Emoji Picker" onClick={() => toast({title: "Feature Coming Soon", description: "Emoji picker will be implemented."})}>
-                          <Smile className="h-5 w-5" />
-                      </Button>
+                       <Button 
+                            type="button" 
+                            variant={isRecording ? "destructive" : "ghost"} 
+                            size="icon" 
+                            className={cn("shrink-0", isRecording ? "text-destructive-foreground hover:bg-destructive/90" : "text-muted-foreground hover:text-foreground")}
+                            title={isRecording ? "Stop Recording" : "Send Voice Message"} 
+                            onClick={handleToggleRecording}
+                            disabled={hasMicPermission === false}
+                        >
+                            {isRecording ? <StopCircle className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                        </Button>
+                         {hasMicPermission === false && (
+                            <AlertTriangle className="h-5 w-5 text-destructive" title="Microphone permission denied"/>
+                         )}
+
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Open Emoji Picker" disabled={isRecording}>
+                              <Smile className="h-5 w-5" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-2 bg-popover border-border shadow-lg rounded-md">
+                            <div className="grid grid-cols-6 gap-1">
+                                {commonEmojis.map(emoji => (
+                                    <Button
+                                        key={emoji}
+                                        variant="ghost"
+                                        size="icon"
+                                        className="text-xl hover:bg-accent/20"
+                                        onClick={() => handleEmojiSelect(emoji)}
+                                    >
+                                        {emoji}
+                                    </Button>
+                                ))}
+                            </div>
+                        </PopoverContent>
+                      </Popover>
                       
                       <Dialog open={showGifPicker} onOpenChange={setShowGifPicker}>
                         <DialogTrigger asChild>
-                          <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)">
+                          <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" disabled={isRecording}>
                               <Film className="h-5 w-5" />
                           </Button>
                         </DialogTrigger>
@@ -816,7 +996,7 @@ export default function CommunitiesPage() {
                                         onChange={handleGifSearchChange}
                                         className="my-2"
                                     />
-                                    <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]"> {/* Adjusted max-h */}
+                                    <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]">
                                         {loadingGifs ? (
                                             <div className="flex justify-center items-center h-full">
                                                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -858,7 +1038,7 @@ export default function CommunitiesPage() {
                                     </ScrollArea>
                                 </TabsContent>
                                 <TabsContent value="favorites">
-                                     <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]"> {/* Adjusted max-h */}
+                                     <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]"> 
                                         {favoritedGifs.length > 0 ? (
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
                                             {favoritedGifs.map((gif) => (
@@ -902,7 +1082,7 @@ export default function CommunitiesPage() {
                         </DialogContent>
                       </Dialog>
 
-                       <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send Message" disabled={!newMessage.trim() || !currentUser || selectedChannel.type !== 'text'}>
+                       <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send Message" disabled={!newMessage.trim() || !currentUser || selectedChannel.type !== 'text' || isRecording}>
                           <Send className="h-5 w-5" />
                       </Button>
                   </div>
@@ -962,7 +1142,7 @@ export default function CommunitiesPage() {
                     )}
                  </div>
 
-                <div className="px-4 pb-4 pt-2 flex-1 min-h-0"> {/* Added min-h-0 for flex child */}
+                <div className="px-4 pb-4 pt-2 flex-1 min-h-0">
                     <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-4 px-4">
                     Members ({currentMembers.length})
                     </h4>
