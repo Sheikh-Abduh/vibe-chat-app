@@ -227,7 +227,7 @@ interface TenorGif {
 
 // Expanded list of emojis. NOTE: This is not a complete Unicode set.
 // For a full emoji picker with search, a dedicated library is recommended.
-const availableEmojis = [
+const rawEmojis = [
   '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰',
   '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳',
   '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤',
@@ -259,7 +259,7 @@ const availableEmojis = [
   '🕝', '🕞', '🕟', '🕠', '🕡', '🕢', '🕣', '🕤', '🕥', '🕦', '🕧', '🔥', '🎉', '✨', '🌟',
   '💫', '💥', '💦', '💧', '💨', ' पैसा', '⭐', ' Chatham', '💡', '💣', '💤', '🚫', '✅'
 ];
-
+const availableEmojis = Array.from(new Set(rawEmojis)); // Remove duplicates
 
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
@@ -834,11 +834,11 @@ export default function CommunitiesPage() {
                 toast({ title: "Voice Message Recorded", description: "Simulating upload..." });
                 
                 setTimeout(async () => { // Simulate network delay
-                    const placeholderUrl = `https://placehold.co/audio_placeholder.mp3`; 
+                    const placeholderUrl = URL.createObjectURL(audioBlob); // Use local blob URL for prototype
                     const placeholderFileName = `voice_message_${Date.now()}.webm`;
-                    await sendAttachmentMessageToFirestore(placeholderUrl, placeholderFileName, 'audio/webm'); // Use existing function
+                    await sendAttachmentMessageToFirestore(placeholderUrl, placeholderFileName, 'audio/webm');
                     setIsUploadingFile(false);
-                    toast({ title: "Voice Message Sent (Simulated)", description: "Using a placeholder URL." });
+                    toast({ title: "Voice Message Sent (Simulated)", description: "Using a local blob URL for preview." });
                 }, 1500);
 
                 stream.getTracks().forEach(track => track.stop()); // Release mic
@@ -1032,7 +1032,7 @@ export default function CommunitiesPage() {
                                     priority={false}
                                     data-ai-hint="animated gif"
                                 />
-                                {msg.gifId && (
+                                {currentUser && msg.gifId && ( // Ensure currentUser is available to avoid errors
                                     <Button
                                         variant="ghost"
                                         size="icon"
@@ -1111,7 +1111,7 @@ export default function CommunitiesPage() {
                             <div className="grid grid-cols-8 gap-1">
                               {availableEmojis.map(emoji => (
                                 <Button
-                                  key={`react-${emoji}`}
+                                  key={`react-${msg.id}-${emoji}`} /* Ensured unique key prefix */
                                   variant="ghost"
                                   size="icon"
                                   className="text-xl hover:bg-accent/20 p-1"
@@ -1448,6 +1448,5 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
 
     
