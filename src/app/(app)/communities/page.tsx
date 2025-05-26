@@ -1,13 +1,15 @@
 
 "use client";
 
-import { useState, useEffect, useRef, FormEvent, ChangeEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
 import Image from 'next/image';
 import type { User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
+import Picker from 'emoji-mart/dist-es/components/Picker/Picker.js' // More specific import
+import data from '@emoji-mart/data'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -135,9 +137,9 @@ type ChatMessage = {
   fileUrl?: string;
   fileName?: string;
   gifUrl?: string;
-  gifId?: string;
-  gifTinyUrl?: string;
-  gifContentDescription?: string;
+  gifId?: string; // For favoriting from chat
+  gifTinyUrl?: string; // For favoriting from chat
+  gifContentDescription?: string; // For favoriting from chat
   isPinned?: boolean;
   reactions?: Record<string, string[]>; // emoji: [userId1, userId2]
 };
@@ -148,7 +150,7 @@ type ChatMessage = {
  * =============================================================================
  * This section provides a high-level overview for building out the full chat features.
  *
- * 1. Backend Setup (Firebase Firestore):
+ * 1. Backend Setup (Firebase Firestore - Partially Implemented for text messages):
  *    - Database Schema:
  *      - `/communities/{communityId}`
  *      - `/communities/{communityId}/channels/{channelId}`
@@ -164,9 +166,9 @@ type ChatMessage = {
  *          - `fileUrl`: string (URL for image, file, voice message)
  *          - `fileName`: string (for file uploads)
  *          - `gifUrl`: string (URL from Tenor for GIFs)
- *          - `gifId`: string (original ID from Tenor)
- *          - `gifTinyUrl`: string (tiny GIF URL from Tenor)
- *          - `gifContentDescription`: string (description from Tenor)
+ *          - `gifId`: string (original ID from Tenor, for favoriting)
+ *          - `gifTinyUrl`: string (tiny GIF URL from Tenor, for favoriting)
+ *          - `gifContentDescription`: string (description from Tenor, for favoriting)
  *          - `isPinned`: boolean (optional)
  *          - `reactions`: object (e.g., {"👍": ["uid1", "uid2"], "❤️": ["uid1"]})
  *    - Firestore Security Rules: Crucial for access control.
@@ -175,11 +177,12 @@ type ChatMessage = {
  *      - Community/channel management restrictions.
  *      - Deleting messages restricted to sender or moderators.
  *      - Updating `isPinned` and `reactions` might have specific role-based logic.
+ *      - See "Updated Firestore Security Rules" in the assistant's previous response.
  *
- * 2. Real-time Message Listening (Frontend - Firebase SDK - Implemented):
+ * 2. Real-time Message Listening (Frontend - Firebase SDK - Implemented for text):
  *    - `onSnapshot` listener for channel messages is active.
  *
- * 3. Sending Text Messages (Frontend - Implemented):
+ * 3. Sending Text Messages (Frontend - Implemented with Firestore):
  *    - Saves to Firestore.
  *
  * 4. File/Image Upload (Frontend - Implemented with Cloudinary):
@@ -188,25 +191,25 @@ type ChatMessage = {
  * 5. GIF Send (Frontend - Implemented with direct Tenor API for prototype):
  *    - **SECURITY WARNING: DO NOT EXPOSE YOUR TENOR API KEY IN CLIENT-SIDE CODE.**
  *      Proxy Tenor API requests through a Firebase Cloud Function in production.
- *    - Fetches GIFs, saves GIF details to Firestore.
+ *    - Fetches GIFs, saves GIF details (including id, tinyUrl, contentDescription) to Firestore.
  *
- * 6. Emoji Send (Frontend - Partially Implemented with Popover):
- *    - Currently appends to text input. A full emoji picker component would be an upgrade.
+ * 6. Emoji Send (Frontend - Implemented with emoji-mart):
+ *    - Uses `emoji-mart` picker to append emojis to the text input.
  *
  * 7. Voice Message Send (Frontend - Partially Implemented with MediaRecorder):
- *    - Captures audio. Uploads a placeholder/local blob URL.
+ *    - Captures audio. Uploads a placeholder/local blob URL to Firestore.
  *    - **CRITICAL:** Upload the audio Blob to Cloudinary (or other storage) and save the public URL to Firestore.
  *
  * 8. Delete & Pin Message Features (Frontend - Implemented):
  *    - Interacts with Firestore to delete or update `isPinned` status.
  *
- * 9. Message Reactions (Frontend - Implemented):
+ * 9. Message Reactions (Frontend - Implemented with emoji-mart picker):
  *    - Users can add/remove reactions. Stored in the `reactions` field of the message in Firestore.
  *
  * 10. UI/UX Enhancements:
- *     - Loading states for all async operations.
- *     - Error handling with toasts.
- *     - Optimistic UI updates.
+ *     - Loading states for all async operations (partially implemented).
+ *     - Error handling with toasts (partially implemented).
+ *     - Optimistic UI updates (consider for reactions, message sending).
  *     - Typing indicators, read receipts, replies/threads (Advanced).
  *
  * 11. Voice & Video Channels (Advanced - WebRTC):
@@ -225,47 +228,31 @@ interface TenorGif {
   content_description: string;
 }
 
-// Expanded list of emojis. NOTE: This is not a complete Unicode set.
-// For a full emoji picker with search, a dedicated library is recommended.
-const rawEmojis = [
-  '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰',
-  '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳',
-  '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤',
-  '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫',
-  '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵',
-  '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩',
-  '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾',
-  '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆',
-  '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✍️',
-  '💅', '🤳', '💪', '🦾', '🦵', '🦿', '🦶', '👂', '🦻', '👃', '🧠', '🦷', '🦴', '👀', '👁️', '👅',
-  '👄', '❤️', '💔', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️',
-  '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐',
-  '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️',
-  '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘',
-  '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭',
-  '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️',
-  '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️',
-  '🛗', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅', '🚰', ' сигналы', '🚹', '🚺', '🚻', '🚮', '🎦',
-  '📶', '🈁', '🔣', 'ℹ️', '🔤', '🔡', '🔠', '🆖', '🆗', '🆙', '🆒', '🆕', '🆓', '0️⃣', '1️⃣',
-  '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔢', '#️⃣', '*️⃣', '⏏️', '▶️',
-  '⏸️', '⏯️', '⏹️', '⏺️', '⏭️', '⏮️', '⏩', '⏪', '⏫', '⏬', '◀️', '🔼', '🔽', '➡️', '⬅️',
-  '⬆️', '⬇️', '↗️', '↘️', '↙️', '↖️', '↕️', '↔️', '↪️', '↩️', '⤴️', '⤵️', '🔀', '🔁', '🔂',
-  '🔄', '🔃', '🎵', '🎶', '➕', '➖', '➗', '✖️', '♾️', '💲', '💱', '™️', '©️', '®️', '〰️',
-  '➰', '➿', '🔚', '🔙', '🔛', '🔝', '🔜', '✔️', '☑️', '🔘', '🔴', '🟠', '🟡', '🟢', '🔵',
-  '🟣', '⚫', '⚪', '🟤', '🔺', '🔻', '🔸', '🔹', '🔶', '🔷', '🔳', '🔲', '▪️', '▫️', '◾',
-  '◽', '◼️', '◻️', '🟥', '🟧', '🟨', '🟩', '🟦', '🟪', '⬛', '⬜', '🟫', '🔈', '🔇', '🔉',
-  '🔊', '🔔', '🔕', '📣', '📢', '👁️‍🗨️', '💬', '💭', '🗯️', '♠️', '♣️', '♥️', '♦️', '🃏',
-  '🎴', '🀄', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛', '🕜',
-  '🕝', '🕞', '🕟', '🕠', '🕡', '🕢', '🕣', '🕤', '🕥', '🕦', '🕧', '🔥', '🎉', '✨', '🌟',
-  '💫', '💥', '💦', '💧', '💨', ' पैसा', '⭐', ' Chatham', '💡', '💣', '💤', '🚫', '✅'
-];
-const availableEmojis = Array.from(new Set(rawEmojis)); // Remove duplicates
-
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
 const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // Replace with your actual key if testing, but be aware of the risk.
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
+
+const formatChatMessage = (text: string): string => {
+  if (!text) return '';
+  let formattedText = text;
+  // Escape HTML to prevent XSS before applying markdown
+  formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  // Bold: **text** or __text__
+  formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
+  // Italic: *text* or _text_
+  formattedText = formattedText.replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>');
+  // Strikethrough: ~~text~~
+  formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
+  
+  // IMPORTANT: In a production app, use a proper Markdown library and sanitizer (e.g., DOMPurify + marked)
+  // to prevent XSS vulnerabilities if the text can come from untrusted sources or if more complex Markdown is needed.
+  // This basic regex approach is for simple styling only.
+  return formattedText;
+};
+
 
 export default function CommunitiesPage() {
   const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(placeholderCommunities[0]);
@@ -280,7 +267,6 @@ export default function CommunitiesPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
-
 
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [showPinnedMessages, setShowPinnedMessages] = useState(false);
@@ -301,6 +287,21 @@ export default function CommunitiesPage() {
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   
   const [reactionPickerOpenForMessageId, setReactionPickerOpenForMessageId] = useState<string | null>(null);
+  const [chatEmojiPickerOpen, setChatEmojiPickerOpen] = useState(false);
+  const [currentThemeMode, setCurrentThemeMode] = useState<'light' | 'dark'>('dark');
+
+
+  useEffect(() => {
+    if (currentUser) {
+        const mode = localStorage.getItem(`theme_mode_${currentUser.uid}`) as 'light' | 'dark';
+        if (mode) {
+            setCurrentThemeMode(mode);
+        } else {
+            const systemPrefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            setCurrentThemeMode(systemPrefersDark ? 'dark' : 'light');
+        }
+    }
+  }, [currentUser]);
 
 
   const scrollToBottom = () => {
@@ -355,7 +356,7 @@ export default function CommunitiesPage() {
 
   useEffect(() => {
     if (selectedChannel && selectedCommunity && currentUser && selectedChannel.type === 'text') {
-      setMessages([]); // Clear messages when channel changes before new ones load
+      setMessages([]); 
 
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       const q = query(messagesRef, orderBy('timestamp', 'asc'));
@@ -444,7 +445,7 @@ export default function CommunitiesPage() {
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-      await addDoc(messagesRef, messageData); // Firestore will add reactions: {} by default if not provided
+      await addDoc(messagesRef, messageData); 
       setNewMessage("");
     } catch (error) {
         console.error("Error sending message:", error);
@@ -549,7 +550,7 @@ export default function CommunitiesPage() {
     }
 
     if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/')) {
-        if (!file.type.startsWith('image/')) { // This condition might be redundant due to outer check
+        if (!file.type.startsWith('image/')) { 
             toast({
                 variant: 'destructive',
                 title: 'Invalid File Type',
@@ -605,7 +606,7 @@ export default function CommunitiesPage() {
     const gifToFavorite: TenorGif = {
         id: message.gifId,
         media_formats: {
-            tinygif: { url: message.gifTinyUrl, dims: [] }, // dims are not critical for favorite storage
+            tinygif: { url: message.gifTinyUrl, dims: [] }, 
             gif: { url: message.gifUrl || '', dims: []}
         },
         content_description: message.gifContentDescription
@@ -629,7 +630,6 @@ export default function CommunitiesPage() {
     }
     try {
         const messageRef = doc(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages/${deletingMessageId}`);
-        // Add check: user can only delete their own messages
         const msgDoc = messages.find(m => m.id === deletingMessageId);
         if (msgDoc && msgDoc.senderId !== currentUser.uid) {
             toast({ variant: "destructive", title: "Error", description: "You can only delete your own messages." });
@@ -676,10 +676,8 @@ export default function CommunitiesPage() {
         
         let newUsersReactedWithEmoji;
         if (usersReactedWithEmoji.includes(currentUser.uid)) {
-          // User is removing reaction
           newUsersReactedWithEmoji = usersReactedWithEmoji.filter(uid => uid !== currentUser.uid);
         } else {
-          // User is adding reaction
           newUsersReactedWithEmoji = [...usersReactedWithEmoji, currentUser.uid];
         }
 
@@ -691,9 +689,7 @@ export default function CommunitiesPage() {
         }
         transaction.update(messageRef, { reactions: newReactionsData });
       });
-    // UI will update via onSnapshot listener, no need for explicit toast here
-    // for optimistic updates. A success toast might be too noisy.
-    setReactionPickerOpenForMessageId(null); // Close picker after reaction
+    setReactionPickerOpenForMessageId(null); 
     } catch (error) {
       console.error("Error toggling reaction: ", error);
       toast({
@@ -775,10 +771,6 @@ export default function CommunitiesPage() {
     }, 500);
   };
 
-  const handleEmojiSelectForChat = (emoji: string) => {
-    setNewMessage(prev => prev + emoji);
-    chatInputRef.current?.focus();
-  };
 
   const requestMicPermission = async () => {
     if (hasMicPermission === true) return true; 
@@ -829,19 +821,20 @@ export default function CommunitiesPage() {
             mediaRecorderRef.current.onstop = async () => {
                 const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); 
                 
-                // Simulate Upload (Replace with actual Cloudinary upload)
                 setIsUploadingFile(true); 
                 toast({ title: "Voice Message Recorded", description: "Simulating upload..." });
                 
-                setTimeout(async () => { // Simulate network delay
-                    const placeholderUrl = URL.createObjectURL(audioBlob); // Use local blob URL for prototype
+                setTimeout(async () => { 
+                    const placeholderUrl = URL.createObjectURL(audioBlob); 
                     const placeholderFileName = `voice_message_${Date.now()}.webm`;
+                    // IMPORTANT: In a real app, upload 'audioBlob' to Cloudinary (or similar)
+                    // and use the returned public URL here instead of 'placeholderUrl'.
                     await sendAttachmentMessageToFirestore(placeholderUrl, placeholderFileName, 'audio/webm');
                     setIsUploadingFile(false);
-                    toast({ title: "Voice Message Sent (Simulated)", description: "Using a local blob URL for preview." });
+                    toast({ title: "Voice Message Sent (Simulated)", description: "Using a local blob URL for preview. Upload to cloud storage for persistence." });
                 }, 1500);
 
-                stream.getTracks().forEach(track => track.stop()); // Release mic
+                stream.getTracks().forEach(track => track.stop()); 
             };
 
             mediaRecorderRef.current.start();
@@ -996,9 +989,9 @@ export default function CommunitiesPage() {
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       ) : (
-                        <div className="w-8 shrink-0" /> // Placeholder for avatar alignment
+                        <div className="w-8 shrink-0" /> 
                       )}
-                      <div className="flex-1 min-w-0"> {/* min-w-0 for text wrapping */}
+                      <div className="flex-1 min-w-0"> 
                         {showHeader && (
                           <div className="flex items-baseline space-x-1.5">
                             <p className="font-semibold text-sm text-foreground">
@@ -1018,10 +1011,13 @@ export default function CommunitiesPage() {
                           </div>
                         )}
                         {msg.type === 'text' && msg.text && (
-                            <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">{msg.text}</p>
+                           <p
+                             className="text-sm text-foreground/90 whitespace-pre-wrap break-words"
+                             dangerouslySetInnerHTML={{ __html: formatChatMessage(msg.text) }}
+                           />
                         )}
                         {msg.type === 'gif' && msg.gifUrl && (
-                           <div className="relative max-w-[300px] mt-1 group/gif"> {/* Added group/gif */}
+                           <div className="relative max-w-[300px] mt-1 group/gif">
                                 <Image
                                     src={msg.gifUrl}
                                     alt={msg.gifContentDescription || "GIF"}
@@ -1032,11 +1028,11 @@ export default function CommunitiesPage() {
                                     priority={false}
                                     data-ai-hint="animated gif"
                                 />
-                                {currentUser && msg.gifId && ( // Ensure currentUser is available to avoid errors
+                                {currentUser && msg.gifId && (
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover/gif:opacity-100 transition-opacity" // Changed group-hover to group-hover/gif
+                                        className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover/gif:opacity-100 transition-opacity"
                                         onClick={() => handleFavoriteGifFromChat(msg)}
                                         title={isGifFavorited(msg.gifId) ? "Unfavorite" : "Favorite"}
                                     >
@@ -1076,7 +1072,6 @@ export default function CommunitiesPage() {
                                 </a>
                             </div>
                         )}
-                        {/* Display Reactions */}
                         {msg.reactions && Object.keys(msg.reactions).length > 0 && (
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
                                 {Object.entries(msg.reactions).map(([emoji, userIds]) => (
@@ -1090,7 +1085,7 @@ export default function CommunitiesPage() {
                                                 "h-auto px-2 py-0.5 text-xs rounded-full bg-muted/50 hover:bg-muted/80 border-border/50",
                                                 currentUser && userIds.includes(currentUser.uid) && "bg-primary/20 border-primary text-primary hover:bg-primary/30"
                                             )}
-                                            title={userIds.join(', ')} // Show who reacted on hover (simple for now)
+                                            title={userIds.join(', ')} 
                                         >
                                             {emoji} <span className="ml-1 text-muted-foreground">{userIds.length}</span>
                                         </Button>
@@ -1106,24 +1101,16 @@ export default function CommunitiesPage() {
                               <SmilePlus className="h-4 w-4" />
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-2 bg-popover border-border shadow-lg rounded-md max-h-60 overflow-y-auto">
-                            <p className="text-xs text-muted-foreground px-1 pb-1">Select a reaction. Search not available yet.</p>
-                            <div className="grid grid-cols-8 gap-1">
-                              {availableEmojis.map(emoji => (
-                                <Button
-                                  key={`react-${msg.id}-${emoji}`} /* Ensured unique key prefix */
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-xl hover:bg-accent/20 p-1"
-                                  onClick={() => {
-                                    handleToggleReaction(msg.id, emoji);
-                                    setReactionPickerOpenForMessageId(null); // Close picker after selection
-                                  }}
-                                >
-                                  {emoji}
-                                </Button>
-                              ))}
-                            </div>
+                          <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
+                             <Picker
+                                data={data}
+                                onEmojiSelect={(emoji: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+                                    handleToggleReaction(msg.id, emoji.native);
+                                    setReactionPickerOpenForMessageId(null);
+                                }}
+                                theme={currentThemeMode}
+                                previewPosition="none"
+                             />
                           </PopoverContent>
                         </Popover>
                         <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin Message" : "Pin Message"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
@@ -1171,7 +1158,7 @@ export default function CommunitiesPage() {
                       <Input
                           ref={chatInputRef}
                           type="text"
-                          placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name}`}
+                          placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (use **bold**, *italic*, ~~strike~~)`}
                           className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
@@ -1197,27 +1184,23 @@ export default function CommunitiesPage() {
                             <AlertTriangle className="h-5 w-5 text-destructive" title="Microphone permission denied"/>
                          )}
 
-                      <Popover>
+                      <Popover open={chatEmojiPickerOpen} onOpenChange={setChatEmojiPickerOpen}>
                         <PopoverTrigger asChild>
                           <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Open Emoji Picker" disabled={isRecording || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}>
                               <Smile className="h-5 w-5" />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-2 bg-popover border-border shadow-lg rounded-md max-h-60 overflow-y-auto">
-                            <p className="text-xs text-muted-foreground px-1 pb-1">Select an emoji. Search not available yet.</p>
-                            <div className="grid grid-cols-8 gap-1"> {/* Increased columns for more emojis */}
-                                {availableEmojis.map(emoji => (
-                                    <Button
-                                        key={`chat-${emoji}`}
-                                        variant="ghost"
-                                        size="icon"
-                                        className="text-xl hover:bg-accent/20 p-1"
-                                        onClick={() => handleEmojiSelectForChat(emoji)}
-                                    >
-                                        {emoji}
-                                    </Button>
-                                ))}
-                            </div>
+                        <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
+                           <Picker
+                                data={data}
+                                onEmojiSelect={(emoji: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+                                    setNewMessage(prev => prev + emoji.native);
+                                    setChatEmojiPickerOpen(false);
+                                    chatInputRef.current?.focus();
+                                }}
+                                theme={currentThemeMode}
+                                previewPosition="none"
+                            />
                         </PopoverContent>
                       </Popover>
 
@@ -1371,7 +1354,7 @@ export default function CommunitiesPage() {
               />
             </div>
 
-            <div className="flex flex-col flex-1 min-h-0"> {/* Ensure this flex container takes up remaining space and allows internal scrolling */}
+            <div className="flex flex-col flex-1 min-h-0"> 
                 <div className="p-4 space-y-3 shrink-0 border-b border-border/40">
                     <div className="flex items-center space-x-3">
                         <Avatar className="h-16 w-16 border-2 border-background shadow-md">
@@ -1396,7 +1379,7 @@ export default function CommunitiesPage() {
                 </div>
 
                 <ScrollArea className="flex-1 min-h-0"> 
-                   <div className="px-4 pb-4 pt-2">
+                   <div className="px-4 pb-4 pt-0">
                         <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-4 px-4">
                         Members ({currentMembers.length})
                         </h4>
@@ -1448,5 +1431,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
-    
