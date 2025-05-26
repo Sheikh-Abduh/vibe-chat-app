@@ -8,7 +8,7 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
-import { Picker } from 'emoji-mart'; // Corrected import
+import { Picker } from 'emoji-mart';
 import data from '@emoji-mart/data'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -137,11 +137,11 @@ type ChatMessage = {
   fileUrl?: string;
   fileName?: string;
   gifUrl?: string;
-  gifId?: string; // For favoriting from chat
-  gifTinyUrl?: string; // For favoriting from chat
-  gifContentDescription?: string; // For favoriting from chat
+  gifId?: string; 
+  gifTinyUrl?: string; 
+  gifContentDescription?: string; 
   isPinned?: boolean;
-  reactions?: Record<string, string[]>; // emoji: [userId1, userId2]
+  reactions?: Record<string, string[]>; 
 };
 
 /**
@@ -246,6 +246,12 @@ const formatChatMessage = (text: string): string => {
   formattedText = formattedText.replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>');
   // Strikethrough: ~~text~~
   formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
+  // Underline: ++text++
+  formattedText = formattedText.replace(/\+\+(.*?)\+\+/g, '<u>$1</u>');
+  // Superscript: ^^text^^
+  formattedText = formattedText.replace(/\^\^(.*?)\^\^/g, '<sup>$1</sup>');
+  // Subscript: vvtextvv
+  formattedText = formattedText.replace(/vv(.*?)vv/g, '<sub>$1</sub>');
   
   // IMPORTANT: In a production app, use a proper Markdown library and sanitizer (e.g., DOMPurify + marked)
   // to prevent XSS vulnerabilities if the text can come from untrusted sources or if more complex Markdown is needed.
@@ -788,7 +794,7 @@ export default function CommunitiesPage() {
   };
 
   useEffect(() => {
-    if (navigator.permissions && navigator.permissions.query) {
+    if (typeof navigator !== 'undefined' && navigator.permissions && navigator.permissions.query) {
         navigator.permissions.query({ name: 'microphone' as PermissionName }).then(status => {
             if (status.state === 'granted') setHasMicPermission(true);
             else if (status.state === 'denied') setHasMicPermission(false);
@@ -1102,7 +1108,7 @@ export default function CommunitiesPage() {
                           <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
                              <Picker
                                 data={data}
-                                onEmojiSelect={(emoji: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+                                onEmojiSelect={(emoji: any) => { 
                                     handleToggleReaction(msg.id, emoji.native);
                                     setReactionPickerOpenForMessageId(null);
                                 }}
@@ -1156,7 +1162,7 @@ export default function CommunitiesPage() {
                       <Input
                           ref={chatInputRef}
                           type="text"
-                          placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (use **bold**, *italic*, ~~strike~~)`}
+                          placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (use **bold**, *italic*, ~~strike~~, ++underline++, ^^super^^, vvsubvv)`}
                           className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
@@ -1191,7 +1197,7 @@ export default function CommunitiesPage() {
                         <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
                            <Picker
                                 data={data}
-                                onEmojiSelect={(emoji: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+                                onEmojiSelect={(emoji: any) => { 
                                     setNewMessage(prev => prev + emoji.native);
                                     setChatEmojiPickerOpen(false);
                                     chatInputRef.current?.focus();
@@ -1226,7 +1232,7 @@ export default function CommunitiesPage() {
                                 <TabsContent value="search">
                                     <Input
                                         type="text"
-                                        placeholder="Search Tenor GIFs... (Search not available yet)"
+                                        placeholder="Search Tenor GIFs..."
                                         value={gifSearchTerm}
                                         onChange={handleGifSearchChange}
                                         className="my-2"

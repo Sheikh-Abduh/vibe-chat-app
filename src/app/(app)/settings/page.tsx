@@ -3,7 +3,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Settings, Palette, UserCircle, Bell, Link2, Cog, ChevronRight } from "lucide-react";
+import { Settings, Palette, UserCircle, Bell, Link2, Cog, ChevronRight, FileText } from "lucide-react"; // Added FileText
 import Link from "next/link";
 
 interface SettingsCategory {
@@ -50,6 +50,14 @@ const settingsCategories: SettingsCategory[] = [
     actionText: "Manage Integrations",
   },
   {
+    id: "formatting-tips",
+    title: "Text Formatting",
+    description: "Learn how to format your messages with bold, italics, and more.",
+    icon: FileText, // Using FileText icon
+    href: "/settings/formatting-tips",
+    actionText: "View Formatting Tips",
+  },
+  {
     id: "advanced",
     title: "Advanced",
     description: "Manage advanced settings like account deletion or data export.",
@@ -61,7 +69,7 @@ const settingsCategories: SettingsCategory[] = [
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-8 p-6 h-full overflow-y-auto"> {/* Added p-6, h-full and overflow-y-auto, removed px-4 */}
+    <div className="p-6 h-full overflow-y-auto"> 
       <section>
         <div className="flex items-center mb-8">
           <Settings className="mr-3 h-9 w-9 text-primary" />
@@ -103,5 +111,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-    
