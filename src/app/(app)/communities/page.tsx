@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent, ChangeEvent } from 'react';
 import Image from 'next/image';
 import type { User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -16,9 +16,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 
 
 // Placeholder Data
@@ -110,7 +111,7 @@ type Member = typeof placeholderMembers['1'][0];
 
 type ChatMessage = {
   id: string;
-  text: string;
+  text?: string; // Optional for non-text messages
   senderId: string;
   senderName: string;
   senderAvatarUrl?: string | null;
@@ -118,7 +119,7 @@ type ChatMessage = {
   type: 'text' | 'image' | 'file' | 'gif' | 'voice_message';
   fileUrl?: string;
   fileName?: string;
-  gifUrl?: string;
+  gifUrl?: string; // For GIF messages
   isPinned?: boolean;
 };
 
@@ -179,12 +180,12 @@ type ChatMessage = {
  *      - Save to Firestore (similar to text messages).
  *    - Display: Render `<img>` for images, or a link/icon for files in `MessageItem`.
  *
- * 5. GIF Send (Frontend - Tenor API via Backend Proxy):
- *    - **Security Warning:** Do NOT expose your Tenor API key in client-side code.
- *      Create a Firebase Cloud Function to act as a proxy. The frontend calls this function, which then calls the Tenor API.
- *      The Tenor API key you provided (AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) MUST NOT be used directly here.
+ * 5. GIF Send (Frontend - Tenor API via Backend Proxy - Partially Implemented Below for UI):
+ *    - **SECURITY WARNING: DO NOT EXPOSE YOUR TENOR API KEY (e.g., AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) IN CLIENT-SIDE CODE.**
+ *      Create a Firebase Cloud Function to act as a proxy. The frontend calls this function, which then calls the Tenor API with your secret key.
+ *      The implementation below uses the API key directly for prototyping only and includes a strong warning.
  *    - When Film icon is clicked, open a GIF picker modal/popover.
- *    - Fetch trending GIFs or search (via your Cloud Function proxy).
+ *    - Fetch trending GIFs or search (via your Cloud Function proxy in production, or directly for prototype).
  *    - On GIF selection, get its URL.
  *    - Create message object (type: 'gif', `gifUrl`).
  *    - Save to Firestore.
@@ -212,7 +213,7 @@ type ChatMessage = {
  *    - Pin: Any user (or mods - rule dependent) can toggle `isPinned` on a message. Requires Firestore rule.
  *
  * 9. UI/UX Enhancements:
- *    - **Loading States:** For message sending, file uploads.
+ *    - **Loading States:** For message sending, file uploads, GIF fetching.
  *    - **Error Handling:** Robust `toast` messages for all operations.
  *    - **MessageItem Component:** A dedicated component to render different message types and actions.
  *    - **Optimistic UI Updates (Advanced):** Add message to local state immediately for perceived speed, then confirm/update from backend.
@@ -225,7 +226,26 @@ type ChatMessage = {
  * =============================================================================
  */
 
+// =============================================================================
+// TENOR API KEY WARNING - FOR PROTOTYPING ONLY
+// The API key AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw should NOT be used directly in client-side code
+// in a production application. It must be proxied through a secure backend (e.g., Firebase Cloud Function)
+// to protect it from abuse.
+// =============================================================================
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // <<< YOUR API KEY - PROTOTYPE ONLY
+const TENOR_CLIENT_KEY = "vibe_app_prototype"; // Your client key for Tenor analytics
+
+
 const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
+
+interface TenorGif {
+  id: string;
+  media_formats: {
+    tinygif: { url: string; dims: number[] };
+    gif: { url: string; dims: number[] };
+  };
+  content_description: string;
+}
 
 export default function CommunitiesPage() {
   const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(placeholderCommunities[0]);
@@ -243,12 +263,19 @@ export default function CommunitiesPage() {
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [showPinnedMessages, setShowPinnedMessages] = useState(false);
 
+  // GIF Picker State
+  const [showGifPicker, setShowGifPicker] = useState(false);
+  const [gifSearchTerm, setGifSearchTerm] = useState("");
+  const [gifs, setGifs] = useState<TenorGif[]>([]);
+  const [loadingGifs, setLoadingGifs] = useState(false);
+  const gifSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  useEffect(scrollToBottom, [messages, showPinnedMessages]); // Scroll to bottom when messages or pinned view changes
+  useEffect(scrollToBottom, [messages, showPinnedMessages]);
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
@@ -259,7 +286,7 @@ export default function CommunitiesPage() {
 
   useEffect(() => {
     if (selectedChannel && selectedCommunity && currentUser && selectedChannel.type === 'text') {
-      setMessages([]); // Clear previous channel messages
+      setMessages([]); 
 
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       const q = query(messagesRef, orderBy('timestamp', 'asc'));
@@ -275,7 +302,9 @@ export default function CommunitiesPage() {
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
-        chatInputRef.current?.focus();
+        if (chatInputRef.current && fetchedMessages.length > 0) { // Only focus if messages loaded
+            chatInputRef.current?.focus();
+        }
       }, (error) => {
         console.error("Error fetching messages: ", error);
         toast({
@@ -314,12 +343,12 @@ export default function CommunitiesPage() {
     setSelectedCommunity(community);
     const firstChannel = placeholderChannels[community.id]?.[0] || null;
     setSelectedChannel(firstChannel);
-    setShowPinnedMessages(false); // Reset pinned view on community change
+    setShowPinnedMessages(false); 
   };
 
   const handleSelectChannel = (channel: Channel) => {
     setSelectedChannel(channel);
-    setShowPinnedMessages(false); // Reset pinned view on channel change
+    setShowPinnedMessages(false); 
   };
 
   const handleSendMessage = async (e?: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLInputElement>) => {
@@ -331,7 +360,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -354,6 +383,38 @@ export default function CommunitiesPage() {
         });
     }
   };
+
+  const handleSendGif = async (gif: TenorGif) => {
+    if (!currentUser || !selectedCommunity || !selectedChannel || selectedChannel.type !== 'text') {
+      return;
+    }
+
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+      senderId: currentUser.uid,
+      senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+      senderAvatarUrl: currentUser.photoURL || null,
+      timestamp: serverTimestamp(),
+      type: 'gif' as const,
+      gifUrl: gif.media_formats.gif.url,
+      isPinned: false,
+    };
+
+    try {
+      const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
+      await addDoc(messagesRef, messageData);
+      setShowGifPicker(false); // Close picker on send
+      setGifSearchTerm(""); // Reset search
+      setGifs([]); // Clear GIFs
+    } catch (error) {
+        console.error("Error sending GIF message:", error);
+        toast({
+            variant: "destructive",
+            title: "GIF Not Sent",
+            description: "Could not send your GIF. Please try again.",
+        });
+    }
+  };
+
 
   const handleCommunityProfileEdit = () => {
     toast({
@@ -394,23 +455,71 @@ export default function CommunitiesPage() {
     }
   };
 
-  const shouldShowTimestamp = (currentMessage: ChatMessage, previousMessage: ChatMessage | null, nextMessage: ChatMessage | null) => {
-    if (!previousMessage) return true; 
-    if (currentMessage.senderId !== previousMessage.senderId) return true; 
-    if (currentMessage.timestamp.getTime() - previousMessage.timestamp.getTime() > TIMESTAMP_GROUPING_THRESHOLD_MS) return true; 
-    // This part of the logic hides the timestamp if the next message is also part of the group
-    if (nextMessage && nextMessage.senderId === currentMessage.senderId && nextMessage.timestamp.getTime() - currentMessage.timestamp.getTime() < TIMESTAMP_GROUPING_THRESHOLD_MS) return false; 
-    // Otherwise, this is the last message in a group, so show its timestamp
-    return true; 
-  };
-
   const shouldShowFullMessageHeader = (currentMessage: ChatMessage, previousMessage: ChatMessage | null) => {
     if (!previousMessage) return true;
     if (currentMessage.senderId !== previousMessage.senderId) return true;
     if (currentMessage.timestamp.getTime() - previousMessage.timestamp.getTime() > TIMESTAMP_GROUPING_THRESHOLD_MS) return true;
     return false;
-  }
+  };
 
+  const fetchTrendingGifs = async () => {
+    if (!TENOR_API_KEY.startsWith("AIza")) {
+        toast({ variant: "destructive", title: "Tenor API Key Missing", description: "A valid Tenor API key is required for GIFs."});
+        return;
+    }
+    setLoadingGifs(true);
+    try {
+      const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`);
+      if (!response.ok) throw new Error('Failed to fetch trending GIFs');
+      const data = await response.json();
+      setGifs(data.results || []);
+    } catch (error) {
+      console.error("Error fetching trending GIFs:", error);
+      toast({ variant: "destructive", title: "Error Fetching GIFs", description: "Could not load trending GIFs." });
+    } finally {
+      setLoadingGifs(false);
+    }
+  };
+
+  const searchTenorGifs = async (term: string) => {
+    if (!term.trim()) {
+      fetchTrendingGifs(); // Fetch trending if search term is cleared
+      return;
+    }
+    if (!TENOR_API_KEY.startsWith("AIza")) {
+      toast({ variant: "destructive", title: "Tenor API Key Missing", description: "A valid Tenor API key is required for GIFs."});
+      return;
+    }
+    setLoadingGifs(true);
+    try {
+      const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`);
+      if (!response.ok) throw new Error('Failed to fetch GIFs');
+      const data = await response.json();
+      setGifs(data.results || []);
+    } catch (error) {
+      console.error("Error searching GIFs:", error);
+      toast({ variant: "destructive", title: "Error Fetching GIFs", description: "Could not load GIFs for your search." });
+    } finally {
+      setLoadingGifs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showGifPicker && gifs.length === 0 && !gifSearchTerm) {
+      fetchTrendingGifs();
+    }
+  }, [showGifPicker, gifs.length, gifSearchTerm]);
+
+  const handleGifSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const term = e.target.value;
+    setGifSearchTerm(term);
+    if (gifSearchTimeoutRef.current) {
+      clearTimeout(gifSearchTimeoutRef.current);
+    }
+    gifSearchTimeoutRef.current = setTimeout(() => {
+      searchTenorGifs(term);
+    }, 500); // Debounce search by 500ms
+  };
 
   const currentChannels = selectedCommunity ? placeholderChannels[selectedCommunity.id] || [] : [];
   const currentMembers = selectedCommunity ? placeholderMembers[selectedCommunity.id] || [] : [];
@@ -532,14 +641,13 @@ export default function CommunitiesPage() {
               <div className="p-4 space-y-0.5">
                 {displayedMessages.length === 0 && selectedChannel.type === 'text' && (
                   <div className="text-center text-muted-foreground py-4">
-                    {showPinnedMessages ? "No pinned messages in this channel." : "No messages yet. Be the first to say something!"}
+                    {showPinnedMessages ? "No pinned messages in this channel." : 
+                     (messages.length === 0 && !currentUser ? "Loading messages..." : "No messages yet. Be the first to say something!")}
                   </div>
                 )}
                 {displayedMessages.map((msg, index) => {
                   const previousMessage = index > 0 ? displayedMessages[index - 1] : null;
-                  const nextMessage = index < displayedMessages.length - 1 ? displayedMessages[index + 1] : null;
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
-                  // const showTs = shouldShowTimestamp(msg, previousMessage, nextMessage); // This is now unused for the left-side timestamp
 
                   return (
                     <div
@@ -555,9 +663,7 @@ export default function CommunitiesPage() {
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       ) : (
-                        <div className="w-8 shrink-0"> 
-                          {/* Intentionally empty: Compact timestamp removed from here */}
-                        </div>
+                        <div className="w-8 shrink-0" />
                       )}
                       <div className="flex-1">
                         {showHeader && (
@@ -578,7 +684,22 @@ export default function CommunitiesPage() {
                             {msg.isPinned && <Pin className="h-3 w-3 text-amber-400 ml-1" title="Pinned Message"/>}
                           </div>
                         )}
-                        <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">{msg.text}</p>
+                        {msg.type === 'text' && msg.text && (
+                            <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">{msg.text}</p>
+                        )}
+                        {msg.type === 'gif' && msg.gifUrl && (
+                            <Image 
+                                src={msg.gifUrl} 
+                                alt="GIF" 
+                                width={0} // Will be overridden by style or intrinsic size
+                                height={0}
+                                style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem', marginTop: '0.25rem' }}
+                                unoptimized // GIF optimization can be tricky with next/image
+                                priority={false}
+                                data-ai-hint="animated gif"
+                            />
+                        )}
+                        {/* Add rendering for other message types (image, file, voice_message) here */}
                       </div>
                       <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin Message" : "Pin Message"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
@@ -623,14 +744,66 @@ export default function CommunitiesPage() {
                       <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Open Emoji Picker" onClick={() => toast({title: "Feature Coming Soon", description: "Emoji picker will be implemented."})}>
                           <Smile className="h-5 w-5" />
                       </Button>
-                      {/* 
-                        Tenor API Key Security Note:
-                        An API key (e.g., AIzaSyBuP5qD... as provided in user prompt) MUST NOT be used directly in client-side code.
-                        It should be proxied through a secure backend (e.g., a Firebase Cloud Function) to protect it.
-                      */}
-                      <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" onClick={() => toast({title: "Feature Coming Soon", description: "GIF sending (via a secure backend proxy) will be implemented."})}>
-                          <Film className="h-5 w-5" />
-                      </Button>
+                      
+                      <Dialog open={showGifPicker} onOpenChange={setShowGifPicker}>
+                        <DialogTrigger asChild>
+                          <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)">
+                              <Film className="h-5 w-5" />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[425px] md:max-w-[600px] lg:max-w-[800px] h-[70vh] flex flex-col">
+                            <DialogHeader>
+                                <DialogTitle>Send a GIF</DialogTitle>
+                                <DialogDescription>
+                                    Search for GIFs from Tenor.
+                                    <span className="block text-xs text-destructive/80 mt-1">
+                                        SECURITY WARNING: For production, the Tenor API key must be proxied via a backend.
+                                    </span>
+                                </DialogDescription>
+                            </DialogHeader>
+                            <Input
+                                type="text"
+                                placeholder="Search Tenor GIFs..."
+                                value={gifSearchTerm}
+                                onChange={handleGifSearchChange}
+                                className="my-2"
+                            />
+                            <ScrollArea className="flex-1">
+                                {loadingGifs ? (
+                                    <div className="flex justify-center items-center h-full">
+                                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                    </div>
+                                ) : gifs.length > 0 ? (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
+                                    {gifs.map((gif) => (
+                                        <button
+                                        key={gif.id}
+                                        onClick={() => handleSendGif(gif)}
+                                        className="aspect-square relative overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary ring-offset-2 ring-offset-background group"
+                                        >
+                                        <Image
+                                            src={gif.media_formats.tinygif.url}
+                                            alt={gif.content_description || "GIF"}
+                                            fill
+                                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                                            className="object-cover transition-transform group-hover:scale-105"
+                                            unoptimized
+                                        />
+                                        </button>
+                                    ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-center text-muted-foreground py-4">
+                                        {gifSearchTerm ? "No GIFs found for your search." : "No trending GIFs found."}
+                                    </p>
+                                )}
+                            </ScrollArea>
+                            <DialogFooter className="mt-2">
+                                <p className="text-xs text-muted-foreground">Powered by Tenor</p>
+                            </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+
                        <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send Message" disabled={!newMessage.trim() || !currentUser || selectedChannel.type !== 'text'}>
                           <Send className="h-5 w-5" />
                       </Button>
@@ -740,3 +913,5 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+
+    
