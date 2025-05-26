@@ -70,7 +70,7 @@ export default function IntegrationsSettingsPage() {
   }
 
   return (
-    <div className="px-4 pb-8">
+    <div className="p-6 h-full overflow-y-auto"> {/* Added p-6, h-full and overflow-y-auto */}
       <div className="flex items-center my-6">
         <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
           <ArrowLeft className="h-5 w-5 text-accent" />
@@ -108,7 +108,7 @@ export default function IntegrationsSettingsPage() {
               </div>
             </Card>
           ))}
-          
+
           <div className="flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-border/70 rounded-lg bg-muted/20 mt-8">
             <Construction className="h-12 w-12 text-accent mb-3" />
             <h3 className="text-md font-semibold text-foreground mb-1">More Integrations Planned!</h3>
@@ -121,3 +121,5 @@ export default function IntegrationsSettingsPage() {
     </div>
   );
 }
+
+    

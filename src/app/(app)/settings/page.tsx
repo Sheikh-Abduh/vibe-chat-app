@@ -61,7 +61,7 @@ const settingsCategories: SettingsCategory[] = [
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-8 px-4">
+    <div className="space-y-8 p-6 h-full overflow-y-auto"> {/* Added p-6, h-full and overflow-y-auto, removed px-4 */}
       <section>
         <div className="flex items-center mb-8">
           <Settings className="mr-3 h-9 w-9 text-primary" />
@@ -69,7 +69,7 @@ export default function SettingsPage() {
             Settings
           </h1>
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {settingsCategories.map((category) => (
             <Card key={category.id} className="bg-card border-border/50 shadow-lg hover:shadow-[0_0_15px_hsl(var(--accent)/0.2)] transition-shadow duration-300 flex flex-col">
@@ -103,3 +103,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    

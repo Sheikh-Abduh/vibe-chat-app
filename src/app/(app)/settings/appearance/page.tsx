@@ -32,7 +32,7 @@ const accentOptions: AccentColorOption[] = [
   { name: 'Sunny Yellow', value: '45 100% 51%', foreground: '220 3% 10%', className: 'bg-[hsl(45_100%_51%)]' },
   { name: 'Emerald Green', value: '145 63% 42%', foreground: '0 0% 100%', className: 'bg-[hsl(145_63%_42%)]' },
   { name: 'Vibrant Orange', value: '24 95% 53%', foreground: '0 0% 100%', className: 'bg-[hsl(24_95%_53%)]'},
-  { name: 'Forest Green', value: '127 100% 43%', foreground: '220 3% 10%', className: 'bg-[hsl(127_100%_43%)]' }, 
+  { name: 'Forest Green', value: '127 100% 43%', foreground: '220 3% 10%', className: 'bg-[hsl(127_100%_43%)]' },
 ];
 
 const uiScaleOptions: { label: string; value: UiScale }[] = [
@@ -120,14 +120,14 @@ export default function AppearanceSettingsPage() {
         const currentPrimary = accentOptions.find(opt => opt.value === savedPrimaryAccentValue && opt.foreground === savedPrimaryAccentFgValue) || defaultAppTheme.primary;
         const currentSecondary = accentOptions.find(opt => opt.value === savedSecondaryAccentValue && opt.foreground === savedSecondaryAccentFgValue) || defaultAppTheme.secondary;
         const currentScale = savedUiScale || defaultAppTheme.scale;
-        
+
         setSelectedMode(currentMode);
         setSelectedPrimaryAccent(currentPrimary);
         setSelectedSecondaryAccent(currentSecondary);
         setSelectedUiScale(currentScale);
-        
+
         setInitialValues({ mode: currentMode, primary: currentPrimary, secondary: currentSecondary, scale: currentScale });
-        applyThemeAndScale(currentMode, currentPrimary, currentSecondary, currentScale); 
+        applyThemeAndScale(currentMode, currentPrimary, currentSecondary, currentScale);
         setIsCheckingAuth(false);
       } else {
         router.replace('/login');
@@ -137,14 +137,14 @@ export default function AppearanceSettingsPage() {
   }, [router, applyThemeAndScale]);
 
   useEffect(() => {
-    if (initialValues) { 
+    if (initialValues) {
         applyThemeAndScale(selectedMode, selectedPrimaryAccent, selectedSecondaryAccent, selectedUiScale);
     }
   }, [selectedMode, selectedPrimaryAccent, selectedSecondaryAccent, selectedUiScale, applyThemeAndScale, initialValues]);
 
   useEffect(() => {
     return () => {
-      if (initialValues && !isSubmitting) { 
+      if (initialValues && !isSubmitting) {
         applyThemeAndScale(initialValues.mode, initialValues.primary, initialValues.secondary, initialValues.scale);
       }
     };
@@ -171,14 +171,14 @@ export default function AppearanceSettingsPage() {
       title: "Appearance Settings Saved!",
       description: "Your theme preferences have been updated.",
     });
-    
+
     setInitialValues({ mode: selectedMode, primary: selectedPrimaryAccent, secondary: selectedSecondaryAccent, scale: selectedUiScale });
 
     setTimeout(() => {
         setIsSubmitting(false);
-    }, 500); 
+    }, 500);
   };
-  
+
   const handleCancel = () => {
     if (initialValues) {
       applyThemeAndScale(initialValues.mode, initialValues.primary, initialValues.secondary, initialValues.scale);
@@ -211,7 +211,7 @@ export default function AppearanceSettingsPage() {
 
     applyThemeAndScale(defaultAppTheme.mode, defaultAppTheme.primary, defaultAppTheme.secondary, defaultAppTheme.scale);
     setInitialValues({ mode: defaultAppTheme.mode, primary: defaultAppTheme.primary, secondary: defaultAppTheme.secondary, scale: defaultAppTheme.scale });
-    
+
     toast({
       title: "Settings Reset",
       description: "Appearance settings have been reset to default.",
@@ -226,7 +226,7 @@ export default function AppearanceSettingsPage() {
   }
 
   return (
-    <div className="px-4 pb-8">
+    <div className="p-6 h-full overflow-y-auto"> {/* Added p-6, h-full and overflow-y-auto */}
       <div className="flex items-center my-6">
         <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
             <ArrowLeft className="h-5 w-5 text-accent" />
@@ -408,3 +408,5 @@ export default function AppearanceSettingsPage() {
     </div>
   );
 }
+
+    

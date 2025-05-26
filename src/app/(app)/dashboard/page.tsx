@@ -26,9 +26,9 @@ export default function DashboardPage() {
   // For now, we use placeholders.
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-12 p-6 h-full overflow-y-auto"> {/* Added p-6, h-full and overflow-y-auto */}
       {/* Tailored Communities Section */}
-      <section className="px-4">
+      <section> {/* Removed px-4, handled by parent div */}
         <div className="flex items-center justify-between mb-6">
             <h2 className="text-3xl font-bold tracking-tight text-primary flex items-center" style={{ textShadow: '0 0 4px hsl(var(--primary)/0.6)'}}>
                 <Users className="mr-3 h-8 w-8 text-primary" />
@@ -40,9 +40,9 @@ export default function DashboardPage() {
           {placeholderCommunities.map((community) => (
             <Card key={community.id} className="bg-card border-border/50 shadow-lg hover:shadow-[0_0_15px_hsl(var(--primary)/0.3)] transition-shadow duration-300 flex flex-col">
               <div className="relative w-full h-40">
-                <Image 
-                  src={community.image} 
-                  alt={community.name} 
+                <Image
+                  src={community.image}
+                  alt={community.name}
                   fill
                   className="object-cover rounded-t-lg"
                   data-ai-hint={community.dataAiHint}
@@ -64,7 +64,7 @@ export default function DashboardPage() {
       </section>
 
       {/* People with Similar Interests Section */}
-      <section className="px-4">
+      <section>  {/* Removed px-4, handled by parent div */}
          <div className="flex items-center justify-between mb-6">
             <h2 className="text-3xl font-bold tracking-tight text-accent flex items-center" style={{ textShadow: '0 0 4px hsl(var(--accent)/0.6)'}}>
                 <Heart className="mr-3 h-8 w-8 text-accent" />
@@ -76,9 +76,9 @@ export default function DashboardPage() {
           {placeholderPeople.map((person) => (
             <Card key={person.id} className="bg-card border-border/50 shadow-md hover:shadow-[0_0_15px_hsl(var(--accent)/0.3)] transition-shadow duration-300 text-center p-4">
               <div className="relative w-24 h-24 mx-auto mb-3">
-                 <Image 
-                    src={person.avatar} 
-                    alt={person.name} 
+                 <Image
+                    src={person.avatar}
+                    alt={person.name}
                     fill
                     className="object-cover rounded-full border-2 border-accent/70"
                     data-ai-hint={person.dataAiHint}

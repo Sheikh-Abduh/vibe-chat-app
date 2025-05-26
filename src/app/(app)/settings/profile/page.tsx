@@ -207,13 +207,13 @@ export default function EditProfilePage() {
     localStorage.setItem(`userInterests_gender_${currentUser.uid}`, data.gender || "");
     localStorage.setItem(`userInterests_tags_${currentUser.uid}`, data.tags || "");
     localStorage.setItem(`userInterests_passion_${currentUser.uid}`, data.passion || "");
-    
+
     // Check if localStorage data actually changed to set profileUpdated flag
     // This is a simplified check; for robust checking, compare with initial loaded values.
     if (form.formState.isDirty) { // isDirty is true if any form field changed from its initial loaded value
         profileUpdated = true;
     }
-    
+
     if (profileUpdated) {
         toast({
           title: "Profile Updated!",
@@ -225,7 +225,7 @@ export default function EditProfilePage() {
             description: "Your profile details are already up-to-date.",
         });
     }
-    
+
     setIsSubmitting(false);
     // Refresh form with potentially new currentUser.displayName and photoURL from Firebase
     // A full page refresh might be needed in some cases for AppLayout to pick up changes immediately without more complex global state.
@@ -239,7 +239,7 @@ export default function EditProfilePage() {
       setAvatarPreview(auth.currentUser.photoURL); // update avatar preview
     }
   };
-  
+
   if (isCheckingAuth) {
     return <SplashScreenDisplay />;
   }
@@ -249,7 +249,7 @@ export default function EditProfilePage() {
  }
 
   return (
-    <div className="space-y-8 px-4 pb-8">
+    <div className="p-6 h-full overflow-y-auto"> {/* Added p-6, h-full and overflow-y-auto */}
         <div className="flex items-center mb-6">
           <Edit3 className="mr-3 h-8 w-8 text-primary" />
           <h1 className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 4px hsl(var(--primary)/0.6)' }}>
@@ -269,7 +269,7 @@ export default function EditProfilePage() {
         <CardContent className="space-y-8 pt-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              
+
               {/* Avatar Section */}
               <FormItem>
                 <FormLabel className="text-muted-foreground flex items-center text-base">
@@ -379,7 +379,7 @@ export default function EditProfilePage() {
                   </FormItem>
                 )}
               />
-              
+
               <FormField
                 control={form.control}
                 name="hobbies"
@@ -514,7 +514,7 @@ export default function EditProfilePage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => router.push('/dashboard')} // Or router.back() if preferred
+            onClick={() => router.push('/settings')} // Changed to go back to main settings
             disabled={isSubmitting || isUploadingAvatar}
             className="w-full sm:w-auto border-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
           >

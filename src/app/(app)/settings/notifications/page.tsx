@@ -101,7 +101,7 @@ export default function NotificationSettingsPage() {
   }
 
   return (
-    <div className="px-4 pb-8">
+    <div className="p-6 h-full overflow-y-auto"> {/* Added p-6, h-full and overflow-y-auto */}
       <div className="flex items-center my-6">
         <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
             <ArrowLeft className="h-5 w-5 text-accent" />
@@ -182,3 +182,5 @@ export default function NotificationSettingsPage() {
     </div>
   );
 }
+
+    

@@ -49,13 +49,13 @@ export default function AdvancedSettingsPage() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
-        
+
         const savedDmPrefKey = getStorageKey('dm_preference');
         if (savedDmPrefKey) {
           const savedDmPref = localStorage.getItem(savedDmPrefKey) as DmPreference | null;
           if (savedDmPref) setDmPreference(savedDmPref);
         }
-        
+
         const savedProfileVisKey = getStorageKey('profile_visibility');
         if (savedProfileVisKey) {
           const savedProfileVis = localStorage.getItem(savedProfileVisKey) as ProfileVisibility | null;
@@ -93,7 +93,7 @@ export default function AdvancedSettingsPage() {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to delete your account." });
       return;
     }
-    
+
     setIsDeleting(true);
 
     // CRITICAL FOR PRODUCTION: Implement re-authentication here before calling the delete function.
@@ -106,8 +106,8 @@ export default function AdvancedSettingsPage() {
     try {
       const functionsInstance = getFunctions();
       const deleteUserAccountFn = httpsCallable(functionsInstance, 'deleteUserAccount');
-      
-      // The Cloud Function should use context.auth.uid for security, 
+
+      // The Cloud Function should use context.auth.uid for security,
       // but passing uid can be useful for logging or specific scenarios if needed.
       await deleteUserAccountFn(); // No need to pass UID if function uses context.auth.uid
 
@@ -118,14 +118,14 @@ export default function AdvancedSettingsPage() {
       });
 
       await signOut(auth); // Sign out the user from the client
-      
+
       // Clear any local storage associated with the user
       Object.keys(localStorage).forEach(key => {
-        if (key.includes(currentUser.uid)) {
+        if (currentUser && key.includes(currentUser.uid)) { // Added null check for currentUser
           localStorage.removeItem(key);
         }
       });
-      
+
       router.push('/login'); // Redirect to login page
     } catch (error: any) {
       console.error("Delete account error:", error);
@@ -144,7 +144,7 @@ export default function AdvancedSettingsPage() {
   }
 
   return (
-    <div className="px-4 pb-8">
+    <div className="p-6 h-full overflow-y-auto"> {/* Added p-6, h-full and overflow-y-auto */}
       <div className="flex items-center my-6">
         <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
           <ArrowLeft className="h-5 w-5 text-accent" />
@@ -227,14 +227,14 @@ export default function AdvancedSettingsPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete your account and associated data. 
+                    This action cannot be undone. This will permanently delete your account and associated data.
                     For security, you might be asked to re-enter your password.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                  <AlertDialogAction 
-                    onClick={handleDeleteAccount} 
+                  <AlertDialogAction
+                    onClick={handleDeleteAccount}
                     disabled={isDeleting}
                     className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                   >

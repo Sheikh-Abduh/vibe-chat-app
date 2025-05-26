@@ -60,15 +60,15 @@ export default function AppLayout({
         setCurrentUser(user);
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
-          setIsCheckingAuth(false); 
+          setIsCheckingAuth(false);
         } else {
           if (pathname.startsWith('/onboarding')) {
-             setIsCheckingAuth(false); 
+             setIsCheckingAuth(false);
           } else {
-            router.replace('/onboarding/avatar'); 
+            router.replace('/onboarding/avatar');
           }
         }
-        
+
         const storedHobbies = localStorage.getItem(`userInterests_hobbies_${user.uid}`);
         const storedAge = localStorage.getItem(`userInterests_age_${user.uid}`);
         const storedGender = localStorage.getItem(`userInterests_gender_${user.uid}`);
@@ -76,7 +76,7 @@ export default function AppLayout({
         const storedPassionKey = localStorage.getItem(`userInterests_passion_${user.uid}`);
         const storedAboutMe = localStorage.getItem(`userProfile_aboutMe_${user.uid}`);
         const storedStatus = localStorage.getItem(`userProfile_status_${user.uid}`);
-        
+
         const passionDisplay = storedPassionKey ? storedPassionKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Not set";
 
         setUserDetails({
@@ -90,17 +90,17 @@ export default function AppLayout({
         });
 
       } else {
-        router.replace('/login'); 
+        router.replace('/login');
       }
     });
     return () => unsubscribe();
-  }, [router, pathname]); 
+  }, [router, pathname]);
 
   const handleLogout = async () => {
     try {
       await firebaseSignOut(auth);
       setCurrentUser(null);
-      setUserDetails(null); 
+      setUserDetails(null);
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
       router.push('/login');
     } catch (error) {
@@ -116,25 +116,25 @@ export default function AppLayout({
   if (!currentUser && !pathname.startsWith('/onboarding')) {
     return <SplashScreenDisplay />;
   }
-  
+
   if (!currentUser && pathname.startsWith('/onboarding')) {
-      return <>{children}</>; 
+      return <>{children}</>;
   }
-  
+
   if (!currentUser) {
-      return <SplashScreenDisplay />; 
+      return <SplashScreenDisplay />;
   }
 
 
   return (
-    <SidebarProvider defaultOpen={false}> 
+    <SidebarProvider defaultOpen={false}>
       <Sidebar side="left" collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-        <SidebarHeader className="flex justify-center items-center p-1"> 
+        <SidebarHeader className="flex justify-center items-center p-1">
            <Link href="/dashboard" className="block">
              <Image src="/logo.png" alt="vibe app logo" width={48} height={48} data-ai-hint="abstract logo" priority />
            </Link>
         </SidebarHeader>
-        <SidebarContent className="px-2 pt-6 pb-2"> 
+        <SidebarContent className="px-2 pt-6 pb-2">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === '/dashboard'} tooltip="Dashboard">
@@ -181,12 +181,9 @@ export default function AppLayout({
         <SidebarFooter className="p-2 mt-auto border-t border-sidebar-border/50">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button 
-                variant="ghost" 
-                className="relative h-12 w-full rounded-md p-0 flex items-center justify-center 
-                           hover:bg-transparent focus:bg-transparent 
-                           group-data-[state=expanded]:justify-start group-data-[state=expanded]:px-2 group-data-[state=expanded]:gap-2
-                           focus-visible:ring-0 focus-visible:ring-offset-0 focus:ring-0 focus:ring-offset-0"
+              <Button
+                variant="ghost"
+                className="relative h-12 w-full rounded-md p-0 flex items-center justify-center hover:bg-transparent focus:bg-transparent group-data-[state=expanded]:justify-start group-data-[state=expanded]:px-2 group-data-[state=expanded]:gap-2 focus-visible:ring-0 focus-visible:ring-offset-0 focus:ring-0 focus:ring-offset-0"
               >
                 <Avatar className="h-9 w-9 avatar-pulse-neon">
                   <AvatarImage src={currentUser.photoURL || undefined} alt={currentUser.displayName || currentUser.email || 'User avatar'} />
@@ -199,10 +196,10 @@ export default function AppLayout({
                 </span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent 
-              side="right" 
-              align="start" 
-              className="mb-1 ml-1 min-w-[300px] bg-card border-border shadow-xl rounded-lg p-4" 
+            <DropdownMenuContent
+              side="right"
+              align="start"
+              className="mb-1 ml-1 min-w-[300px] bg-card border-border shadow-xl rounded-lg p-4"
               sideOffset={12}
             >
               <DropdownMenuLabel className="font-normal p-0 mb-4">
@@ -225,7 +222,7 @@ export default function AppLayout({
                    </div>
                 </div>
               </DropdownMenuLabel>
-              
+
               <div className="space-y-2.5 text-sm text-card-foreground mb-4 text-left">
                 {userDetails?.aboutMe && (
                   <div className="flex items-start">
@@ -294,9 +291,9 @@ export default function AppLayout({
       </Sidebar>
 
       <SidebarInset>
-        <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
-          <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container relative flex h-12 max-w-screen-2xl items-center">
+        <div className="h-screen flex flex-col overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+          <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0 h-12">
+            <div className="relative flex h-full items-center px-4"> {/* Use px-4 for container-like padding */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
                   <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} data-ai-hint="typography wordmark" priority />
@@ -311,7 +308,7 @@ export default function AppLayout({
               </div>
             </div>
           </header>
-          <main className="flex-1 container max-w-screen-2xl"> {/* Removed py-6 */}
+          <main className="flex-1 overflow-hidden"> {/* Children should manage their own padding and scroll */}
             {children}
           </main>
         </div>
@@ -319,3 +316,5 @@ export default function AppLayout({
     </SidebarProvider>
   );
 }
+
+    
