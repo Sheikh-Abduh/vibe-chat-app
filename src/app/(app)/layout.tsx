@@ -161,8 +161,8 @@ export default function AppLayout({
               </SidebarMenuButton>
             </SidebarMenuItem>
              <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.startsWith('/messages') || pathname === '/messages'} tooltip="Messages">
-                <Link href="#">
+              <SidebarMenuButton asChild isActive={pathname.startsWith('/messages')} tooltip="Messages">
+                <Link href="/messages">
                   <MessageSquare />
                   Messages
                 </Link>
@@ -293,7 +293,7 @@ export default function AppLayout({
       <SidebarInset>
         <div className="h-screen flex flex-col overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0 h-12">
-            <div className="relative flex h-full items-center px-4"> {/* Use px-4 for container-like padding */}
+            <div className="relative flex h-full items-center px-4">
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
                   <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} data-ai-hint="typography wordmark" priority />
@@ -308,7 +308,7 @@ export default function AppLayout({
               </div>
             </div>
           </header>
-          <main className="flex-1 overflow-hidden"> {/* Children should manage their own padding and scroll */}
+          <main className="flex-1 overflow-hidden">
             {children}
           </main>
         </div>
@@ -316,5 +316,3 @@ export default function AppLayout({
     </SidebarProvider>
   );
 }
-
-    
