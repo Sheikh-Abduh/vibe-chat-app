@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
+import React, { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
 import Image from 'next/image';
 import type { User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -36,6 +36,7 @@ const ALLOWED_FILE_TYPES = [
   'application/pdf',
   'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .doc, .docx
   'text/plain',
+  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', // Added common audio types
 ];
 
 
@@ -136,6 +137,7 @@ type ChatMessage = {
   type: 'text' | 'image' | 'file' | 'gif' | 'voice_message';
   fileUrl?: string;
   fileName?: string;
+  fileType?: string; // Added to store MIME type for voice messages
   gifUrl?: string;
   gifId?: string; 
   gifTinyUrl?: string; 
@@ -165,6 +167,7 @@ type ChatMessage = {
  *          - `type`: 'text' | 'image' | 'file' | 'gif' | 'voice_message'
  *          - `fileUrl`: string (URL for image, file, voice message)
  *          - `fileName`: string (for file uploads)
+ *          - `fileType`: string (MIME type, e.g., 'audio/webm' for voice messages)
  *          - `gifUrl`: string (URL from Tenor for GIFs)
  *          - `gifId`: string (original ID from Tenor, for favoriting)
  *          - `gifTinyUrl`: string (tiny GIF URL from Tenor, for favoriting)
@@ -196,9 +199,8 @@ type ChatMessage = {
  * 6. Emoji Send (Frontend - Implemented with emoji-mart):
  *    - Uses `emoji-mart` picker to append emojis to the text input.
  *
- * 7. Voice Message Send (Frontend - Partially Implemented with MediaRecorder):
- *    - Captures audio. Uploads a placeholder/local blob URL to Firestore.
- *    - **CRITICAL:** Upload the audio Blob to Cloudinary (or other storage) and save the public URL to Firestore.
+ * 7. Voice Message Send (Frontend - Implemented with MediaRecorder & Cloudinary Upload):
+ *    - Captures audio. Uploads the audio Blob to Cloudinary and saves the public URL to Firestore.
  *
  * 8. Delete & Pin Message Features (Frontend - Implemented):
  *    - Interacts with Firestore to delete or update `isPinned` status.
@@ -231,7 +233,7 @@ interface TenorGif {
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // Replace with your actual key if testing, but be aware of the risk.
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // Your actual key
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
 const formatChatMessage = (text: string): string => {
@@ -439,7 +441,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'fileUrl' | 'fileName' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'fileUrl' | 'fileName' | 'fileType' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any } = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -469,7 +471,13 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageType: 'image' | 'file' = fileType.startsWith('image/') ? 'image' : 'file';
+    let messageType: ChatMessage['type'] = 'file';
+    if (fileType.startsWith('image/')) {
+      messageType = 'image';
+    } else if (fileType.startsWith('audio/')) {
+      messageType = 'voice_message';
+    }
+
 
     const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any } = {
       senderId: currentUser.uid,
@@ -479,24 +487,25 @@ export default function CommunitiesPage() {
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
+      fileType: fileType, // Store the MIME type
       isPinned: false,
     };
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       await addDoc(messagesRef, messageData);
-      toast({ title: `${messageType === 'image' ? 'Image' : 'File'} Sent!`, description: `${fileName} has been sent.` });
+      toast({ title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Sent!`, description: `${fileName} has been sent.` });
     } catch (error) {
       console.error(`Error sending ${messageType}:`, error);
       toast({
         variant: "destructive",
-        title: `${messageType === 'image' ? 'Image' : 'File'} Not Sent`,
+        title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Not Sent`,
         description: `Could not send your ${messageType}. Please try again.`,
       });
     }
   };
 
-  const uploadFileToCloudinaryAndSend = async (file: File) => {
+  const uploadFileToCloudinaryAndSend = async (file: File, isVoiceMessage: boolean = false) => {
     if (!currentUser) return;
     setIsUploadingFile(true);
 
@@ -504,10 +513,10 @@ export default function CommunitiesPage() {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
     formData.append('api_key', CLOUDINARY_API_KEY);
-    formData.append('resource_type', 'auto');
+    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); // Cloudinary treats audio like video for storage/transformation
 
     try {
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${isVoiceMessage ? 'video' : 'auto'}/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -555,11 +564,11 @@ export default function CommunitiesPage() {
       return;
     }
 
-    if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/')) { 
+    if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/') && !file.type.startsWith('audio/')) { 
         toast({
             variant: 'destructive',
             title: 'Invalid File Type',
-            description: 'Please select a supported file type (images, PDF, DOC, TXT).',
+            description: 'Please select a supported file type (images, audio, PDF, DOC, TXT).',
         });
         if (attachmentInputRef.current) attachmentInputRef.current.value = "";
         return;
@@ -573,7 +582,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'fileUrl' | 'fileName' | 'reactions'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'fileUrl' | 'fileName' | 'fileType' | 'reactions'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -815,7 +824,7 @@ export default function CommunitiesPage() {
     } else {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorderRef.current = new MediaRecorder(stream);
+            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' }); // Specify MIME type
             audioChunksRef.current = [];
 
             mediaRecorderRef.current.ondataavailable = (event) => {
@@ -824,19 +833,10 @@ export default function CommunitiesPage() {
 
             mediaRecorderRef.current.onstop = async () => {
                 const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); 
+                const audioFile = new File([audioBlob], `voice_message_${Date.now()}.webm`, { type: 'audio/webm' });
                 
-                setIsUploadingFile(true); 
-                toast({ title: "Voice Message Recorded", description: "Simulating upload..." });
-                
-                setTimeout(async () => { 
-                    const placeholderUrl = URL.createObjectURL(audioBlob); 
-                    const placeholderFileName = `voice_message_${Date.now()}.webm`;
-                    // IMPORTANT: In a real app, upload 'audioBlob' to Cloudinary (or similar)
-                    // and use the returned public URL here instead of 'placeholderUrl'.
-                    await sendAttachmentMessageToFirestore(placeholderUrl, placeholderFileName, 'audio/webm');
-                    setIsUploadingFile(false);
-                    toast({ title: "Voice Message Sent (Simulated)", description: "Using a local blob URL for preview. Upload to cloud storage for persistence." });
-                }, 1500);
+                toast({ title: "Voice Message Recorded", description: "Uploading to Cloudinary..." });
+                await uploadFileToCloudinaryAndSend(audioFile, true); // Pass true for isVoiceMessage
 
                 stream.getTracks().forEach(track => track.stop()); 
             };
@@ -1435,5 +1435,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
-    
