@@ -182,6 +182,7 @@ type ChatMessage = {
  * 5. GIF Send (Frontend - Tenor API via Backend Proxy):
  *    - **Security Warning:** Do NOT expose your Tenor API key in client-side code.
  *      Create a Firebase Cloud Function to act as a proxy. The frontend calls this function, which then calls the Tenor API.
+ *      The Tenor API key you provided (AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw) MUST NOT be used directly here.
  *    - When Film icon is clicked, open a GIF picker modal/popover.
  *    - Fetch trending GIFs or search (via your Cloud Function proxy).
  *    - On GIF selection, get its URL.
@@ -397,7 +398,9 @@ export default function CommunitiesPage() {
     if (!previousMessage) return true; 
     if (currentMessage.senderId !== previousMessage.senderId) return true; 
     if (currentMessage.timestamp.getTime() - previousMessage.timestamp.getTime() > TIMESTAMP_GROUPING_THRESHOLD_MS) return true; 
+    // This part of the logic hides the timestamp if the next message is also part of the group
     if (nextMessage && nextMessage.senderId === currentMessage.senderId && nextMessage.timestamp.getTime() - currentMessage.timestamp.getTime() < TIMESTAMP_GROUPING_THRESHOLD_MS) return false; 
+    // Otherwise, this is the last message in a group, so show its timestamp
     return true; 
   };
 
@@ -536,7 +539,7 @@ export default function CommunitiesPage() {
                   const previousMessage = index > 0 ? displayedMessages[index - 1] : null;
                   const nextMessage = index < displayedMessages.length - 1 ? displayedMessages[index + 1] : null;
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
-                  const showTs = shouldShowTimestamp(msg, previousMessage, nextMessage);
+                  // const showTs = shouldShowTimestamp(msg, previousMessage, nextMessage); // This is now unused for the left-side timestamp
 
                   return (
                     <div
@@ -553,11 +556,7 @@ export default function CommunitiesPage() {
                         </Avatar>
                       ) : (
                         <div className="w-8 shrink-0"> 
-                          {showTs && msg.timestamp && (
-                             <p className="text-xs text-muted-foreground/70 text-center leading-tight pt-0.5">
-                               {format(msg.timestamp, 'HH:mm')}
-                             </p>
-                          )}
+                          {/* Intentionally empty: Compact timestamp removed from here */}
                         </div>
                       )}
                       <div className="flex-1">
