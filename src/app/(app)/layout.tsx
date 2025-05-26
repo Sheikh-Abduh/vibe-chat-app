@@ -154,7 +154,7 @@ export default function AppLayout({
             </SidebarMenuItem>
              <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === '/communities'} tooltip="Communities">
-                <Link href="#">
+                <Link href="/communities">
                   <Users />
                   Communities
                 </Link>
