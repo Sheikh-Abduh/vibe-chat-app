@@ -1,15 +1,19 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import type { User } from 'firebase/auth';
+import { auth } from '@/lib/firebase'; // Import Firebase auth instance
+import { useToast } from '@/hooks/use-toast'; // Import useToast
+
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Placeholder Data
@@ -75,6 +79,15 @@ export default function CommunitiesPage() {
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(
     selectedCommunity ? placeholderChannels[selectedCommunity.id]?.[0] || null : null
   );
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      setCurrentUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleSelectCommunity = (community: Community) => {
     setSelectedCommunity(community);
@@ -85,11 +98,21 @@ export default function CommunitiesPage() {
     setSelectedChannel(channel);
   };
 
+  const handleCommunityProfileEdit = () => {
+    toast({
+      title: "Coming Soon!",
+      description: "Editing your community-specific profile is a future feature.",
+    });
+  };
+
   const currentChannels = selectedCommunity ? placeholderChannels[selectedCommunity.id] || [] : [];
   const currentMembers = selectedCommunity ? placeholderMembers[selectedCommunity.id] || [] : [];
 
+  const userName = currentUser?.displayName || currentUser?.email?.split('@')[0] || "User";
+  const userAvatar = currentUser?.photoURL;
+
   return (
-    <div className="flex h-full overflow-hidden"> {/* Root div for CommunitiesPage */}
+    <div className="flex h-full overflow-hidden bg-background"> {/* Root div for CommunitiesPage */}
       {/* Column 1: Community Server List */}
       <ScrollArea className="h-full w-20 bg-muted/20 p-2 border-r border-border/30">
         <div className="space-y-3">
@@ -134,15 +157,32 @@ export default function CommunitiesPage() {
                 ))}
               </div>
             </ScrollArea>
-            {/* Placeholder for user panel at bottom of channel list */}
+            {/* User panel at bottom of channel list */}
             <div className="p-2 border-t border-border/40">
-              <Button variant="ghost" size="sm" className="w-full justify-start text-xs text-muted-foreground">
-                <UserCircle className="mr-1.5 h-4 w-4" /> My User (Placeholder)
-              </Button>
+              {currentUser ? (
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start text-sm text-foreground hover:bg-muted py-2 h-auto"
+                  onClick={handleCommunityProfileEdit}
+                >
+                  <Avatar className="mr-2 h-8 w-8">
+                    <AvatarImage src={userAvatar || undefined} alt={userName} />
+                    <AvatarFallback className="bg-muted-foreground/30 text-xs">
+                      {userName.substring(0,1).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="truncate flex-1">{userName}</span>
+                  <ChevronDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                </Button>
+              ) : (
+                <div className="flex items-center p-2 text-xs text-muted-foreground">
+                  <UserCircle className="mr-1.5 h-4 w-4" /> Loading user...
+                </div>
+              )}
             </div>
           </>
         ) : (
-          <div className="p-4 text-center text-muted-foreground">Select a community</div>
+          <div className="p-4 text-center text-muted-foreground flex-1 flex items-center justify-center">Select a community</div>
         )}
       </div>
 
@@ -160,13 +200,11 @@ export default function CommunitiesPage() {
               </Button>
             </div>
             <div className="flex-1 p-4 overflow-y-auto">
-              {/* Placeholder chat messages or content */}
               <p className="text-muted-foreground">Welcome to {selectedChannel.name} in {selectedCommunity.name}!</p>
               <p className="text-muted-foreground mt-2">Chat functionality is a future enhancement.</p>
               {selectedChannel.type === 'voice' && <p className="text-muted-foreground mt-2">Voice chat UI would go here.</p>}
               {selectedChannel.type === 'video' && <p className="text-muted-foreground mt-2">Video chat UI would go here.</p>}
             </div>
-            {/* Placeholder message input */}
             <div className="p-3 border-t border-border/40">
                 <div className="flex items-center p-2 rounded-lg bg-muted">
                     <MessageSquare className="h-5 w-5 text-muted-foreground/70 mr-2"/>
@@ -189,7 +227,7 @@ export default function CommunitiesPage() {
       {/* Column 4: Right-Hand Info Bar */}
       <ScrollArea className="h-full w-72 bg-card border-l border-border/40 hidden lg:block">
         {selectedCommunity ? (
-          <div className="flex flex-col"> {/* Removed h-full, allows natural content height for ScrollArea */}
+          <div className="flex flex-col">
             <div className="relative h-32 w-full">
                <Image 
                 src={selectedCommunity.bannerUrl} 
@@ -222,7 +260,7 @@ export default function CommunitiesPage() {
               )}
             </div>
             <Separator className="my-2 bg-border/40" />
-            <div className="p-4"> {/* Removed flex-1 */}
+            <div className="p-4">
               <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Members ({currentMembers.length})</h4>
               <div className="space-y-2">
                 {currentMembers.map((member) => (
@@ -236,18 +274,16 @@ export default function CommunitiesPage() {
                 ))}
               </div>
             </div>
-             <div className="p-3 border-t border-border/40 mt-auto"> {/* Added mt-auto */}
+             <div className="p-3 border-t border-border/40 mt-auto">
                 <Button variant="outline" className="w-full text-muted-foreground">
                     <Settings className="mr-2 h-4 w-4" /> Community Settings
                 </Button>
             </div>
           </div>
         ) : (
-          <div className="p-4 text-center text-muted-foreground">No community selected.</div>
+          <div className="p-4 text-center text-muted-foreground flex-1 flex items-center justify-center">No community selected.</div>
         )}
       </ScrollArea>
     </div>
   );
 }
-
-    
