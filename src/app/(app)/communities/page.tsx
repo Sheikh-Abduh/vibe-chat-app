@@ -16,10 +16,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2 } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 
 // Placeholder Data
@@ -269,6 +270,8 @@ export default function CommunitiesPage() {
   const [gifs, setGifs] = useState<TenorGif[]>([]);
   const [loadingGifs, setLoadingGifs] = useState(false);
   const gifSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [gifPickerView, setGifPickerView] = useState<'search' | 'favorites'>('search');
+  const [favoritedGifs, setFavoritedGifs] = useState<TenorGif[]>([]);
 
 
   const scrollToBottom = () => {
@@ -280,9 +283,47 @@ export default function CommunitiesPage() {
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
       setCurrentUser(user);
+      if (user) {
+        // Load favorited GIFs from localStorage
+        const storedFavorites = localStorage.getItem(`favorited_gifs_${user.uid}`);
+        if (storedFavorites) {
+          setFavoritedGifs(JSON.parse(storedFavorites));
+        } else {
+          setFavoritedGifs([]);
+        }
+      } else {
+        setFavoritedGifs([]);
+      }
     });
     return () => unsubscribeAuth();
   }, []);
+
+  const getFavoriteStorageKey = () => {
+    if (!currentUser) return null;
+    return `favorited_gifs_${currentUser.uid}`;
+  }
+
+  const handleToggleFavoriteGif = (gif: TenorGif) => {
+    if (!currentUser) return;
+    const key = getFavoriteStorageKey();
+    if (!key) return;
+
+    let updatedFavorites;
+    if (favoritedGifs.find(fav => fav.id === gif.id)) {
+      updatedFavorites = favoritedGifs.filter(fav => fav.id !== gif.id);
+      toast({ title: "GIF Unfavorited", description: "Removed from your favorites." });
+    } else {
+      updatedFavorites = [...favoritedGifs, gif];
+      toast({ title: "GIF Favorited!", description: "Added to your favorites." });
+    }
+    setFavoritedGifs(updatedFavorites);
+    localStorage.setItem(key, JSON.stringify(updatedFavorites));
+  };
+
+  const isGifFavorited = (gifId: string): boolean => {
+    return !!favoritedGifs.find(fav => fav.id === gifId);
+  };
+
 
   useEffect(() => {
     if (selectedChannel && selectedCommunity && currentUser && selectedChannel.type === 'text') {
@@ -302,7 +343,7 @@ export default function CommunitiesPage() {
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
-        if (chatInputRef.current && fetchedMessages.length > 0) { // Only focus if messages loaded
+        if (chatInputRef.current && fetchedMessages.length > 0) { 
             chatInputRef.current?.focus();
         }
       }, (error) => {
@@ -395,16 +436,16 @@ export default function CommunitiesPage() {
       senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(),
       type: 'gif' as const,
-      gifUrl: gif.media_formats.gif.url,
+      gifUrl: gif.media_formats.gif.url, // Use the larger GIF format for display in chat
       isPinned: false,
     };
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       await addDoc(messagesRef, messageData);
-      setShowGifPicker(false); // Close picker on send
-      setGifSearchTerm(""); // Reset search
-      setGifs([]); // Clear GIFs
+      setShowGifPicker(false); 
+      setGifSearchTerm(""); 
+      setGifs([]); 
     } catch (error) {
         console.error("Error sending GIF message:", error);
         toast({
@@ -469,7 +510,7 @@ export default function CommunitiesPage() {
     }
     setLoadingGifs(true);
     try {
-      const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`);
+      const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to fetch trending GIFs');
       const data = await response.json();
       setGifs(data.results || []);
@@ -483,7 +524,7 @@ export default function CommunitiesPage() {
 
   const searchTenorGifs = async (term: string) => {
     if (!term.trim()) {
-      fetchTrendingGifs(); // Fetch trending if search term is cleared
+      fetchTrendingGifs(); 
       return;
     }
     if (!TENOR_API_KEY.startsWith("AIza")) {
@@ -492,7 +533,7 @@ export default function CommunitiesPage() {
     }
     setLoadingGifs(true);
     try {
-      const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`);
+      const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to fetch GIFs');
       const data = await response.json();
       setGifs(data.results || []);
@@ -505,10 +546,10 @@ export default function CommunitiesPage() {
   };
 
   useEffect(() => {
-    if (showGifPicker && gifs.length === 0 && !gifSearchTerm) {
+    if (showGifPicker && gifPickerView === 'search' && gifs.length === 0 && !gifSearchTerm) {
       fetchTrendingGifs();
     }
-  }, [showGifPicker, gifs.length, gifSearchTerm]);
+  }, [showGifPicker, gifs.length, gifSearchTerm, gifPickerView]);
 
   const handleGifSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     const term = e.target.value;
@@ -518,7 +559,7 @@ export default function CommunitiesPage() {
     }
     gifSearchTimeoutRef.current = setTimeout(() => {
       searchTenorGifs(term);
-    }, 500); // Debounce search by 500ms
+    }, 500); 
   };
 
   const currentChannels = selectedCommunity ? placeholderChannels[selectedCommunity.id] || [] : [];
@@ -663,7 +704,7 @@ export default function CommunitiesPage() {
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       ) : (
-                        <div className="w-8 shrink-0" />
+                        <div className="w-8 shrink-0" /> // Placeholder for avatar alignment
                       )}
                       <div className="flex-1">
                         {showHeader && (
@@ -691,16 +732,17 @@ export default function CommunitiesPage() {
                             <Image 
                                 src={msg.gifUrl} 
                                 alt="GIF" 
-                                width={0} // Will be overridden by style or intrinsic size
+                                width={0} 
                                 height={0}
                                 style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem', marginTop: '0.25rem' }}
-                                unoptimized // GIF optimization can be tricky with next/image
+                                unoptimized 
                                 priority={false}
                                 data-ai-hint="animated gif"
                             />
                         )}
                         {/* Add rendering for other message types (image, file, voice_message) here */}
                       </div>
+                      {/* Message Actions (Pin/Delete) */}
                       <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin Message" : "Pin Message"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
                           {msg.isPinned ? <PinOff className="h-4 w-4 text-amber-500" /> : <Pin className="h-4 w-4 text-muted-foreground hover:text-foreground" />}
@@ -755,50 +797,106 @@ export default function CommunitiesPage() {
                             <DialogHeader>
                                 <DialogTitle>Send a GIF</DialogTitle>
                                 <DialogDescription>
-                                    Search for GIFs from Tenor.
+                                    Search for GIFs from Tenor or browse your favorites.
                                     <span className="block text-xs text-destructive/80 mt-1">
                                         SECURITY WARNING: For production, the Tenor API key must be proxied via a backend.
                                     </span>
                                 </DialogDescription>
                             </DialogHeader>
-                            <Input
-                                type="text"
-                                placeholder="Search Tenor GIFs..."
-                                value={gifSearchTerm}
-                                onChange={handleGifSearchChange}
-                                className="my-2"
-                            />
-                            <ScrollArea className="flex-1">
-                                {loadingGifs ? (
-                                    <div className="flex justify-center items-center h-full">
-                                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                                    </div>
-                                ) : gifs.length > 0 ? (
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
-                                    {gifs.map((gif) => (
-                                        <button
-                                        key={gif.id}
-                                        onClick={() => handleSendGif(gif)}
-                                        className="aspect-square relative overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary ring-offset-2 ring-offset-background group"
-                                        >
-                                        <Image
-                                            src={gif.media_formats.tinygif.url}
-                                            alt={gif.content_description || "GIF"}
-                                            fill
-                                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
-                                            className="object-cover transition-transform group-hover:scale-105"
-                                            unoptimized
-                                        />
-                                        </button>
-                                    ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-center text-muted-foreground py-4">
-                                        {gifSearchTerm ? "No GIFs found for your search." : "No trending GIFs found."}
-                                    </p>
-                                )}
-                            </ScrollArea>
-                            <DialogFooter className="mt-2">
+                             <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="mt-2">
+                                <TabsList className="grid w-full grid-cols-2">
+                                    <TabsTrigger value="search">Search/Trending</TabsTrigger>
+                                    <TabsTrigger value="favorites">Favorites</TabsTrigger>
+                                </TabsList>
+                                <TabsContent value="search">
+                                    <Input
+                                        type="text"
+                                        placeholder="Search Tenor GIFs..."
+                                        value={gifSearchTerm}
+                                        onChange={handleGifSearchChange}
+                                        className="my-2"
+                                    />
+                                    <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]"> {/* Adjusted max-h */}
+                                        {loadingGifs ? (
+                                            <div className="flex justify-center items-center h-full">
+                                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                            </div>
+                                        ) : gifs.length > 0 ? (
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
+                                            {gifs.map((gif) => (
+                                                <div key={gif.id} className="relative group aspect-square">
+                                                    <button
+                                                        onClick={() => handleSendGif(gif)}
+                                                        className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary ring-offset-2 ring-offset-background"
+                                                    >
+                                                        <Image
+                                                            src={gif.media_formats.tinygif.url}
+                                                            alt={gif.content_description || "GIF"}
+                                                            fill
+                                                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                                                            className="object-cover transition-transform group-hover:scale-105"
+                                                            unoptimized
+                                                        />
+                                                    </button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white"
+                                                        onClick={() => handleToggleFavoriteGif(gif)}
+                                                        title={isGifFavorited(gif.id) ? "Unfavorite" : "Favorite"}
+                                                    >
+                                                        <Star className={cn("h-4 w-4", isGifFavorited(gif.id) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-center text-muted-foreground py-4">
+                                                {gifSearchTerm ? "No GIFs found for your search." : "No trending GIFs found."}
+                                            </p>
+                                        )}
+                                    </ScrollArea>
+                                </TabsContent>
+                                <TabsContent value="favorites">
+                                     <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]"> {/* Adjusted max-h */}
+                                        {favoritedGifs.length > 0 ? (
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
+                                            {favoritedGifs.map((gif) => (
+                                                <div key={gif.id} className="relative group aspect-square">
+                                                <button
+                                                    onClick={() => handleSendGif(gif)}
+                                                    className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary ring-offset-2 ring-offset-background"
+                                                >
+                                                    <Image
+                                                        src={gif.media_formats.tinygif.url}
+                                                        alt={gif.content_description || "GIF"}
+                                                        fill
+                                                        sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                                                        className="object-cover transition-transform group-hover:scale-105"
+                                                        unoptimized
+                                                    />
+                                                </button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white"
+                                                    onClick={() => handleToggleFavoriteGif(gif)}
+                                                    title="Unfavorite"
+                                                >
+                                                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400"/>
+                                                </Button>
+                                                </div>
+                                            ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-center text-muted-foreground py-4">
+                                                You haven't favorited any GIFs yet.
+                                            </p>
+                                        )}
+                                    </ScrollArea>
+                                </TabsContent>
+                            </Tabs>
+                            <DialogFooter className="mt-auto pt-2">
                                 <p className="text-xs text-muted-foreground">Powered by Tenor</p>
                             </DialogFooter>
                         </DialogContent>
@@ -838,44 +936,47 @@ export default function CommunitiesPage() {
                 priority
               />
             </div>
-            <div className="p-4 space-y-3 shrink-0 border-b border-border/40">
-              <div className="flex items-center space-x-3">
-                <Avatar className="h-16 w-16 border-2 border-background shadow-md">
-                  <AvatarImage src={selectedCommunity.iconUrl} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint}/>
-                  <AvatarFallback>{selectedCommunity.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <CardTitle className="text-xl">{selectedCommunity.name}</CardTitle>
-                </div>
-              </div>
-              <CardDescription className="text-sm">{selectedCommunity.description}</CardDescription>
-              {selectedCommunity.tags && selectedCommunity.tags.length > 0 && (
-                <div className="mt-3">
-                  <h5 className="text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Tags</h5>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedCommunity.tags.map((tag) => (
-                      <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
+            
             <ScrollArea className="flex-1">
-              <div className="px-4 pb-4 pt-2">
-                <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-4 px-4">
-                  Members ({currentMembers.length})
-                </h4>
-                <div className="space-y-2 pt-2">
-                  {currentMembers.map((member) => (
-                    <div key={member.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={member.avatarUrl} alt={member.name} data-ai-hint={member.dataAiHint}/>
-                        <AvatarFallback>{member.name.substring(0, 1).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm text-foreground truncate">{member.name}</span>
+              <div className="flex flex-col h-full">
+                 <div className="p-4 space-y-3 shrink-0 border-b border-border/40">
+                    <div className="flex items-center space-x-3">
+                        <Avatar className="h-16 w-16 border-2 border-background shadow-md">
+                        <AvatarImage src={selectedCommunity.iconUrl} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint}/>
+                        <AvatarFallback>{selectedCommunity.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                        <CardTitle className="text-xl">{selectedCommunity.name}</CardTitle>
+                        </div>
                     </div>
-                  ))}
+                    <CardDescription className="text-sm">{selectedCommunity.description}</CardDescription>
+                    {selectedCommunity.tags && selectedCommunity.tags.length > 0 && (
+                        <div className="mt-3">
+                        <h5 className="text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Tags</h5>
+                        <div className="flex flex-wrap gap-1.5">
+                            {selectedCommunity.tags.map((tag) => (
+                            <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
+                            ))}
+                        </div>
+                        </div>
+                    )}
+                 </div>
+
+                <div className="px-4 pb-4 pt-2 flex-1 min-h-0"> {/* Added min-h-0 for flex child */}
+                    <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-4 px-4">
+                    Members ({currentMembers.length})
+                    </h4>
+                    <div className="space-y-2 pt-2">
+                    {currentMembers.map((member) => (
+                        <div key={member.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
+                        <Avatar className="h-8 w-8">
+                            <AvatarImage src={member.avatarUrl} alt={member.name} data-ai-hint={member.dataAiHint}/>
+                            <AvatarFallback>{member.name.substring(0, 1).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm text-foreground truncate">{member.name}</span>
+                        </div>
+                    ))}
+                    </div>
                 </div>
               </div>
             </ScrollArea>
