@@ -4,8 +4,8 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import type { User } from 'firebase/auth';
-import { auth } from '@/lib/firebase'; // Import Firebase auth instance
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { auth } from '@/lib/firebase';
+import { useToast } from '@/hooks/use-toast';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Placeholder Data
@@ -26,7 +27,7 @@ const placeholderCommunities = [
   { id: '6', name: 'Coders\' Corner', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'code screen', description: 'Talk code, share projects, and learn together.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'binary code', tags: ['Coding', 'WebDev', 'OpenSource', 'Software', 'Projects'] },
 ];
 
-const placeholderChannels = {
+const placeholderChannels: Record<string, Array<{ id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType }>> = {
   '1': [ // Gamers Unite
     { id: 'c1-1', name: 'general-chat', type: 'text', icon: Hash },
     { id: 'c1-2', name: 'announcements', type: 'text', icon: ShieldCheck },
@@ -60,13 +61,43 @@ const placeholderChannels = {
   ],
 };
 
-const placeholderMembers = {
-  '1': [{ id: 'm1', name: 'PlayerOne', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person cool' }, { id: 'm2', name: 'GamerGirl', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman gaming' }, { id: 'm3', name: 'RetroFan', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man pixel' }],
-  '2': [{ id: 'm4', name: 'ReaderRiley', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person books' }, { id: 'm5', name: 'NovelNerd', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman library' }],
-  '3': [{ id: 'm6', name: 'ArtfulAlex', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'artist painting' }, { id: 'm7', name: 'CreativeCasey', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'designer thinking' }],
-  '4': [{ id: 'm8', name: 'CodeWizard', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man code' }, { id: 'm9', name: 'TechieTom', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person computer' }],
-  '5': [{ id: 'm10', name: 'MusicMaestro', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'musician stage' }, { id: 'm11', name: 'BeatMaker', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'dj deck' }, { id: 'm12', name: 'SingerStar', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman microphone' }],
-  '6': [{ id: 'm13', name: 'DevDynamo', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'coder focus' }, { id: 'm14', name: 'ScriptKid', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person laptop' }],
+const placeholderMembers: Record<string, Array<{ id: string; name: string; avatarUrl: string; dataAiHint: string }>> = {
+  '1': [
+    { id: 'm1', name: 'PlayerOne', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person cool' },
+    { id: 'm2', name: 'GamerGirl', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman gaming' },
+    { id: 'm3', name: 'RetroFan', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man pixel' },
+    { id: 'm1a', name: 'NoobSlayer', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'warrior helmet' },
+    { id: 'm1b', name: 'PixelWizard', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'wizard hat' },
+    { id: 'm1c', name: 'QuestQueen', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'queen crown' },
+  ],
+  '2': [
+    { id: 'm4', name: 'ReaderRiley', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person books' },
+    { id: 'm5', name: 'NovelNerd', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman library' },
+  ],
+  '3': [
+    { id: 'm6', name: 'ArtfulAlex', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'artist painting' },
+    { id: 'm7', name: 'CreativeCasey', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'designer thinking' },
+    { id: 'm7a', name: 'SketchySam', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person drawing' },
+  ],
+  '4': [
+    { id: 'm8', name: 'CodeWizard', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man code' },
+    { id: 'm9', name: 'TechieTom', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person computer' },
+  ],
+  '5': [
+    { id: 'm10', name: 'MusicMaestro', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'musician stage' },
+    { id: 'm11', name: 'BeatMaker', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'dj deck' },
+    { id: 'm12', name: 'SingerStar', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman microphone' },
+    { id: 'm12a', name: 'DrumDynamo', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'drummer silhouette' },
+    { id: 'm12b', name: 'GuitarHero', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'guitar fire' },
+    { id: 'm12c', name: 'BassBoss', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'bass player' },
+    { id: 'm12d', name: 'KeyboardKing', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'keyboard music' },
+    { id: 'm12e', name: 'VinylVictor', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'vinyl record' },
+  ],
+  '6': [
+    { id: 'm13', name: 'DevDynamo', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'coder focus' },
+    { id: 'm14', name: 'ScriptKid', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person laptop' },
+    { id: 'm14a', name: 'AlgorithmAna', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman tech' },
+  ],
 };
 
 type Community = typeof placeholderCommunities[0];
@@ -112,7 +143,7 @@ export default function CommunitiesPage() {
   const userAvatar = currentUser?.photoURL;
 
   return (
-    <div className="flex h-full overflow-hidden bg-background"> {/* Root div for CommunitiesPage */}
+    <div className="flex h-full overflow-hidden bg-background">
       {/* Column 1: Community Server List */}
       <ScrollArea className="h-full w-20 bg-muted/20 p-2 border-r border-border/30">
         <div className="space-y-3">
@@ -157,7 +188,6 @@ export default function CommunitiesPage() {
                 ))}
               </div>
             </ScrollArea>
-            {/* User panel at bottom of channel list */}
             <div className="p-2 border-t border-border/40">
               {currentUser ? (
                 <Button 
@@ -186,7 +216,7 @@ export default function CommunitiesPage() {
         )}
       </div>
 
-      {/* Column 3: Main Content Area */}
+      {/* Column 3: Main Content Area (Chat UI) */}
       <div className="h-full flex-1 bg-background flex flex-col">
         {selectedCommunity && selectedChannel ? (
           <>
@@ -199,45 +229,96 @@ export default function CommunitiesPage() {
                 <Users className="h-5 w-5" />
               </Button>
             </div>
-            <div className="flex-1 p-4 overflow-y-auto">
-              <p className="text-muted-foreground">Welcome to {selectedChannel.name} in {selectedCommunity.name}!</p>
-              <p className="text-muted-foreground mt-2">Chat functionality is a future enhancement.</p>
-              {selectedChannel.type === 'voice' && <p className="text-muted-foreground mt-2">Voice chat UI would go here.</p>}
-              {selectedChannel.type === 'video' && <p className="text-muted-foreground mt-2">Video chat UI would go here.</p>}
-            </div>
+
+            {/* Message display area */}
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-4">
+                {/* Example messages */}
+                <div className="flex items-start space-x-3">
+                  <Avatar>
+                    <AvatarImage src="https://placehold.co/40x40.png?text=U1" data-ai-hint="person thinking" />
+                    <AvatarFallback>U1</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-semibold text-sm text-foreground">
+                      UserOne <span className="text-xs text-muted-foreground ml-1">10:00 AM</span>
+                    </p>
+                    <p className="text-sm text-foreground">Welcome to {selectedChannel.name} in {selectedCommunity.name}! This is a placeholder message.</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                   <Avatar>
+                    <AvatarImage src={userAvatar || "https://placehold.co/40x40.png?text=Me"} data-ai-hint="person happy" />
+                    <AvatarFallback>{userName.substring(0,1).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-semibold text-sm text-primary">
+                      {userName} <span className="text-xs text-muted-foreground ml-1">10:01 AM</span>
+                    </p>
+                    <p className="text-sm text-foreground">Hi there! Chat functionality is currently a placeholder.</p>
+                  </div>
+                </div>
+                {selectedChannel.type === 'voice' && <p className="text-muted-foreground mt-2 p-2 bg-muted/50 rounded-md text-center">Voice chat UI placeholder. Controls and participant list would go here.</p>}
+                {selectedChannel.type === 'video' && <p className="text-muted-foreground mt-2 p-2 bg-muted/50 rounded-md text-center">Video chat UI placeholder. Video feeds and controls would go here.</p>}
+              </div>
+            </ScrollArea>
+
+            {/* Chat input area */}
             <div className="p-3 border-t border-border/40">
-                <div className="flex items-center p-2 rounded-lg bg-muted">
-                    <MessageSquare className="h-5 w-5 text-muted-foreground/70 mr-2"/>
-                    <input 
+                <div className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
+                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Attach File/Image" disabled>
+                        <Paperclip className="h-5 w-5" />
+                    </Button>
+                    <Input 
                         type="text" 
                         placeholder={`Message #${selectedChannel.name}`} 
-                        className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground"
-                        disabled
+                        className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
+                        disabled // Enable when chat is functional
                     />
+                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send Voice Message" disabled>
+                        <Mic className="h-5 w-5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Open Emoji Picker" disabled>
+                        <Smile className="h-5 w-5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" disabled>
+                        {/* Using Film as a generic media icon for GIF */}
+                        <Film className="h-5 w-5" /> 
+                    </Button>
+                     {/* 
+                        Tenor API Key Note: For actual GIF functionality, you would integrate the Tenor API.
+                        The API key should be handled securely, preferably via a backend proxy,
+                        not directly exposed in client-side code for production.
+                        The provided key AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw seems like a Google API key, not a Tenor key.
+                        Ensure you use a valid Tenor API key if implementing this feature.
+                     */}
                 </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground text-lg">
+          <div className="flex-1 flex items-center justify-center text-muted-foreground text-lg p-4">
             {selectedCommunity ? "Select a channel to start." : "Select a community to see its channels."}
           </div>
         )}
       </div>
 
-      {/* Column 4: Right-Hand Info Bar */}
-      <ScrollArea className="h-full w-72 bg-card border-l border-border/40 hidden lg:block">
+      {/* Column 4: Right-Hand Info Bar (Restructured for scrollable members) */}
+      <div className="h-full w-72 bg-card border-l border-border/40 hidden lg:flex flex-col">
         {selectedCommunity ? (
-          <div className="flex flex-col">
-            <div className="relative h-32 w-full">
+          <>
+            {/* Fixed content: Banner */}
+            <div className="relative h-32 w-full shrink-0">
                <Image 
                 src={selectedCommunity.bannerUrl} 
                 alt={`${selectedCommunity.name} banner`} 
                 fill
                 className="object-cover"
                 data-ai-hint={selectedCommunity.dataAiHintBanner}
+                priority
               />
             </div>
-            <div className="p-4 space-y-3">
+            {/* Fixed content: Community Details */}
+            <div className="p-4 space-y-3 shrink-0">
               <div className="flex items-center space-x-3">
                 <Avatar className="h-16 w-16 border-2 border-background shadow-md">
                   <AvatarImage src={selectedCommunity.iconUrl} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint}/>
@@ -259,9 +340,11 @@ export default function CommunitiesPage() {
                 </div>
               )}
             </div>
-            <Separator className="my-2 bg-border/40" />
-            <div className="p-4">
-              <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Members ({currentMembers.length})</h4>
+            <Separator className="my-2 bg-border/40 shrink-0" />
+            
+            {/* Scrollable content: Members List */}
+            <ScrollArea className="flex-1 px-4 pb-4 pt-0"> {/* Apply padding here for the scrollable content */}
+              <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1">Members ({currentMembers.length})</h4>
               <div className="space-y-2">
                 {currentMembers.map((member) => (
                   <div key={member.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
@@ -273,17 +356,21 @@ export default function CommunitiesPage() {
                   </div>
                 ))}
               </div>
-            </div>
-             <div className="p-3 border-t border-border/40 mt-auto">
+            </ScrollArea>
+
+            {/* Fixed content: Settings Button */}
+             <div className="p-3 border-t border-border/40 mt-auto shrink-0">
                 <Button variant="outline" className="w-full text-muted-foreground">
                     <Settings className="mr-2 h-4 w-4" /> Community Settings
                 </Button>
             </div>
-          </div>
+          </>
         ) : (
           <div className="p-4 text-center text-muted-foreground flex-1 flex items-center justify-center">No community selected.</div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }
+
+    
