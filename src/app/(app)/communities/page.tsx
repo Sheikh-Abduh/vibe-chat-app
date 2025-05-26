@@ -152,7 +152,7 @@ type ChatMessage = {
  *      - Users can only write messages to channels they are members of.
  *      - Reading messages restricted to members.
  *      - Community/channel management restricted.
- *      - Deleting messages restricted to the sender.
+ *      - Deleting messages restricted to the sender or moderators.
  *      - Updating `isPinned` might be restricted to moderators/admins or specific roles.
  *
  * 2. Real-time Message Listening (Frontend - Firebase SDK - Implemented Below for Text):
@@ -240,13 +240,14 @@ export default function CommunitiesPage() {
   const chatInputRef = useRef<HTMLInputElement>(null);
 
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [showPinnedMessages, setShowPinnedMessages] = useState(false);
 
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  useEffect(scrollToBottom, [messages]);
+  useEffect(scrollToBottom, [messages, showPinnedMessages]); // Scroll to bottom when messages or pinned view changes
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
@@ -312,10 +313,12 @@ export default function CommunitiesPage() {
     setSelectedCommunity(community);
     const firstChannel = placeholderChannels[community.id]?.[0] || null;
     setSelectedChannel(firstChannel);
+    setShowPinnedMessages(false); // Reset pinned view on community change
   };
 
   const handleSelectChannel = (channel: Channel) => {
     setSelectedChannel(channel);
+    setShowPinnedMessages(false); // Reset pinned view on channel change
   };
 
   const handleSendMessage = async (e?: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLInputElement>) => {
@@ -391,11 +394,11 @@ export default function CommunitiesPage() {
   };
 
   const shouldShowTimestamp = (currentMessage: ChatMessage, previousMessage: ChatMessage | null, nextMessage: ChatMessage | null) => {
-    if (!previousMessage) return true; // Always show for the first message of a sender in the current view or after a system message
-    if (currentMessage.senderId !== previousMessage.senderId) return true; // Different sender
-    if (currentMessage.timestamp.getTime() - previousMessage.timestamp.getTime() > TIMESTAMP_GROUPING_THRESHOLD_MS) return true; // Time gap too large with previous
-    if (nextMessage && nextMessage.senderId === currentMessage.senderId && nextMessage.timestamp.getTime() - currentMessage.timestamp.getTime() < TIMESTAMP_GROUPING_THRESHOLD_MS) return false; // Part of an ongoing group
-    return true; // Default to show if it's the last of a group or standalone
+    if (!previousMessage) return true; 
+    if (currentMessage.senderId !== previousMessage.senderId) return true; 
+    if (currentMessage.timestamp.getTime() - previousMessage.timestamp.getTime() > TIMESTAMP_GROUPING_THRESHOLD_MS) return true; 
+    if (nextMessage && nextMessage.senderId === currentMessage.senderId && nextMessage.timestamp.getTime() - currentMessage.timestamp.getTime() < TIMESTAMP_GROUPING_THRESHOLD_MS) return false; 
+    return true; 
   };
 
   const shouldShowFullMessageHeader = (currentMessage: ChatMessage, previousMessage: ChatMessage | null) => {
@@ -411,6 +414,10 @@ export default function CommunitiesPage() {
 
   const userName = currentUser?.displayName || currentUser?.email?.split('@')[0] || "User";
   const userAvatar = currentUser?.photoURL;
+
+  const displayedMessages = showPinnedMessages 
+    ? messages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+    : messages;
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
@@ -497,19 +504,37 @@ export default function CommunitiesPage() {
                 <selectedChannel.icon className="mr-2 h-5 w-5 text-muted-foreground" />
                 <h3 className="text-lg font-semibold text-foreground">{selectedChannel.name}</h3>
               </div>
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
-                <Users className="h-5 w-5" />
-              </Button>
+              <div className="flex items-center space-x-2">
+                {selectedChannel.type === 'text' && (
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className={cn(
+                            "text-muted-foreground hover:text-foreground",
+                            showPinnedMessages && "text-primary bg-primary/10 hover:text-primary/90 hover:bg-primary/20"
+                        )} 
+                        onClick={() => setShowPinnedMessages(!showPinnedMessages)}
+                        title={showPinnedMessages ? "Show All Messages" : "Show Pinned Messages"}
+                    >
+                        {showPinnedMessages ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
+                    </Button>
+                )}
+                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                  <Users className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
 
             <ScrollArea className="flex-1 bg-card/30">
               <div className="p-4 space-y-0.5">
-                {messages.length === 0 && selectedChannel.type === 'text' && (
-                  <div className="text-center text-muted-foreground py-4">No messages yet. Be the first to say something!</div>
+                {displayedMessages.length === 0 && selectedChannel.type === 'text' && (
+                  <div className="text-center text-muted-foreground py-4">
+                    {showPinnedMessages ? "No pinned messages in this channel." : "No messages yet. Be the first to say something!"}
+                  </div>
                 )}
-                {messages.map((msg, index) => {
-                  const previousMessage = index > 0 ? messages[index - 1] : null;
-                  const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
+                {displayedMessages.map((msg, index) => {
+                  const previousMessage = index > 0 ? displayedMessages[index - 1] : null;
+                  const nextMessage = index < displayedMessages.length - 1 ? displayedMessages[index + 1] : null;
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
                   const showTs = shouldShowTimestamp(msg, previousMessage, nextMessage);
 
@@ -527,7 +552,7 @@ export default function CommunitiesPage() {
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       ) : (
-                        <div className="w-8 shrink-0"> {/* Placeholder for avatar alignment */}
+                        <div className="w-8 shrink-0"> 
                           {showTs && msg.timestamp && (
                              <p className="text-xs text-muted-foreground/70 text-center leading-tight pt-0.5">
                                {format(msg.timestamp, 'HH:mm')}
@@ -537,14 +562,21 @@ export default function CommunitiesPage() {
                       )}
                       <div className="flex-1">
                         {showHeader && (
-                          <div className="flex items-baseline space-x-2">
+                          <div className="flex items-baseline space-x-1.5">
                             <p className="font-semibold text-sm text-foreground">
                               {msg.senderName}
                             </p>
-                            <p className="text-xs text-muted-foreground">
-                              {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
-                            </p>
-                            {msg.isPinned && <Pin className="h-3 w-3 text-amber-400" title="Pinned Message"/>}
+                            <div className="flex items-baseline text-xs text-muted-foreground">
+                                <p>
+                                {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
+                                </p>
+                                {msg.timestamp && (
+                                <p className="ml-1.5">
+                                    ({format(msg.timestamp, 'p')})
+                                </p>
+                                )}
+                            </div>
+                            {msg.isPinned && <Pin className="h-3 w-3 text-amber-400 ml-1" title="Pinned Message"/>}
                           </div>
                         )}
                         <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">{msg.text}</p>
@@ -594,7 +626,7 @@ export default function CommunitiesPage() {
                       </Button>
                       {/* 
                         Tenor API Key Security Note:
-                        An API key like 'AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw' (EXAMPLE ONLY) MUST NOT be used directly in client-side code.
+                        An API key (e.g., AIzaSyBuP5qD... as provided in user prompt) MUST NOT be used directly in client-side code.
                         It should be proxied through a secure backend (e.g., a Firebase Cloud Function) to protect it.
                       */}
                       <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" onClick={() => toast({title: "Feature Coming Soon", description: "GIF sending (via a secure backend proxy) will be implemented."})}>
@@ -662,7 +694,7 @@ export default function CommunitiesPage() {
                 <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-4 px-4">
                   Members ({currentMembers.length})
                 </h4>
-                <div className="space-y-2 pt-2"> {/* Adjusted padding from -mx-4 px-4 to here */}
+                <div className="space-y-2 pt-2">
                   {currentMembers.map((member) => (
                     <div key={member.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
                       <Avatar className="h-8 w-8">
