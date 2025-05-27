@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
@@ -19,7 +18,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2 } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -143,6 +142,9 @@ type ChatMessage = {
   gifContentDescription?: string; 
   isPinned?: boolean;
   reactions?: Record<string, string[]>; 
+  replyToMessageId?: string;
+  replyToSenderName?: string;
+  replyToTextSnippet?: string;
 };
 
 /**
@@ -173,19 +175,22 @@ type ChatMessage = {
  *          - `gifContentDescription`: string (description from Tenor, for favoriting)
  *          - `isPinned`: boolean (optional)
  *          - `reactions`: object (e.g., {"👍": ["uid1", "uid2"], "❤️": ["uid1"]})
+ *          - `replyToMessageId`: string (optional, ID of the message being replied to)
+ *          - `replyToSenderName`: string (optional, name of the original sender)
+ *          - `replyToTextSnippet`: string (optional, a short snippet of the original message text)
  *    - Firestore Security Rules: Crucial for access control.
  *      - Users can only write messages to channels they are members of.
  *      - Restrict reading messages to members.
  *      - Community/channel management restrictions.
  *      - Deleting messages restricted to sender or moderators.
  *      - Updating `isPinned` and `reactions` might have specific role-based logic.
- *      - See "Updated Firestore Security Rules" in the assistant's previous response.
+ *      - See "Updated Firestore Security Rules" in the assistant's previous response for more details.
  *
  * 2. Real-time Message Listening (Frontend - Firebase SDK - Implemented for text):
  *    - `onSnapshot` listener for channel messages is active.
  *
  * 3. Sending Text Messages (Frontend - Implemented with Firestore):
- *    - Saves to Firestore.
+ *    - Saves to Firestore. Now includes reply context if applicable.
  *
  * 4. File/Image Upload (Frontend - Implemented with Cloudinary):
  *    - Uploads to Cloudinary, then saves message details (URL, filename) to Firestore.
@@ -207,13 +212,21 @@ type ChatMessage = {
  * 9. Message Reactions (Frontend - Implemented with emoji-mart picker):
  *    - Users can add/remove reactions. Stored in the `reactions` field of the message in Firestore.
  *
- * 10. UI/UX Enhancements:
+ * 10. Reply to Message (Frontend - Basic UI implemented):
+ *     - UI indicator for message being replied to.
+ *     - Saves reply context (`replyToMessageId`, `replyToSenderName`, `replyToTextSnippet`) to Firestore.
+ *     - Renders replied-to message snippet above the reply.
+ *
+ * 11. Forward Message (Frontend - Placeholder UI implemented):
+ *     - Opens a dialog to simulate forwarding. Full implementation requires recipient selection UI and backend logic.
+ *
+ * 12. UI/UX Enhancements:
  *     - Loading states for all async operations (partially implemented).
  *     - Error handling with toasts (partially implemented).
  *     - Optimistic UI updates (consider for reactions, message sending).
- *     - Typing indicators, read receipts, replies/threads (Advanced).
+ *     - Typing indicators, read receipts (Advanced).
  *
- * 11. Voice & Video Channels (Advanced - WebRTC):
+ * 13. Voice & Video Channels (Advanced - WebRTC):
  *     - Requires a WebRTC service (e.g., Agora, Twilio Video) or a library with Firebase.
  * =============================================================================
  */
@@ -297,6 +310,10 @@ export default function CommunitiesPage() {
   const [reactionPickerOpenForMessageId, setReactionPickerOpenForMessageId] = useState<string | null>(null);
   const [chatEmojiPickerOpen, setChatEmojiPickerOpen] = useState(false);
   const [currentThemeMode, setCurrentThemeMode] = useState<'light' | 'dark'>('dark');
+
+  const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null);
+  const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
+  const [isForwardDialogOpen, setIsForwardDialogOpen] = useState(false);
 
 
   useEffect(() => {
@@ -388,15 +405,17 @@ export default function CommunitiesPage() {
             title: "Error loading messages",
             description: "Could not load messages for this channel.",
         });
-        setMessages([{
-            id: 'system-error-' + selectedChannel.id,
-            text: `Error loading messages for #${selectedChannel.name}. Please try again later.`,
-            senderId: 'system',
-            senderName: 'System',
-            timestamp: new Date(),
-            type: 'text',
-            reactions: {},
-        }]);
+        if (selectedChannel) { // Check if selectedChannel is not null
+            setMessages([{
+                id: 'system-error-' + selectedChannel.id,
+                text: `Error loading messages for #${selectedChannel.name}. Please try again later.`,
+                senderId: 'system',
+                senderName: 'System',
+                timestamp: new Date(),
+                type: 'text',
+                reactions: {},
+            }]);
+        }
       });
 
       return () => unsubscribeFirestore();
@@ -422,11 +441,13 @@ export default function CommunitiesPage() {
     const firstChannel = placeholderChannels[community.id]?.[0] || null;
     setSelectedChannel(firstChannel);
     setShowPinnedMessages(false);
+    setReplyingToMessage(null);
   };
 
   const handleSelectChannel = (channel: Channel) => {
     setSelectedChannel(channel);
     setShowPinnedMessages(false);
+    setReplyingToMessage(null);
     if (channel.type === 'text' && chatInputRef.current) {
         chatInputRef.current.focus();
     }
@@ -451,10 +472,22 @@ export default function CommunitiesPage() {
       isPinned: false,
     };
 
+    if (replyingToMessage) {
+        messageData.replyToMessageId = replyingToMessage.id;
+        messageData.replyToSenderName = replyingToMessage.senderName;
+        let snippet = replyingToMessage.text || '';
+        if (replyingToMessage.type === 'image') snippet = 'Image';
+        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName}`;
+        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
+        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
+        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
+    }
+
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       await addDoc(messagesRef, messageData); 
       setNewMessage("");
+      setReplyingToMessage(null);
     } catch (error) {
         console.error("Error sending message:", error);
         toast({
@@ -490,10 +523,21 @@ export default function CommunitiesPage() {
       fileType: fileType, 
       isPinned: false,
     };
+     if (replyingToMessage) {
+        messageData.replyToMessageId = replyingToMessage.id;
+        messageData.replyToSenderName = replyingToMessage.senderName;
+        let snippet = replyingToMessage.text || '';
+        if (replyingToMessage.type === 'image') snippet = 'Image';
+        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName}`;
+        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
+        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
+        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
+    }
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       await addDoc(messagesRef, messageData);
+      setReplyingToMessage(null);
       toast({ title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Sent!`, description: `${fileName} has been sent.` });
     } catch (error) {
       console.error(`Error sending ${messageType}:`, error);
@@ -594,6 +638,16 @@ export default function CommunitiesPage() {
       gifContentDescription: gif.content_description,
       isPinned: false,
     };
+     if (replyingToMessage) {
+        messageData.replyToMessageId = replyingToMessage.id;
+        messageData.replyToSenderName = replyingToMessage.senderName;
+        let snippet = replyingToMessage.text || '';
+        if (replyingToMessage.type === 'image') snippet = 'Image';
+        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName}`;
+        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
+        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
+        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
+    }
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
@@ -601,6 +655,7 @@ export default function CommunitiesPage() {
       setShowGifPicker(false);
       setGifSearchTerm("");
       setGifs([]);
+      setReplyingToMessage(null);
     } catch (error) {
         console.error("Error sending GIF message:", error);
         toast({
@@ -711,6 +766,17 @@ export default function CommunitiesPage() {
         description: "Could not update reaction.",
       });
     }
+  };
+
+
+  const handleReplyClick = (message: ChatMessage) => {
+    setReplyingToMessage(message);
+    chatInputRef.current?.focus();
+  };
+
+  const handleForwardClick = (message: ChatMessage) => {
+    setForwardingMessage(message);
+    setIsForwardDialogOpen(true);
   };
 
 
@@ -839,6 +905,7 @@ export default function CommunitiesPage() {
                 await uploadFileToCloudinaryAndSend(audioFile, true); 
 
                 stream.getTracks().forEach(track => track.stop()); 
+                setReplyingToMessage(null); // Cancel reply after sending voice message
             };
 
             mediaRecorderRef.current.start();
@@ -976,7 +1043,7 @@ export default function CommunitiesPage() {
 
             <ScrollArea className="flex-1 bg-card/30">
               <div className="p-4 space-y-0.5">
-                {displayedMessages.length === 0 && selectedChannel.type === 'text' && (
+                {displayedMessages.length === 0 && selectedChannel.type === 'text' && !messages.some(m => m.senderId !== 'system') && (
                   <div className="text-center text-muted-foreground py-4">
                     {showPinnedMessages ? "No pinned messages in this channel." :
                      (messages.length === 0 && !currentUser && selectedChannel.type === 'text' ? "Loading messages..." : "No messages yet. Be the first to say something!")}
@@ -1019,6 +1086,12 @@ export default function CommunitiesPage() {
                             </div>
                             {msg.isPinned && <Pin className="h-3 w-3 text-amber-400 ml-1" title="Pinned Message"/>}
                           </div>
+                        )}
+                        {msg.replyToMessageId && (
+                            <div className="mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max">
+                                Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>: 
+                                <span className="italic ml-1 truncate">"{msg.replyToTextSnippet}"</span>
+                            </div>
                         )}
                         {msg.type === 'text' && msg.text && (
                            <p
@@ -1105,10 +1178,10 @@ export default function CommunitiesPage() {
                         )}
                       </div>
                        <div className="absolute top-0 right-2 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50">
-                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" onClick={() => toast({title: "Feature Coming Soon", description: "Forwarding messages will be available later."})}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" onClick={() => handleForwardClick(msg)}>
                           <Share2 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Reply" onClick={() => toast({title: "Feature Coming Soon", description: "Replying to messages will be available later."})}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Reply" onClick={() => handleReplyClick(msg)}>
                           <Reply className="h-4 w-4" />
                         </Button>
                         <Popover open={reactionPickerOpenForMessageId === msg.id} onOpenChange={(open) => setReactionPickerOpenForMessageId(open ? msg.id : null)}>
@@ -1146,156 +1219,137 @@ export default function CommunitiesPage() {
             </ScrollArea>
 
             {selectedChannel.type === 'text' ? (
-              <form onSubmit={handleSendMessage} className="p-3 border-t border-border/40 shrink-0">
-                  <input
-                      type="file"
-                      ref={attachmentInputRef}
-                      onChange={handleFileSelected}
-                      className="hidden"
-                      accept={ALLOWED_FILE_TYPES.join(',')}
-                      disabled={isUploadingFile || !currentUser || selectedChannel.type !== 'text' || isRecording}
-                  />
-                  <div className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
-                      {isUploadingFile ? (
-                        <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" />
-                      ) : (
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="text-muted-foreground hover:text-foreground shrink-0"
-                            title="Attach File/Image"
-                            onClick={() => attachmentInputRef.current?.click()}
-                            disabled={isUploadingFile || !currentUser || selectedChannel.type !== 'text' || isRecording}
-                        >
-                            <Paperclip className="h-5 w-5" />
+              <div className="p-3 border-t border-border/40 shrink-0">
+                {replyingToMessage && (
+                    <div className="mb-2 p-2 text-sm bg-muted rounded-md flex justify-between items-center">
+                        <div>
+                            Replying to <span className="font-semibold text-foreground">{replyingToMessage.senderName}</span>: 
+                            <em className="ml-1 text-muted-foreground truncate">
+                                "{replyingToMessage.text?.substring(0,50) || 
+                                 (replyingToMessage.type === 'image' && "Image") ||
+                                 (replyingToMessage.type === 'file' && `File: ${replyingToMessage.fileName}`) ||
+                                 (replyingToMessage.type === 'gif' && "GIF") ||
+                                 (replyingToMessage.type === 'voice_message' && "Voice Message") || "..."}"
+                                {(replyingToMessage.text && replyingToMessage.text.length > 50) || 
+                                 (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''}
+                            </em>
+                        </div>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setReplyingToMessage(null)}>
+                            <X className="h-4 w-4"/>
                         </Button>
-                      )}
-                      <Input
-                          ref={chatInputRef}
-                          type="text"
-                          placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (use **bold**, *italic*, ~~strike~~, ++underline++, ^^super^^, vvsubvv)`}
-                          className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
-                          value={newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey && !isRecording && !isUploadingFile) {
-                              handleSendMessage(e);
-                            }
-                          }}
-                          disabled={!currentUser || selectedChannel.type !== 'text' || isRecording || isUploadingFile}
-                      />
-                       <Button
-                            type="button"
-                            variant={isRecording ? "destructive" : "ghost"}
-                            size="icon"
-                            className={cn("shrink-0", isRecording ? "text-destructive-foreground hover:bg-destructive/90" : "text-muted-foreground hover:text-foreground")}
-                            title={isRecording ? "Stop Recording" : "Send Voice Message"}
-                            onClick={handleToggleRecording}
-                            disabled={hasMicPermission === false || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}
-                        >
-                            {isRecording ? <StopCircle className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                    </div>
+                )}
+                <form onSubmit={handleSendMessage} className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
+                    <input
+                        type="file"
+                        ref={attachmentInputRef}
+                        onChange={handleFileSelected}
+                        className="hidden"
+                        accept={ALLOWED_FILE_TYPES.join(',')}
+                        disabled={isUploadingFile || !currentUser || selectedChannel.type !== 'text' || isRecording}
+                    />
+                    {isUploadingFile ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" />
+                    ) : (
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-muted-foreground hover:text-foreground shrink-0"
+                        title="Attach File/Image"
+                        onClick={() => attachmentInputRef.current?.click()}
+                        disabled={isUploadingFile || !currentUser || selectedChannel.type !== 'text' || isRecording}
+                    >
+                        <Paperclip className="h-5 w-5" />
+                    </Button>
+                    )}
+                    <Input
+                        ref={chatInputRef}
+                        type="text"
+                        placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (use **bold**, *italic*, ~~strike~~, ++underline++, ^^super^^, vvsubvv)`}
+                        className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyPress={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey && !isRecording && !isUploadingFile) {
+                            handleSendMessage(e);
+                        }
+                        }}
+                        disabled={!currentUser || selectedChannel.type !== 'text' || isRecording || isUploadingFile}
+                    />
+                    <Button
+                        type="button"
+                        variant={isRecording ? "destructive" : "ghost"}
+                        size="icon"
+                        className={cn("shrink-0", isRecording ? "text-destructive-foreground hover:bg-destructive/90" : "text-muted-foreground hover:text-foreground")}
+                        title={isRecording ? "Stop Recording" : "Send Voice Message"}
+                        onClick={handleToggleRecording}
+                        disabled={hasMicPermission === false || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}
+                    >
+                        {isRecording ? <StopCircle className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                    </Button>
+                    {hasMicPermission === false && (
+                        <AlertTriangle className="h-5 w-5 text-destructive" title="Microphone permission denied"/>
+                    )}
+
+                    <Popover open={chatEmojiPickerOpen} onOpenChange={setChatEmojiPickerOpen}>
+                    <PopoverTrigger asChild>
+                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Open Emoji Picker" disabled={isRecording || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}>
+                            <Smile className="h-5 w-5" />
                         </Button>
-                         {hasMicPermission === false && (
-                            <AlertTriangle className="h-5 w-5 text-destructive" title="Microphone permission denied"/>
-                         )}
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
+                        <Picker
+                            data={data}
+                            onEmojiSelect={(emoji: any) => { 
+                                setNewMessage(prev => prev + emoji.native);
+                                setChatEmojiPickerOpen(false);
+                                chatInputRef.current?.focus();
+                            }}
+                            theme={currentThemeMode}
+                            previewPosition="none"
+                        />
+                    </PopoverContent>
+                    </Popover>
 
-                      <Popover open={chatEmojiPickerOpen} onOpenChange={setChatEmojiPickerOpen}>
-                        <PopoverTrigger asChild>
-                          <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Open Emoji Picker" disabled={isRecording || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}>
-                              <Smile className="h-5 w-5" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
-                           <Picker
-                                data={data}
-                                onEmojiSelect={(emoji: any) => { 
-                                    setNewMessage(prev => prev + emoji.native);
-                                    setChatEmojiPickerOpen(false);
-                                    chatInputRef.current?.focus();
-                                }}
-                                theme={currentThemeMode}
-                                previewPosition="none"
-                            />
-                        </PopoverContent>
-                      </Popover>
-
-                      <Dialog open={showGifPicker} onOpenChange={setShowGifPicker}>
-                        <DialogTrigger asChild>
-                          <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" disabled={isRecording || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}>
-                              <Film className="h-5 w-5" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px] md:max-w-[600px] lg:max-w-[800px] h-[70vh] flex flex-col">
-                            <DialogHeader>
-                                <DialogTitle>Send a GIF</DialogTitle>
-                                <DialogDescription>
-                                    Search for GIFs from Tenor or browse your favorites.
-                                    <span className="block text-xs text-destructive/80 mt-1">
-                                        SECURITY WARNING: For production, the Tenor API key must be proxied via a backend.
-                                    </span>
-                                </DialogDescription>
-                            </DialogHeader>
-                             <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="mt-2">
-                                <TabsList className="grid w-full grid-cols-2">
-                                    <TabsTrigger value="search">Search/Trending</TabsTrigger>
-                                    <TabsTrigger value="favorites">Favorites</TabsTrigger>
-                                </TabsList>
-                                <TabsContent value="search">
-                                    <Input
-                                        type="text"
-                                        placeholder="Search Tenor GIFs..."
-                                        value={gifSearchTerm}
-                                        onChange={handleGifSearchChange}
-                                        className="my-2"
-                                    />
-                                    <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]">
-                                        {loadingGifs ? (
-                                            <div className="flex justify-center items-center h-full">
-                                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                                            </div>
-                                        ) : gifs.length > 0 ? (
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
-                                            {gifs.map((gif) => (
-                                                <div key={gif.id} className="relative group aspect-square">
-                                                    <button
-                                                        onClick={() => handleSendGif(gif)}
-                                                        className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary ring-offset-2 ring-offset-background"
-                                                    >
-                                                        <Image
-                                                            src={gif.media_formats.tinygif.url}
-                                                            alt={gif.content_description || "GIF"}
-                                                            fill
-                                                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
-                                                            className="object-cover transition-transform group-hover:scale-105"
-                                                            unoptimized
-                                                        />
-                                                    </button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white"
-                                                        onClick={() => handleToggleFavoriteGif(gif)}
-                                                        title={isGifFavorited(gif.id) ? "Unfavorite" : "Favorite"}
-                                                    >
-                                                        <Star className={cn("h-4 w-4", isGifFavorited(gif.id) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
-                                                    </Button>
-                                                </div>
-                                            ))}
-                                            </div>
-                                        ) : (
-                                            <p className="text-center text-muted-foreground py-4">
-                                                {gifSearchTerm ? "No GIFs found for your search." : "No trending GIFs found."}
-                                            </p>
-                                        )}
-                                    </ScrollArea>
-                                </TabsContent>
-                                <TabsContent value="favorites">
-                                     <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]">
-                                        {favoritedGifs.length > 0 ? (
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
-                                            {favoritedGifs.map((gif) => (
-                                                <div key={gif.id} className="relative group aspect-square">
+                    <Dialog open={showGifPicker} onOpenChange={setShowGifPicker}>
+                    <DialogTrigger asChild>
+                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" disabled={isRecording || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}>
+                            <Film className="h-5 w-5" />
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[425px] md:max-w-[600px] lg:max-w-[800px] h-[70vh] flex flex-col">
+                        <DialogHeader>
+                            <DialogTitle>Send a GIF</DialogTitle>
+                            <DialogDescription>
+                                Search for GIFs from Tenor or browse your favorites.
+                                <span className="block text-xs text-destructive/80 mt-1">
+                                    SECURITY WARNING: For production, the Tenor API key must be proxied via a backend.
+                                </span>
+                            </DialogDescription>
+                        </DialogHeader>
+                            <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="mt-2">
+                            <TabsList className="grid w-full grid-cols-2">
+                                <TabsTrigger value="search">Search/Trending</TabsTrigger>
+                                <TabsTrigger value="favorites">Favorites</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="search">
+                                <Input
+                                    type="text"
+                                    placeholder="Search Tenor GIFs..."
+                                    value={gifSearchTerm}
+                                    onChange={handleGifSearchChange}
+                                    className="my-2"
+                                />
+                                <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]">
+                                    {loadingGifs ? (
+                                        <div className="flex justify-center items-center h-full">
+                                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                        </div>
+                                    ) : gifs.length > 0 ? (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
+                                        {gifs.map((gif) => (
+                                            <div key={gif.id} className="relative group aspect-square">
                                                 <button
                                                     onClick={() => handleSendGif(gif)}
                                                     className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary ring-offset-2 ring-offset-background"
@@ -1314,32 +1368,70 @@ export default function CommunitiesPage() {
                                                     size="icon"
                                                     className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white"
                                                     onClick={() => handleToggleFavoriteGif(gif)}
-                                                    title="Unfavorite"
+                                                    title={isGifFavorited(gif.id) ? "Unfavorite" : "Favorite"}
                                                 >
-                                                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400"/>
+                                                    <Star className={cn("h-4 w-4", isGifFavorited(gif.id) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
                                                 </Button>
-                                                </div>
-                                            ))}
                                             </div>
-                                        ) : (
-                                            <p className="text-center text-muted-foreground py-4">
-                                                You haven't favorited any GIFs yet.
-                                            </p>
-                                        )}
-                                    </ScrollArea>
-                                </TabsContent>
-                            </Tabs>
-                            <DialogFooter className="mt-auto pt-2">
-                                <p className="text-xs text-muted-foreground">Powered by Tenor</p>
-                            </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
+                                        ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-center text-muted-foreground py-4">
+                                            {gifSearchTerm ? "No GIFs found for your search." : "No trending GIFs found."}
+                                        </p>
+                                    )}
+                                </ScrollArea>
+                            </TabsContent>
+                            <TabsContent value="favorites">
+                                    <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]">
+                                    {favoritedGifs.length > 0 ? (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
+                                        {favoritedGifs.map((gif) => (
+                                            <div key={gif.id} className="relative group aspect-square">
+                                            <button
+                                                onClick={() => handleSendGif(gif)}
+                                                className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary ring-offset-2 ring-offset-background"
+                                            >
+                                                <Image
+                                                    src={gif.media_formats.tinygif.url}
+                                                    alt={gif.content_description || "GIF"}
+                                                    fill
+                                                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                                                    className="object-cover transition-transform group-hover:scale-105"
+                                                    unoptimized
+                                                />
+                                            </button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white"
+                                                onClick={() => handleToggleFavoriteGif(gif)}
+                                                title="Unfavorite"
+                                            >
+                                                <Star className="h-4 w-4 fill-yellow-400 text-yellow-400"/>
+                                            </Button>
+                                            </div>
+                                        ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-center text-muted-foreground py-4">
+                                            You haven't favorited any GIFs yet.
+                                        </p>
+                                    )}
+                                </ScrollArea>
+                            </TabsContent>
+                        </Tabs>
+                        <DialogFooter className="mt-auto pt-2">
+                            <p className="text-xs text-muted-foreground">Powered by Tenor</p>
+                        </DialogFooter>
+                    </DialogContent>
+                    </Dialog>
 
-                       <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send Message" disabled={!newMessage.trim() || !currentUser || selectedChannel.type !== 'text' || isRecording || isUploadingFile}>
-                          <Send className="h-5 w-5" />
-                      </Button>
-                  </div>
-              </form>
+                    <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send Message" disabled={!newMessage.trim() || !currentUser || selectedChannel.type !== 'text' || isRecording || isUploadingFile}>
+                        <Send className="h-5 w-5" />
+                    </Button>
+                </form>
+              </div>
             ) : (
               <div className="p-3 border-t border-border/40 shrink-0">
                 <p className="text-sm text-muted-foreground text-center">
@@ -1446,6 +1538,44 @@ export default function CommunitiesPage() {
             </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Forward Message Dialog */}
+      <Dialog open={isForwardDialogOpen} onOpenChange={setIsForwardDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+                <DialogTitle>Forward Message</DialogTitle>
+                <DialogDescription>
+                    Select a channel or user to forward this message to.
+                </DialogDescription>
+            </DialogHeader>
+            {forwardingMessage && (
+                 <div className="mt-2 p-2 border rounded-md bg-muted/50 text-sm">
+                    <p className="font-medium text-foreground mb-1">Message from: {forwardingMessage.senderName}</p>
+                    {forwardingMessage.type === 'text' && <p className="whitespace-pre-wrap break-words">{forwardingMessage.text}</p>}
+                    {forwardingMessage.type === 'image' && <Image src={forwardingMessage.fileUrl!} alt="Forwarded Image" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" data-ai-hint="forwarded content" />}
+                    {forwardingMessage.type === 'gif' && <Image src={forwardingMessage.gifUrl!} alt="Forwarded GIF" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" unoptimized data-ai-hint="forwarded content"/>}
+                    {/* Add more previews for other types if needed */}
+                 </div>
+            )}
+            <div className="grid gap-4 py-4">
+                <Input placeholder="Search channels or users (coming soon)..." disabled/>
+                {/* Placeholder for recipient list */}
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsForwardDialogOpen(false)}>Cancel</Button>
+                <Button 
+                    onClick={() => {
+                        toast({ title: "Forward Successful (Simulated)", description: "Message has been forwarded."});
+                        setIsForwardDialogOpen(false);
+                        setForwardingMessage(null);
+                    }}
+                    disabled // Disabled until recipient selection is implemented
+                >
+                    Forward
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

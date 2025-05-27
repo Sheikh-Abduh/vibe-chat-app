@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
@@ -18,7 +17,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, MessageSquare as MessageSquareIcon, User as UserIcon, Mic, Bookmark, Reply, Share2 } from 'lucide-react'; // Added Bookmark, Reply, Share2
+import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, MessageSquare as MessageSquareIcon, User as UserIcon, Mic, Bookmark, Reply, Share2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -71,6 +70,9 @@ type ChatMessage = {
   gifContentDescription?: string;
   isPinned?: boolean;
   reactions?: Record<string, string[]>;
+  replyToMessageId?: string;
+  replyToSenderName?: string;
+  replyToTextSnippet?: string;
 };
 
 interface DmConversation {
@@ -135,11 +137,14 @@ export default function MessagesPage() {
   const [chatEmojiPickerOpen, setChatEmojiPickerOpen] = useState(false);
   const [currentThemeMode, setCurrentThemeMode] = useState<'light' | 'dark'>('dark');
 
+  const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null);
+  const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
+  const [isForwardDialogOpen, setIsForwardDialogOpen] = useState(false);
+
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
       if (user) {
         setCurrentUser(user);
-        // Auto-select "Saved Messages" on load
         const savedMessagesConvo: DmConversation = {
             id: `${user.uid}_self`,
             name: 'Saved Messages',
@@ -244,7 +249,7 @@ export default function MessagesPage() {
         const convoSnap = await getDoc(convoDocRef);
         if (!convoSnap.exists()) {
             const participants = [currentUser.uid, otherUserId].sort();
-             if (currentUser.uid === otherUserId && participants.length === 1) {
+             if (currentUser.uid === otherUserId && participants.length === 1 && participants[0] === currentUser.uid) { // Fixed condition
                  participants.push(currentUser.uid); 
              }
 
@@ -274,7 +279,7 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'fileUrl' | 'fileName' | 'fileType' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any } = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -282,8 +287,18 @@ export default function MessagesPage() {
       timestamp: serverTimestamp(),
       type: 'text' as const,
       isPinned: false,
-      reactions: {},
     };
+
+    if (replyingToMessage) {
+        messageData.replyToMessageId = replyingToMessage.id;
+        messageData.replyToSenderName = replyingToMessage.senderName;
+        let snippet = replyingToMessage.text || '';
+        if (replyingToMessage.type === 'image') snippet = 'Image';
+        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName}`;
+        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
+        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
+        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
+    }
 
     try {
       const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
@@ -296,6 +311,7 @@ export default function MessagesPage() {
       });
 
       setNewMessage("");
+      setReplyingToMessage(null);
     } catch (error) {
       console.error("Error sending DM:", error);
       toast({ variant: "destructive", title: "Message Not Sent", description: "Could not send your message." });
@@ -311,7 +327,7 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
     
-    const messageData = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -321,8 +337,19 @@ export default function MessagesPage() {
       fileName: fileName,
       fileType: fileType,
       isPinned: false,
-      reactions: {},
     };
+
+     if (replyingToMessage) {
+        messageData.replyToMessageId = replyingToMessage.id;
+        messageData.replyToSenderName = replyingToMessage.senderName;
+        let snippet = replyingToMessage.text || '';
+        if (replyingToMessage.type === 'image') snippet = 'Image';
+        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName}`;
+        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
+        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
+        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
+    }
+
     try {
       const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
       await addDoc(messagesColRef, messageData);
@@ -332,6 +359,7 @@ export default function MessagesPage() {
             lastMessage: messageType === 'image' ? 'Sent an image' : (messageType === 'voice_message' ? 'Sent a voice message' : 'Sent a file'),
             lastMessageTimestamp: serverTimestamp() 
         });
+      setReplyingToMessage(null);
       toast({ title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Sent!` });
     } catch (error) {
       console.error(`Error sending ${messageType}:`, error);
@@ -391,7 +419,7 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'fileUrl' | 'fileName' | 'fileType' | 'reactions'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -402,8 +430,19 @@ export default function MessagesPage() {
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
       isPinned: false,
-      reactions: {},
     };
+
+     if (replyingToMessage) {
+        messageData.replyToMessageId = replyingToMessage.id;
+        messageData.replyToSenderName = replyingToMessage.senderName;
+        let snippet = replyingToMessage.text || '';
+        if (replyingToMessage.type === 'image') snippet = 'Image';
+        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName}`;
+        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
+        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
+        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
+    }
+
     try {
       const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
       await addDoc(messagesColRef, messageData);
@@ -413,6 +452,7 @@ export default function MessagesPage() {
             lastMessageTimestamp: serverTimestamp() 
         });
       setShowGifPicker(false); setGifSearchTerm(""); setGifs([]);
+      setReplyingToMessage(null);
     } catch (error) {
       console.error("Error sending GIF:", error);
       toast({ variant: "destructive", title: "GIF Not Sent", description: "Could not send GIF." });
@@ -480,6 +520,16 @@ export default function MessagesPage() {
       console.error("Error toggling reaction:", error);
       toast({ variant: "destructive", title: "Reaction Failed" });
     }
+  };
+
+  const handleReplyClick = (message: ChatMessage) => {
+    setReplyingToMessage(message);
+    chatInputRef.current?.focus();
+  };
+
+  const handleForwardClick = (message: ChatMessage) => {
+    setForwardingMessage(message);
+    setIsForwardDialogOpen(true);
   };
 
   const fetchTrendingGifs = async () => {
@@ -556,6 +606,7 @@ export default function MessagesPage() {
           toast({ title: "Voice Message Recorded", description: "Uploading..." });
           await uploadFileToCloudinaryAndSend(audioFile, true);
           stream.getTracks().forEach(track => track.stop());
+          setReplyingToMessage(null); // Cancel reply after sending voice message
         };
         mediaRecorderRef.current.start(); setIsRecording(true);
       } catch (error) {
@@ -615,6 +666,7 @@ export default function MessagesPage() {
                         photoURL: currentUser.photoURL,
                         email: currentUser.email,
                     });
+                    setReplyingToMessage(null);
                 }}
              >
                 <Avatar className="h-10 w-10 mr-3">
@@ -709,6 +761,12 @@ export default function MessagesPage() {
                             {msg.isPinned && <Pin className="h-3 w-3 text-amber-400 ml-1" title="Pinned Message"/>}
                           </div>
                         )}
+                         {msg.replyToMessageId && (
+                            <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max", isCurrentUserSender ? "ml-auto" : "mr-auto")}>
+                                Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>: 
+                                <span className="italic ml-1 truncate">"{msg.replyToTextSnippet}"</span>
+                            </div>
+                        )}
                          <div className={cn("mt-0.5 p-2 rounded-lg inline-block", 
                             isCurrentUserSender ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
                             showHeader ? "mt-0.5" : "mt-0"
@@ -765,10 +823,10 @@ export default function MessagesPage() {
                       {isCurrentUserSender && !showHeader && <div className="w-8 shrink-0 ml-3" />}
 
                        <div className={cn("absolute top-0 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50", isCurrentUserSender ? "left-2" : "right-2")}>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" onClick={() => toast({title: "Feature Coming Soon", description: "Forwarding messages will be available later."})}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" onClick={() => handleForwardClick(msg)}>
                           <Share2 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Reply" onClick={() => toast({title: "Feature Coming Soon", description: "Replying to messages will be available later."})}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Reply" onClick={() => handleReplyClick(msg)}>
                           <Reply className="h-4 w-4" />
                         </Button>
                         <Popover open={reactionPickerOpenForMessageId === msg.id} onOpenChange={(open) => setReactionPickerOpenForMessageId(open ? msg.id : null)}>
@@ -796,16 +854,34 @@ export default function MessagesPage() {
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
-
-            <form onSubmit={handleSendMessage} className="p-3 border-t border-border/40 shrink-0">
-                <input type="file" ref={attachmentInputRef} onChange={handleFileSelected} className="hidden" accept={ALLOWED_FILE_TYPES.join(',')} disabled={isUploadingFile || isRecording} />
-                <div className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
+            <div className="p-3 border-t border-border/40 shrink-0">
+                {replyingToMessage && (
+                    <div className="mb-2 p-2 text-sm bg-muted rounded-md flex justify-between items-center">
+                        <div>
+                            Replying to <span className="font-semibold text-foreground">{replyingToMessage.senderName}</span>: 
+                            <em className="ml-1 text-muted-foreground truncate">
+                                "{replyingToMessage.text?.substring(0,50) || 
+                                 (replyingToMessage.type === 'image' && "Image") ||
+                                 (replyingToMessage.type === 'file' && `File: ${replyingToMessage.fileName}`) ||
+                                 (replyingToMessage.type === 'gif' && "GIF") ||
+                                 (replyingToMessage.type === 'voice_message' && "Voice Message") || "..."}"
+                                {(replyingToMessage.text && replyingToMessage.text.length > 50) || 
+                                 (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''}
+                            </em>
+                        </div>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setReplyingToMessage(null)}>
+                            <X className="h-4 w-4"/>
+                        </Button>
+                    </div>
+                )}
+                <form onSubmit={handleSendMessage} className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
+                    <input type="file" ref={attachmentInputRef} onChange={handleFileSelected} className="hidden" accept={ALLOWED_FILE_TYPES.join(',')} disabled={isUploadingFile || isRecording} />
                     {isUploadingFile ? <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" /> : (
                     <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Attach File" onClick={() => attachmentInputRef.current?.click()} disabled={isUploadingFile || isRecording}>
                         <Paperclip className="h-5 w-5" />
                     </Button>
                     )}
-                    <Input ref={chatInputRef} type="text" placeholder={isRecording ? "Recording..." : `Message ${otherUserName || 'User'}...`}
+                    <Input ref={chatInputRef} type="text" placeholder={isRecording ? "Recording..." : `Message ${otherUserName || 'User'}... (use **bold**, *italic*, etc.)`}
                         className="flex-1 bg-transparent text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
                         value={newMessage} onChange={(e) => setNewMessage(e.target.value)}
                         onKeyPress={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isRecording && !isUploadingFile) handleSendMessage(e); }}
@@ -866,8 +942,8 @@ export default function MessagesPage() {
                     <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send" disabled={!newMessage.trim() || isRecording || isUploadingFile}>
                         <Send className="h-5 w-5" />
                     </Button>
-                </div>
-            </form>
+                </form>
+            </div>
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-muted-foreground p-4">
@@ -929,6 +1005,44 @@ export default function MessagesPage() {
             </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+       {/* Forward Message Dialog */}
+      <Dialog open={isForwardDialogOpen} onOpenChange={setIsForwardDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+                <DialogTitle>Forward Message</DialogTitle>
+                <DialogDescription>
+                    Select a channel or user to forward this message to.
+                </DialogDescription>
+            </DialogHeader>
+            {forwardingMessage && (
+                 <div className="mt-2 p-2 border rounded-md bg-muted/50 text-sm">
+                    <p className="font-medium text-foreground mb-1">Message from: {forwardingMessage.senderName}</p>
+                    {forwardingMessage.type === 'text' && <p className="whitespace-pre-wrap break-words">{forwardingMessage.text}</p>}
+                    {forwardingMessage.type === 'image' && <Image src={forwardingMessage.fileUrl!} alt="Forwarded Image" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" data-ai-hint="forwarded content" />}
+                    {forwardingMessage.type === 'gif' && <Image src={forwardingMessage.gifUrl!} alt="Forwarded GIF" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" unoptimized data-ai-hint="forwarded content"/>}
+                    {/* Add more previews for other types if needed */}
+                 </div>
+            )}
+            <div className="grid gap-4 py-4">
+                <Input placeholder="Search channels or users (coming soon)..." disabled/>
+                {/* Placeholder for recipient list */}
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsForwardDialogOpen(false)}>Cancel</Button>
+                <Button 
+                    onClick={() => {
+                        toast({ title: "Forward Successful (Simulated)", description: "Message has been forwarded."});
+                        setIsForwardDialogOpen(false);
+                        setForwardingMessage(null);
+                    }}
+                    disabled // Disabled until recipient selection is implemented
+                >
+                    Forward
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
