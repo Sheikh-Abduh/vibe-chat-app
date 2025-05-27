@@ -1,3 +1,5 @@
+// This file is no longer needed as Suspense is used for page transition loading states.
+// You can safely delete this file from your project.
 
 "use client";
 

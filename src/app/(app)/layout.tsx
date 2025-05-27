@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react'; // Added React and Suspense
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { onAuthStateChanged, signOut as firebaseSignOut, type User } from 'firebase/auth';
@@ -31,7 +31,7 @@ import {
   SidebarMenuButton,
   SidebarInset,
 } from '@/components/ui/sidebar';
-import { LoadingProvider, useAppLoading } from '@/contexts/LoadingContext'; // Changed useLoading to useAppLoading
+// Removed LoadingProvider and useAppLoading import
 
 interface UserStoredDetails {
   hobbies: string;
@@ -50,24 +50,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userDetails, setUserDetails] = useState<UserStoredDetails | null>(null);
-  const { isNavigationLoading, setIsNavigationLoading } = useAppLoading();
+  // Removed isNavigationLoading and setIsNavigationLoading from useAppLoading
 
-  useEffect(() => {
-    const handleRouteChangeStart = () => setIsNavigationLoading(true);
-    const handleRouteChangeComplete = () => setIsNavigationLoading(false);
-    const handleRouteChangeError = () => setIsNavigationLoading(false);
-
-    router.events?.on('routeChangeStart', handleRouteChangeStart);
-    router.events?.on('routeChangeComplete', handleRouteChangeComplete);
-    router.events?.on('routeChangeError', handleRouteChangeError);
-
-    return () => {
-      router.events?.off('routeChangeStart', handleRouteChangeStart);
-      router.events?.off('routeChangeComplete', handleRouteChangeComplete);
-      router.events?.off('routeChangeError', handleRouteChangeError);
-    };
-  }, [router.events, setIsNavigationLoading]);
-
+  // Removed useEffect for router.events as it's not compatible with App Router's useRouter from next/navigation
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -75,8 +60,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         setCurrentUser(user);
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
-          // If onboarding is complete, we can stop checking auth for THIS initial load.
-          // Subsequent navigation loading is handled by router.events.
           setIsCheckingAuth(false);
         } else {
           if (pathname.startsWith('/onboarding')) {
@@ -111,15 +94,14 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       }
     });
     return () => unsubscribe();
-  }, [router, pathname, setIsNavigationLoading]); // Added setIsNavigationLoading to dependencies to ensure context is stable
+  }, [router, pathname]); 
 
   const handleLogout = async () => {
+    setIsCheckingAuth(true); // Show splash during logout
     try {
-      setIsNavigationLoading(true); // Show splash during logout process
       await firebaseSignOut(auth);
       setCurrentUser(null);
       setUserDetails(null);
-      // Clear all user-specific localStorage
       if (currentUser) {
         Object.keys(localStorage).forEach(key => {
             if (key.includes(currentUser.uid)) {
@@ -132,30 +114,25 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Logout error:", error);
       toast({ variant: "destructive", title: "Logout Failed", description: "Could not log you out. Please try again." });
-    } finally {
-       // setIsNavigationLoading(false); // Not strictly needed if navigating away
+      setIsCheckingAuth(false); 
     }
   };
 
-  // Show splash screen if checking initial auth OR if navigating between pages
-  if (isCheckingAuth || isNavigationLoading) {
+  if (isCheckingAuth) { // Simplified condition: only show splash for initial auth check
     return <SplashScreenDisplay />;
   }
   
   if (!currentUser && !pathname.startsWith('/onboarding')) {
-    return <SplashScreenDisplay />; // Fallback, should be caught by onAuthStateChanged
+    return <SplashScreenDisplay />; 
   }
 
   if (!currentUser && pathname.startsWith('/onboarding')) {
-      // This allows onboarding pages to render even if currentUser state update is slightly delayed
-      // but onAuthStateChanged should ideally redirect to /login if no user is eventually found.
       return <>{children}</>; 
   }
   
   if (!currentUser) {
-      return <SplashScreenDisplay />; // Should be caught by onAuthStateChanged
+      return <SplashScreenDisplay />; 
   }
-
 
   return (
     <SidebarProvider defaultOpen={false}>
@@ -325,7 +302,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         <div className="h-screen flex flex-col overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0 h-12">
             <div className="relative flex h-full items-center px-4">
-              {/* Removed SidebarTrigger from here */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
                   <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} data-ai-hint="typography wordmark" priority />
@@ -341,7 +317,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             </div>
           </header>
           <main className="flex-1 overflow-hidden">
-            {children}
+            <Suspense fallback={<SplashScreenDisplay />}>
+              {children}
+            </Suspense>
           </main>
         </div>
       </SidebarInset>
@@ -349,11 +327,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   );
 }
 
-
 export default function AuthenticatedAppLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <LoadingProvider>
-      <AppLayoutContent>{children}</AppLayoutContent>
-    </LoadingProvider>
-  );
+  // Removed LoadingProvider as it's no longer needed with Suspense for route changes
+  return <AppLayoutContent>{children}</AppLayoutContent>;
 }
