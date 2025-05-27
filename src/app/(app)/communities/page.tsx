@@ -9,27 +9,13 @@ import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
 import dynamic from 'next/dynamic';
-import type { TenorGif as TenorGifType } from '@/types/tenor'; // Assuming you might create a types file
+import type { TenorGif as TenorGifType } from '@/types/tenor'; 
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
+import data from '@emoji-mart/data';
 const Picker = dynamic(() => import('emoji-mart').then(mod => mod.Picker), {
   ssr: false,
   loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
 });
-import data from '@emoji-mart/data'
 
 
 // Cloudinary configuration (API Key is safe for client-side with unsigned uploads)
@@ -44,6 +30,21 @@ const ALLOWED_FILE_TYPES = [
   'text/plain',
   'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', // Added mpeg for mp3
 ];
+
+
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 
 const placeholderCommunities = [
@@ -402,7 +403,7 @@ export default function CommunitiesPage() {
             senderName: data.senderName,
             senderAvatarUrl: data.senderAvatarUrl,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
-            type: data.type,
+            type: data.type || 'text', // Ensure type always has a value
             fileUrl: data.fileUrl,
             fileName: data.fileName,
             fileType: data.fileType,
@@ -482,13 +483,12 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: ChatMessage = {
-      id: '', // Firestore will generate this
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp() as any, // Placeholder, will be server timestamp
+      timestamp: serverTimestamp(), 
       type: 'text' as const,
       isPinned: false,
       reactions: {},
@@ -544,12 +544,11 @@ export default function CommunitiesPage() {
     }
 
 
-    const messageData: ChatMessage = {
-      id: '', // Firestore will generate this
+    const messageData:  Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp() as any, // Placeholder
+      timestamp: serverTimestamp(), 
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
@@ -616,10 +615,11 @@ export default function CommunitiesPage() {
       const data = await response.json();
       const secureUrl = data.secure_url;
       const originalFilename = data.original_filename || file.name;
-      const fileType = file.type; // Use the original file type
+      const fileTypeFromCloudinary = data.resource_type === 'video' && data.format === 'webm' ? 'audio/webm' : (data.format ? `${data.resource_type}/${data.format}` : file.type);
+
 
       if (secureUrl) {
-        await sendAttachmentMessageToFirestore(secureUrl, originalFilename, fileType);
+        await sendAttachmentMessageToFirestore(secureUrl, originalFilename, fileTypeFromCloudinary);
       } else {
         throw new Error('Cloudinary did not return a URL.');
       }
@@ -670,12 +670,11 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: ChatMessage = {
-      id: '', // Firestore will generate
+    const messageData:  Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp() as any, // Placeholder
+      timestamp: serverTimestamp(), 
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
@@ -841,7 +840,7 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; isPinned: boolean; reactions: Record<string, string[]> } = {
+    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp' | 'replyToMessageId' | 'replyToSenderName' | 'replyToTextSnippet'> & { timestamp: any } = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || null,
@@ -849,20 +848,19 @@ export default function CommunitiesPage() {
         type: forwardingMessage.type,
         isPinned: false,
         reactions: {},
+        text: forwardingMessage.text,
+        fileUrl: forwardingMessage.fileUrl,
+        fileName: forwardingMessage.fileName,
+        fileType: forwardingMessage.fileType,
+        gifUrl: forwardingMessage.gifUrl,
+        gifId: forwardingMessage.gifId,
+        gifTinyUrl: forwardingMessage.gifTinyUrl,
+        gifContentDescription: forwardingMessage.gifContentDescription,
     };
-
-    if (forwardingMessage.text) forwardedMessageData.text = forwardingMessage.text;
-    if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
-    if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
-    if (forwardingMessage.fileType) forwardedMessageData.fileType = forwardingMessage.fileType;
-    if (forwardingMessage.gifUrl) forwardedMessageData.gifUrl = forwardingMessage.gifUrl;
-    if (forwardingMessage.gifId) forwardedMessageData.gifId = forwardingMessage.gifId;
-    if (forwardingMessage.gifTinyUrl) forwardedMessageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
-    if (forwardingMessage.gifContentDescription) forwardedMessageData.gifContentDescription = forwardingMessage.gifContentDescription;
     
     try {
         const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${targetChannel.id}/messages`);
-        await addDoc(messagesRef, forwardedMessageData as any); // Cast to any to satisfy addDoc, ChatMessage with all fields
+        await addDoc(messagesRef, forwardedMessageData); 
         toast({ title: "Message Forwarded", description: `Message forwarded to #${targetChannel.name}.` });
     } catch (error) {
         console.error("Error forwarding message:", error);
@@ -1697,6 +1695,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
-
-    

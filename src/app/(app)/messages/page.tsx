@@ -12,6 +12,13 @@ import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timest
 import dynamic from 'next/dynamic';
 import type { TenorGif as TenorGifType } from '@/types/tenor';
 
+import data from '@emoji-mart/data';
+const Picker = dynamic(() => import('emoji-mart').then(mod => mod.Picker), {
+  ssr: false,
+  loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
+});
+
+
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -25,13 +32,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { Badge } from '@/components/ui/badge';
-
-
-const Picker = dynamic(() => import('emoji-mart').then(mod => mod.Picker), {
-  ssr: false,
-  loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
-});
-import data from '@emoji-mart/data';
 
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -209,7 +209,7 @@ export default function MessagesPage() {
             senderName: data.senderName,
             senderAvatarUrl: data.senderAvatarUrl,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
-            type: data.type,
+            type: data.type || 'text', // Ensure type always has a value
             fileUrl: data.fileUrl,
             fileName: data.fileName,
             fileType: data.fileType,
@@ -269,6 +269,7 @@ export default function MessagesPage() {
         const convoSnap = await getDoc(convoDocRef);
         if (!convoSnap.exists()) {
             let participants = [currentUser.uid, otherUserId].sort();
+             // For self-chat ("Saved Messages"), ensure two identical UIDs for the rule check
              if (currentUser.uid === otherUserId && participants.length === 1 && participants[0] === currentUser.uid) { 
                  participants.push(currentUser.uid); 
              }
@@ -300,13 +301,12 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: ChatMessage = {
-      id: '', // Firestore will generate
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp() as any, // Placeholder
+      timestamp: serverTimestamp(),
       type: 'text' as const,
       isPinned: false,
       reactions: {},
@@ -369,12 +369,11 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: ChatMessage = {
-      id: '', // Firestore will generate
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp() as any, // Placeholder
+      timestamp: serverTimestamp(), 
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
@@ -436,8 +435,9 @@ export default function MessagesPage() {
       });
       if (!response.ok) throw new Error((await response.json()).error?.message || 'Cloudinary upload failed.');
       const data = await response.json();
+      const fileTypeFromCloudinary = data.resource_type === 'video' && data.format === 'webm' ? 'audio/webm' : (data.format ? `${data.resource_type}/${data.format}` : file.type);
       if (data.secure_url) {
-        await sendAttachmentMessageToFirestore(data.secure_url, data.original_filename || file.name, file.type);
+        await sendAttachmentMessageToFirestore(data.secure_url, data.original_filename || file.name, fileTypeFromCloudinary);
       } else throw new Error('Cloudinary did not return a URL.');
     } catch (error: any) {
       console.error("Upload Failed:", error);
@@ -470,12 +470,11 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: ChatMessage = {
-      id: '', // Firestore will generate
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp() as any, // Placeholder
+      timestamp: serverTimestamp(), 
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
@@ -617,7 +616,7 @@ export default function MessagesPage() {
         return;
     }
 
-    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; isPinned: boolean; reactions: Record<string, string[]> } = {
+    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp' | 'replyToMessageId' | 'replyToSenderName' | 'replyToTextSnippet'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -630,23 +629,22 @@ export default function MessagesPage() {
       // originalSenderName: forwardingMessage.senderName,
       // originalTimestamp: forwardingMessage.timestamp, // Keep original timestamp for reference
       text: forwardingMessage.text ? `Forwarded from ${forwardingMessage.senderName}:\n${forwardingMessage.text}` : `Forwarded message from ${forwardingMessage.senderName}`,
+      fileUrl: forwardingMessage.fileUrl,
+      fileName: forwardingMessage.fileName,
+      fileType: forwardingMessage.fileType,
+      gifUrl: forwardingMessage.gifUrl,
+      gifId: forwardingMessage.gifId,
+      gifTinyUrl: forwardingMessage.gifTinyUrl,
+      gifContentDescription: forwardingMessage.gifContentDescription,
     };
-  
-    if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
-    if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
-    if (forwardingMessage.fileType) forwardedMessageData.fileType = forwardingMessage.fileType;
-    if (forwardingMessage.gifUrl) forwardedMessageData.gifUrl = forwardingMessage.gifUrl;
-    if (forwardingMessage.gifId) forwardedMessageData.gifId = forwardingMessage.gifId;
-    if (forwardingMessage.gifTinyUrl) forwardedMessageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
-    if (forwardingMessage.gifContentDescription) forwardedMessageData.gifContentDescription = forwardingMessage.gifContentDescription;
   
     try {
       const messagesColRef = collection(db, `direct_messages/${targetConversationId}/messages`);
-      await addDoc(messagesColRef, forwardedMessageData as any);
+      await addDoc(messagesColRef, forwardedMessageData);
   
       const convoDocRef = doc(db, `direct_messages/${targetConversationId}`);
       let lastMessageText = "Forwarded message";
-      if (forwardedMessageData.text && forwardedMessageData.type === 'text') lastMessageText = forwardedMessageData.text; // only use text if it's a text message
+      if (forwardedMessageData.text && forwardedMessageData.type === 'text') lastMessageText = forwardedMessageData.text; 
       else if (forwardedMessageData.type === 'image') lastMessageText = "Forwarded an image";
       else if (forwardedMessageData.type === 'gif') lastMessageText = "Forwarded a GIF";
       else if (forwardedMessageData.type === 'file') lastMessageText = "Forwarded a file";
@@ -1003,7 +1001,7 @@ export default function MessagesPage() {
                                 }} 
                                 theme={currentThemeMode} 
                                 previewPosition="none" 
-                                searchPlaceholder="Select an emoji. Search not available yet."
+                                searchPlaceholder="Select a reaction. Search not available yet."
                              />
                           </PopoverContent>
                         </Popover>
@@ -1223,5 +1221,3 @@ export default function MessagesPage() {
   );
 }
   
-
-    
