@@ -8,7 +8,7 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
-import { Picker } from 'emoji-mart'; // Corrected import
+import { Picker } from 'emoji-mart';
 import data from '@emoji-mart/data'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -167,7 +167,7 @@ type ChatMessage = {
  *          - `senderAvatarUrl`: string | null
  *          - `timestamp`: Firebase Server Timestamp (for ordering)
  *          - `type`: 'text' | 'image' | 'file' | 'gif' | 'voice_message'
- *          - `fileUrl`: string (URL for image, file, voice message)
+ *          - `fileUrl`: string (URL for image, file, voice message from Cloudinary)
  *          - `fileName`: string (for file uploads)
  *          - `fileType`: string (MIME type, e.g., 'audio/webm' for voice messages)
  *          - `gifUrl`: string (URL from Tenor for GIFs)
@@ -185,27 +185,31 @@ type ChatMessage = {
  *      - Community/channel management restrictions.
  *      - Deleting messages restricted to sender or moderators.
  *      - Updating `isPinned` and `reactions` might have specific role-based logic.
- *      - See "Updated Firestore Security Rules" in the assistant's previous response for more details.
+ *      - See the "Updated Firestore Security Rules" section in the assistant's previous response.
  *
  * 2. Real-time Message Listening (Frontend - Firebase SDK - Implemented for text):
  *    - `onSnapshot` listener for channel messages is active.
  *
  * 3. Sending Text Messages (Frontend - Implemented with Firestore):
  *    - Saves to Firestore. Now includes reply context if applicable.
+ *    - Includes basic Markdown formatting for bold, italic, strikethrough, underline, superscript, subscript.
  *
  * 4. File/Image Upload (Frontend - Implemented with Cloudinary):
- *    - Uploads to Cloudinary, then saves message details (URL, filename) to Firestore.
+ *    - Uploads to Cloudinary, then saves message details (URL, filename, fileType) to Firestore.
+ *    - Includes 20MB file size limit and basic type validation.
  *
  * 5. GIF Send (Frontend - Implemented with direct Tenor API for prototype):
  *    - **SECURITY WARNING: DO NOT EXPOSE YOUR TENOR API KEY IN CLIENT-SIDE CODE.**
  *      Proxy Tenor API requests through a Firebase Cloud Function in production.
  *    - Fetches GIFs, saves GIF details (including id, tinyUrl, contentDescription) to Firestore.
+ *    - Implemented GIF favoriting using localStorage.
  *
  * 6. Emoji Send (Frontend - Implemented with emoji-mart):
- *    - Uses `emoji-mart` picker to append emojis to the text input.
+ *    - Uses `emoji-mart` Picker component to append emojis to the text input.
  *
  * 7. Voice Message Send (Frontend - Implemented with MediaRecorder & Cloudinary Upload):
- *    - Captures audio. Uploads the audio Blob to Cloudinary and saves the public URL to Firestore.
+ *    - Captures audio. Uploads the audio Blob to Cloudinary and saves the public URL and fileType to Firestore.
+ *    - Messages of type 'voice_message' are rendered with an HTML5 <audio> player.
  *
  * 8. Delete & Pin Message Features (Frontend - Implemented):
  *    - Interacts with Firestore to delete or update `isPinned` status.
@@ -213,20 +217,20 @@ type ChatMessage = {
  * 9. Message Reactions (Frontend - Implemented with emoji-mart picker):
  *    - Users can add/remove reactions. Stored in the `reactions` field of the message in Firestore.
  *
- * 10. Reply to Message (Frontend - Basic UI implemented):
+ * 10. Reply to Message (Frontend - UI and data model implemented):
  *     - UI indicator for message being replied to.
  *     - Saves reply context (`replyToMessageId`, `replyToSenderName`, `replyToTextSnippet`) to Firestore.
  *     - Renders replied-to message snippet above the reply.
  *
- * 11. Forward Message (Frontend - Basic UI & simulated send implemented):
+ * 11. Forward Message (Frontend - Basic UI & hardcoded forward to first text channel implemented):
  *     - Opens a dialog to show the message to forward.
- *     - For now, "forwards" to the first text channel of the current community (needs dynamic recipient selection).
+ *     - "Forwards" by creating a new message from the current user to the first text channel of the current community.
  *
  * 12. UI/UX Enhancements:
- *     - Loading states for all async operations (partially implemented).
- *     - Error handling with toasts (partially implemented).
- *     - Optimistic UI updates (consider for reactions, message sending).
- *     - Typing indicators, read receipts (Advanced).
+ *     - Loading states for file uploads and GIF fetching.
+ *     - Error handling with toasts.
+ *     - Timestamp grouping for messages from the same sender within a short interval.
+ *     - Pinned messages toggle.
  *
  * 13. Voice & Video Channels (Advanced - WebRTC):
  *     - Requires a WebRTC service (e.g., Agora, Twilio Video) or a library with Firebase.
@@ -515,7 +519,7 @@ export default function CommunitiesPage() {
     }
 
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any; fileType: string } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -560,7 +564,7 @@ export default function CommunitiesPage() {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
     formData.append('api_key', CLOUDINARY_API_KEY);
-    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); 
+    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); // Cloudinary often handles audio under 'video' resource type
 
     try {
       const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${isVoiceMessage ? 'video' : 'auto'}/upload`, {
@@ -576,7 +580,7 @@ export default function CommunitiesPage() {
       const data = await response.json();
       const secureUrl = data.secure_url;
       const originalFilename = data.original_filename || file.name;
-      const fileType = file.type;
+      const fileType = file.type; // Use the original file type
 
       if (secureUrl) {
         await sendAttachmentMessageToFirestore(secureUrl, originalFilename, fileType);
@@ -950,7 +954,7 @@ export default function CommunitiesPage() {
                 const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); 
                 const audioFile = new File([audioBlob], `voice_message_${Date.now()}.webm`, { type: 'audio/webm' });
                 
-                toast({ title: "Voice Message Recorded", description: "Uploading to Cloudinary..." });
+                toast({ title: "Voice Message Recorded", description: "Uploading..." });
                 await uploadFileToCloudinaryAndSend(audioFile, true); 
 
                 stream.getTracks().forEach(track => track.stop()); 
@@ -1270,7 +1274,7 @@ export default function CommunitiesPage() {
                                 }}
                                 theme={currentThemeMode}
                                 previewPosition="none"
-                                placeholder="Select a reaction. Search not available yet."
+                                searchPlaceholder="Select a reaction. Search not available yet."
                              />
                           </PopoverContent>
                         </Popover>
@@ -1380,7 +1384,7 @@ export default function CommunitiesPage() {
                             }}
                             theme={currentThemeMode}
                             previewPosition="none"
-                            placeholder="Select an emoji. Search not available yet."
+                            searchPlaceholder="Select an emoji. Search not available yet."
                         />
                     </PopoverContent>
                     </Popover>
@@ -1635,13 +1639,13 @@ export default function CommunitiesPage() {
                     placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    disabled 
+                    
                 />
                 {/* Placeholder for recipient list */}
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => {setIsForwardDialogOpen(false); setForwardingMessage(null); setForwardSearchTerm("");}}>Cancel</Button>
-                <Button onClick={handleForwardMessage}>
+                <Button onClick={handleForwardMessage} >
                     Forward
                 </Button>
             </DialogFooter>

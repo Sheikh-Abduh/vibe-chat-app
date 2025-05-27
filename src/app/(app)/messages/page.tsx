@@ -9,7 +9,7 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
-import { Picker } from 'emoji-mart'; // Corrected import
+import { Picker } from 'emoji-mart';
 import data from '@emoji-mart/data';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -254,6 +254,7 @@ export default function MessagesPage() {
         const convoSnap = await getDoc(convoDocRef);
         if (!convoSnap.exists()) {
             const participants = [currentUser.uid, otherUserId].sort();
+             // For self-chat "Saved Messages", participants array should contain current user's UID twice
              if (currentUser.uid === otherUserId && participants.length === 1 && participants[0] === currentUser.uid) { 
                  participants.push(currentUser.uid); 
              }
@@ -262,10 +263,11 @@ export default function MessagesPage() {
                 participants: participants,
                 createdAt: serverTimestamp(),
                 lastMessageTimestamp: serverTimestamp(),
-                [`user_${currentUser.uid}_name`]: currentUser.displayName || "User",
+                // Storing user details in convo doc can be helpful for listing DMs later
+                [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
                 [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
-                [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || "User", 
-                [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || null,
+                [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"), 
+                [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || (otherUserId === currentUser.uid ? currentUser.photoURL : null),
             });
         }
         return true;
@@ -313,6 +315,9 @@ export default function MessagesPage() {
       await updateDoc(convoDocRef, { 
         lastMessage: messageData.text,
         lastMessageTimestamp: serverTimestamp(),
+        // Optionally update participant details if they might change
+        [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+        [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
       });
 
       setNewMessage("");
@@ -339,7 +344,7 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any ; fileType: string } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -368,8 +373,10 @@ export default function MessagesPage() {
 
        const convoDocRef = doc(db, `direct_messages/${conversationId}`);
         await updateDoc(convoDocRef, { 
-            lastMessage: messageType === 'image' ? 'Sent an image' : (messageType === 'voice_message' ? 'Sent a voice message' : 'Sent a file'),
-            lastMessageTimestamp: serverTimestamp() 
+            lastMessage: messageType === 'image' ? 'Sent an image' : (messageType === 'voice_message' ? 'Sent a voice message' : `Sent a file: ${fileName}`),
+            lastMessageTimestamp: serverTimestamp(),
+            [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+            [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
         });
       setReplyingToMessage(null);
       toast({ title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Sent!` });
@@ -458,7 +465,9 @@ export default function MessagesPage() {
         const convoDocRef = doc(db, `direct_messages/${conversationId}`);
         await updateDoc(convoDocRef, { 
             lastMessage: 'Sent a GIF',
-            lastMessageTimestamp: serverTimestamp() 
+            lastMessageTimestamp: serverTimestamp(),
+            [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+            [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
         });
       setShowGifPicker(false); setGifSearchTerm(""); setGifs([]);
       setReplyingToMessage(null);
@@ -537,52 +546,51 @@ export default function MessagesPage() {
   };
 
   const handleForwardMessage = async () => {
-    if (!forwardingMessage || !currentUser || !conversationId) {
+    if (!forwardingMessage || !currentUser ) {
       toast({ variant: "destructive", title: "Forward Error", description: "Cannot forward message." });
       return;
     }
   
     // For DMs, forward to "Saved Messages"
-    const targetConversationId = `${currentUser.uid}_${currentUser.uid}`.split('_').sort().join('_'); // Ensure sorted
-    const targetIsSelf = targetConversationId === conversationId && otherUserId === currentUser.uid;
+    const targetConversationId = [currentUser.uid, currentUser.uid].sort().join('_'); 
 
-    const conversationReady = await ensureConversationDocument(); // Ensure current convo doc exists
-    if (!conversationReady && !targetIsSelf) { // If not forwarding to self, current convo must be ready.
-         toast({ variant: "destructive", title: "Forward Error", description: "Could not prepare current conversation." });
-        return;
-    }
-     // Ensure the "Saved Messages" conversation document exists if forwarding to self
-    if (targetIsSelf) {
-        const selfConvoDocRef = doc(db, `direct_messages/${targetConversationId}`);
-        const selfConvoSnap = await getDoc(selfConvoDocRef);
-        if (!selfConvoSnap.exists()) {
-            await setDoc(selfConvoDocRef, {
-                participants: [currentUser.uid, currentUser.uid],
+    // Ensure the "Saved Messages" conversation document exists
+    const savedMessagesConvoDocRef = doc(db, `direct_messages/${targetConversationId}`);
+    try {
+        const savedMessagesConvoSnap = await getDoc(savedMessagesConvoDocRef);
+        if (!savedMessagesConvoSnap.exists()) {
+            await setDoc(savedMessagesConvoDocRef, {
+                participants: [currentUser.uid, currentUser.uid], // Both participants are the current user
                 createdAt: serverTimestamp(),
                 lastMessageTimestamp: serverTimestamp(),
-                [`user_${currentUser.uid}_name`]: currentUser.displayName || "User",
+                [`user_${currentUser.uid}_name`]: currentUser.displayName || "You",
                 [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
             });
         }
+    } catch (error) {
+        console.error("Error ensuring Saved Messages conversation:", error);
+        toast({ variant: "destructive", title: "Forward Error", description: "Could not prepare Saved Messages." });
+        setIsForwardDialogOpen(false);
+        setForwardingMessage(null);
+        return;
     }
 
-
     const forwardedMessageData: any = {
-      senderId: currentUser.uid,
+      senderId: currentUser.uid, // Message is sent by current user into their saved messages
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(),
       type: forwardingMessage.type,
       isPinned: false,
       reactions: {},
-      // You might want to add specific fields to indicate it's a forwarded message
-      // isForwarded: true,
-      // originalSenderName: forwardingMessage.senderName,
-      // originalTimestamp: forwardingMessage.timestamp,
+      // Optionally add fields to indicate it's forwarded from original sender
+      originalSenderId: forwardingMessage.senderId,
+      originalSenderName: forwardingMessage.senderName,
+      originalTimestamp: forwardingMessage.timestamp, // Keep original timestamp for reference
+      text: forwardingMessage.text ? `Forwarded from ${forwardingMessage.senderName}:\n${forwardingMessage.text}` : `Forwarded message from ${forwardingMessage.senderName}`,
     };
   
-    // Copy content fields
-    if (forwardingMessage.text) forwardedMessageData.text = forwardingMessage.text;
+    // Copy other content fields
     if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
     if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
     if (forwardingMessage.fileType) forwardedMessageData.fileType = forwardingMessage.fileType;
@@ -609,7 +617,7 @@ export default function MessagesPage() {
         lastMessageTimestamp: serverTimestamp(),
       });
   
-      toast({ title: "Message Forwarded", description: "Message forwarded to Saved Messages." });
+      toast({ title: "Message Forwarded", description: "Message forwarded to your Saved Messages." });
     } catch (error) {
       console.error("Error forwarding message:", error);
       toast({ variant: "destructive", title: "Forward Failed", description: "Could not forward the message." });
@@ -946,7 +954,16 @@ export default function MessagesPage() {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
-                             <Picker data={data} onEmojiSelect={(emoji: any) => { handleToggleReaction(msg.id, emoji.native); setReactionPickerOpenForMessageId(null); }} theme={currentThemeMode} previewPosition="none" placeholder="Select a reaction. Search not available yet." />
+                             <Picker 
+                                data={data} 
+                                onEmojiSelect={(emoji: any) => { 
+                                    handleToggleReaction(msg.id, emoji.native); 
+                                    setReactionPickerOpenForMessageId(null); 
+                                }} 
+                                theme={currentThemeMode} 
+                                previewPosition="none" 
+                                searchPlaceholder="Select a reaction. Search not available yet."
+                             />
                           </PopoverContent>
                         </Popover>
                         <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin" : "Pin"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
@@ -1010,7 +1027,17 @@ export default function MessagesPage() {
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
-                        <Picker data={data} onEmojiSelect={(emoji: any) => { setNewMessage(prev => prev + emoji.native); setChatEmojiPickerOpen(false); chatInputRef.current?.focus(); }} theme={currentThemeMode} previewPosition="none" placeholder="Select an emoji. Search not available yet."/>
+                        <Picker 
+                            data={data} 
+                            onEmojiSelect={(emoji: any) => { 
+                                setNewMessage(prev => prev + emoji.native); 
+                                setChatEmojiPickerOpen(false); 
+                                chatInputRef.current?.focus(); 
+                            }} 
+                            theme={currentThemeMode} 
+                            previewPosition="none" 
+                            searchPlaceholder="Select an emoji. Search not available yet."
+                        />
                     </PopoverContent>
                     </Popover>
                     <Dialog open={showGifPicker} onOpenChange={setShowGifPicker}>
@@ -1139,7 +1166,7 @@ export default function MessagesPage() {
                     placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    disabled
+                    
                 />
                 {/* Placeholder for recipient list */}
             </div>
