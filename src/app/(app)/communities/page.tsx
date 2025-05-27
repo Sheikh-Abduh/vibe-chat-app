@@ -8,7 +8,7 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
-import Picker from 'emoji-mart';
+import { Picker } from 'emoji-mart'; // Corrected import
 import data from '@emoji-mart/data'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -1248,6 +1248,7 @@ export default function CommunitiesPage() {
                             onClick={() => {
                                 setForwardingMessage(msg);
                                 setIsForwardDialogOpen(true);
+                                setForwardSearchTerm(""); 
                             }}>
                           <Share2 className="h-4 w-4" />
                         </Button>
@@ -1269,6 +1270,7 @@ export default function CommunitiesPage() {
                                 }}
                                 theme={currentThemeMode}
                                 previewPosition="none"
+                                placeholder="Select a reaction. Search not available yet."
                              />
                           </PopoverContent>
                         </Popover>
@@ -1378,6 +1380,7 @@ export default function CommunitiesPage() {
                             }}
                             theme={currentThemeMode}
                             previewPosition="none"
+                            placeholder="Select an emoji. Search not available yet."
                         />
                     </PopoverContent>
                     </Popover>
@@ -1621,7 +1624,7 @@ export default function CommunitiesPage() {
             {forwardingMessage && (
                  <div className="mt-2 p-2 border rounded-md bg-muted/50 text-sm">
                     <p className="font-medium text-foreground mb-1">Message from: {forwardingMessage.senderName}</p>
-                    {forwardingMessage.type === 'text' && <p className="whitespace-pre-wrap break-words">{forwardingMessage.text}</p>}
+                    {forwardingMessage.type === 'text' && <p className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatChatMessage(forwardingMessage.text!) }} />}
                     {forwardingMessage.type === 'image' && <Image src={forwardingMessage.fileUrl!} alt="Forwarded Image" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" data-ai-hint="forwarded content" />}
                     {forwardingMessage.type === 'gif' && <Image src={forwardingMessage.gifUrl!} alt="Forwarded GIF" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" unoptimized data-ai-hint="forwarded content"/>}
                     {/* Add more previews for other types if needed */}
@@ -1632,11 +1635,12 @@ export default function CommunitiesPage() {
                     placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
+                    disabled 
                 />
                 {/* Placeholder for recipient list */}
             </div>
             <DialogFooter>
-                <Button variant="outline" onClick={() => {setIsForwardDialogOpen(false); setForwardSearchTerm("");}}>Cancel</Button>
+                <Button variant="outline" onClick={() => {setIsForwardDialogOpen(false); setForwardingMessage(null); setForwardSearchTerm("");}}>Cancel</Button>
                 <Button onClick={handleForwardMessage}>
                     Forward
                 </Button>

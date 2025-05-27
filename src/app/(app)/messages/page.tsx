@@ -9,7 +9,7 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
-import Picker from 'emoji-mart';
+import { Picker } from 'emoji-mart'; // Corrected import
 import data from '@emoji-mart/data';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -932,6 +932,7 @@ export default function MessagesPage() {
                             onClick={() => {
                                 setForwardingMessage(msg);
                                 setIsForwardDialogOpen(true);
+                                setForwardSearchTerm(""); 
                             }}>
                           <Share2 className="h-4 w-4" />
                         </Button>
@@ -945,7 +946,7 @@ export default function MessagesPage() {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
-                             <Picker data={data} onEmojiSelect={(emoji: any) => { handleToggleReaction(msg.id, emoji.native); setReactionPickerOpenForMessageId(null); }} theme={currentThemeMode} previewPosition="none" />
+                             <Picker data={data} onEmojiSelect={(emoji: any) => { handleToggleReaction(msg.id, emoji.native); setReactionPickerOpenForMessageId(null); }} theme={currentThemeMode} previewPosition="none" placeholder="Select a reaction. Search not available yet." />
                           </PopoverContent>
                         </Popover>
                         <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin" : "Pin"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
@@ -1009,7 +1010,7 @@ export default function MessagesPage() {
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
-                        <Picker data={data} onEmojiSelect={(emoji: any) => { setNewMessage(prev => prev + emoji.native); setChatEmojiPickerOpen(false); chatInputRef.current?.focus(); }} theme={currentThemeMode} previewPosition="none" />
+                        <Picker data={data} onEmojiSelect={(emoji: any) => { setNewMessage(prev => prev + emoji.native); setChatEmojiPickerOpen(false); chatInputRef.current?.focus(); }} theme={currentThemeMode} previewPosition="none" placeholder="Select an emoji. Search not available yet."/>
                     </PopoverContent>
                     </Popover>
                     <Dialog open={showGifPicker} onOpenChange={setShowGifPicker}>
@@ -1127,7 +1128,7 @@ export default function MessagesPage() {
             {forwardingMessage && (
                  <div className="mt-2 p-2 border rounded-md bg-muted/50 text-sm">
                     <p className="font-medium text-foreground mb-1">Message from: {forwardingMessage.senderName}</p>
-                    {forwardingMessage.type === 'text' && <p className="whitespace-pre-wrap break-words">{forwardingMessage.text}</p>}
+                    {forwardingMessage.type === 'text' && <p className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatChatMessage(forwardingMessage.text!) }} />}
                     {forwardingMessage.type === 'image' && <Image src={forwardingMessage.fileUrl!} alt="Forwarded Image" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" data-ai-hint="forwarded content" />}
                     {forwardingMessage.type === 'gif' && <Image src={forwardingMessage.gifUrl!} alt="Forwarded GIF" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" unoptimized data-ai-hint="forwarded content"/>}
                     {/* Add more previews for other types if needed */}
@@ -1138,11 +1139,12 @@ export default function MessagesPage() {
                     placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
+                    disabled
                 />
                 {/* Placeholder for recipient list */}
             </div>
             <DialogFooter>
-                <Button variant="outline" onClick={() => {setIsForwardDialogOpen(false); setForwardSearchTerm("");}}>Cancel</Button>
+                <Button variant="outline" onClick={() => {setIsForwardDialogOpen(false); setForwardingMessage(null); setForwardSearchTerm("");}}>Cancel</Button>
                 <Button onClick={handleForwardMessage}>
                     Forward
                 </Button>
