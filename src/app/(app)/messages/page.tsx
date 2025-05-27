@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation'; // Added missing import
 import type { User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -18,7 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, MessageSquare as MessageSquareIcon, User as UserIcon, Mic } from 'lucide-react'; // Renamed MessageSquare to avoid conflict, added Mic
+import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, MessageSquare as MessageSquareIcon, User as UserIcon, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -99,6 +100,7 @@ export default function MessagesPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const { toast } = useToast();
+  const router = useRouter(); // Hook call
 
   const [otherUserId, setOtherUserId] = useState<string | null>(null);
   const [otherUserName, setOtherUserName] = useState<string | null>('Chat Partner');
@@ -158,7 +160,7 @@ export default function MessagesPage() {
       }
     });
     return () => unsubscribeAuth();
-  }, [toast]); // Removed router from dependencies as it's stable
+  }, [toast, router]);
 
 
   useEffect(() => {
@@ -221,7 +223,7 @@ export default function MessagesPage() {
 
   const isGifFavorited = (gifId: string): boolean => !!favoritedGifs.find(fav => fav.id === gifId);
 
-  const ensureConversationDocument = async () => {
+  const ensureConversationDocument = async (): Promise<boolean> => {
     if (!currentUser || !otherUserId || !conversationId) {
         toast({ variant: "destructive", title: "Error", description: "User or conversation not identified." });
         return false;
@@ -233,7 +235,7 @@ export default function MessagesPage() {
             await setDoc(convoDocRef, {
                 participants: [currentUser.uid, otherUserId].sort(),
                 createdAt: serverTimestamp(),
-                lastMessageTimestamp: serverTimestamp(),
+                lastMessageTimestamp: serverTimestamp(), // Initialize this field
             });
             console.log("Conversation document created:", conversationId);
         }
@@ -555,7 +557,6 @@ export default function MessagesPage() {
     ? messages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
     : messages;
 
-  const router = useRouter(); // Added this as it's used but not imported
 
   if (isCheckingAuth || !currentUser) {
     return <SplashScreenDisplay />;
@@ -840,3 +841,5 @@ export default function MessagesPage() {
     </div>
   );
 }
+
+    
