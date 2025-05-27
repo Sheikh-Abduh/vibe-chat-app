@@ -9,14 +9,9 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
-import dynamic from 'next/dynamic';
 import type { TenorGif as TenorGifType } from '@/types/tenor';
 
-import data from '@emoji-mart/data';
-const Picker = dynamic(() => import('emoji-mart').then(mod => mod.Picker), {
-  ssr: false,
-  loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
-});
+import EmojiPicker, { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
 
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -25,7 +20,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, MessageSquare as MessageSquareIcon, User as UserIcon, Mic, Bookmark, Reply, Share2, X, Search, MessageSquareReply } from 'lucide-react';
+import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, User as UserIcon, Mic, Bookmark, Reply, Share2, X, Search, MessageSquareReply } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -91,7 +86,7 @@ interface DmConversation {
 const formatChatMessage = (text: string): string => {
   if (!text) return '';
   let formattedText = text;
-  formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt");
+  formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
   formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
   formattedText = formattedText.replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>');
   formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
@@ -204,24 +199,24 @@ export default function MessagesPage() {
           const data = docSnap.data();
           return {
             id: docSnap.id,
-            text: data.text,
+            text: data.text || undefined,
             senderId: data.senderId,
             senderName: data.senderName,
-            senderAvatarUrl: data.senderAvatarUrl,
+            senderAvatarUrl: data.senderAvatarUrl || null,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
-            type: data.type || 'text', // Ensure type always has a value
-            fileUrl: data.fileUrl,
-            fileName: data.fileName,
-            fileType: data.fileType,
-            gifUrl: data.gifUrl,
-            gifId: data.gifId,
-            gifTinyUrl: data.gifTinyUrl,
-            gifContentDescription: data.gifContentDescription,
+            type: data.type || 'text',
+            fileUrl: data.fileUrl || undefined,
+            fileName: data.fileName || undefined,
+            fileType: data.fileType || undefined,
+            gifUrl: data.gifUrl || undefined,
+            gifId: data.gifId || undefined,
+            gifTinyUrl: data.gifTinyUrl || undefined,
+            gifContentDescription: data.gifContentDescription || undefined,
             isPinned: data.isPinned || false,
             reactions: data.reactions || {},
-            replyToMessageId: data.replyToMessageId,
-            replyToSenderName: data.replyToSenderName,
-            replyToTextSnippet: data.replyToTextSnippet,
+            replyToMessageId: data.replyToMessageId || undefined,
+            replyToSenderName: data.replyToSenderName || undefined,
+            replyToTextSnippet: data.replyToTextSnippet || undefined,
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
@@ -269,7 +264,6 @@ export default function MessagesPage() {
         const convoSnap = await getDoc(convoDocRef);
         if (!convoSnap.exists()) {
             let participants = [currentUser.uid, otherUserId].sort();
-             // For self-chat ("Saved Messages"), ensure two identical UIDs for the rule check
              if (currentUser.uid === otherUserId && participants.length === 1 && participants[0] === currentUser.uid) { 
                  participants.push(currentUser.uid); 
              }
@@ -278,7 +272,6 @@ export default function MessagesPage() {
                 participants: participants,
                 createdAt: serverTimestamp(),
                 lastMessageTimestamp: serverTimestamp(),
-                // Storing user details in convo doc can be helpful for listing DMs later
                 [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
                 [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
                 [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"), 
@@ -301,7 +294,7 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text'; isPinned: boolean; reactions: Record<string, string[]> } = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -310,16 +303,6 @@ export default function MessagesPage() {
       type: 'text' as const,
       isPinned: false,
       reactions: {},
-      // fileUrl: undefined,
-      // fileName: undefined,
-      // fileType: undefined,
-      // gifUrl: undefined,
-      // gifId: undefined,
-      // gifTinyUrl: undefined,
-      // gifContentDescription: undefined,
-      // replyToMessageId: undefined,
-      // replyToSenderName: undefined,
-      // replyToTextSnippet: undefined,
     };
 
     if (replyingToMessage) {
@@ -369,7 +352,7 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string; isPinned: boolean; reactions: Record<string, string[]>} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -380,14 +363,6 @@ export default function MessagesPage() {
       fileType: fileType,
       isPinned: false,
       reactions: {},
-      // text: undefined,
-      // gifUrl: undefined,
-      // gifId: undefined,
-      // gifTinyUrl: undefined,
-      // gifContentDescription: undefined,
-      // replyToMessageId: undefined,
-      // replyToSenderName: undefined,
-      // replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -470,7 +445,7 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; isPinned: boolean; reactions: Record<string, string[]> } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -482,13 +457,6 @@ export default function MessagesPage() {
       gifContentDescription: gif.content_description,
       isPinned: false,
       reactions: {},
-      // text: undefined,
-      // fileUrl: undefined,
-      // fileName: undefined,
-      // fileType: undefined,
-      // replyToMessageId: undefined,
-      // replyToSenderName: undefined,
-      // replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -616,7 +584,7 @@ export default function MessagesPage() {
         return;
     }
 
-    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp' | 'replyToMessageId' | 'replyToSenderName' | 'replyToTextSnippet'> & { timestamp: any } = {
+    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; isPinned: boolean; reactions: Record<string, string[]>} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -624,10 +592,6 @@ export default function MessagesPage() {
       type: forwardingMessage.type,
       isPinned: false,
       reactions: {},
-      // Optionally add fields to indicate it's forwarded from original sender
-      // originalSenderId: forwardingMessage.senderId,
-      // originalSenderName: forwardingMessage.senderName,
-      // originalTimestamp: forwardingMessage.timestamp, // Keep original timestamp for reference
       text: forwardingMessage.text ? `Forwarded from ${forwardingMessage.senderName}:\n${forwardingMessage.text}` : `Forwarded message from ${forwardingMessage.senderName}`,
       fileUrl: forwardingMessage.fileUrl,
       fileName: forwardingMessage.fileName,
@@ -781,7 +745,7 @@ export default function MessagesPage() {
         <div className="p-3 border-b border-border/40 shadow-sm shrink-0">
           <Input placeholder="Search DMs..." className="bg-muted border-border/60"/>
         </div>
-        <ScrollArea className="flex-1 min-h-0"> {/* Added min-h-0 */}
+        <ScrollArea className="flex-1 min-h-0"> 
           <div className="p-2 space-y-1">
              <Button 
                 key={savedMessagesConversation.id} 
@@ -864,7 +828,7 @@ export default function MessagesPage() {
               </div>
             </div>
 
-            <ScrollArea className="flex-1 min-h-0 bg-card/30"> {/* Added min-h-0 */}
+            <ScrollArea className="flex-1 min-h-0 bg-card/30"> 
               <div className="p-4 space-y-0.5">
                 {displayedMessages.length === 0 && (
                   <div className="text-center text-muted-foreground py-4">
@@ -992,16 +956,16 @@ export default function MessagesPage() {
                               <SmilePlus className="h-4 w-4" />
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
-                             <Picker 
-                                data={data} 
-                                onEmojiSelect={(emoji: any) => { 
-                                    handleToggleReaction(msg.id, emoji.native); 
+                          <PopoverContent className="w-auto p-0">
+                             <EmojiPicker 
+                                onEmojiClick={(emojiData: EmojiClickData) => { 
+                                    handleToggleReaction(msg.id, emojiData.emoji); 
                                     setReactionPickerOpenForMessageId(null); 
                                 }} 
-                                theme={currentThemeMode} 
-                                previewPosition="none" 
-                                searchPlaceholder="Select an emoji. Search not available yet."
+                                theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+                                emojiStyle={EmojiStyle.NATIVE}
+                                searchPlaceholder="Search emoji..."
+                                previewConfig={{showPreview: false}}
                              />
                           </PopoverContent>
                         </Popover>
@@ -1065,17 +1029,17 @@ export default function MessagesPage() {
                             <Smile className="h-5 w-5" />
                         </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
-                        <Picker 
-                            data={data} 
-                            onEmojiSelect={(emoji: any) => { 
-                                setNewMessage(prev => prev + emoji.native); 
+                    <PopoverContent className="w-auto p-0">
+                        <EmojiPicker 
+                            onEmojiClick={(emojiData: EmojiClickData) => { 
+                                setNewMessage(prev => prev + emojiData.emoji); 
                                 setChatEmojiPickerOpen(false); 
                                 chatInputRef.current?.focus(); 
                             }} 
-                            theme={currentThemeMode} 
-                            previewPosition="none" 
-                            searchPlaceholder="Select an emoji. Search not available yet."
+                            theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+                            emojiStyle={EmojiStyle.NATIVE}
+                            searchPlaceholder="Search emoji..."
+                            previewConfig={{showPreview: false}}
                         />
                     </PopoverContent>
                     </Popover>
@@ -1091,7 +1055,7 @@ export default function MessagesPage() {
                         <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="search">Search</TabsTrigger><TabsTrigger value="favorites">Favorites</TabsTrigger></TabsList>
                         <TabsContent value="search">
                             <Input type="text" placeholder="Search Tenor GIFs..." value={gifSearchTerm} onChange={handleGifSearchChange} className="my-2"/>
-                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-200px)]"> {/* Added min-h-0 */}
+                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-200px)]"> 
                             {loadingGifs ? <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                                 : gifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
                                 {gifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
@@ -1102,7 +1066,7 @@ export default function MessagesPage() {
                             </ScrollArea>
                         </TabsContent>
                         <TabsContent value="favorites">
-                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-150px)]"> {/* Added min-h-0 */}
+                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-150px)]"> 
                             {favoritedGifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
                                 {favoritedGifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
                                 <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, 33vw" className="object-cover group-hover:scale-105" unoptimized/></button>
@@ -1146,7 +1110,7 @@ export default function MessagesPage() {
                          <p className="text-xs text-muted-foreground mt-1 italic">Status: Away (placeholder)</p>
                     </div>
                 </div>
-                <ScrollArea className="flex-1 min-h-0"> {/* Added min-h-0 */}
+                <ScrollArea className="flex-1 min-h-0"> 
                     <div className="p-4 space-y-3">
                         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">About</h4>
                         <p className="text-sm text-foreground/90">User bio placeholder. This is where a short description about the user would go.</p>
@@ -1202,10 +1166,9 @@ export default function MessagesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users (coming soon)..." 
+                    placeholder="Search channels or users..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    disabled // Keep disabled as search/selection not implemented
                 />
                 {/* Placeholder for recipient list */}
             </div>

@@ -8,14 +8,9 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
-import dynamic from 'next/dynamic';
 import type { TenorGif as TenorGifType } from '@/types/tenor'; 
 
-import data from '@emoji-mart/data';
-const Picker = dynamic(() => import('emoji-mart').then(mod => mod.Picker), {
-  ssr: false,
-  loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
-});
+import EmojiPicker, { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
 
 
 // Cloudinary configuration (API Key is safe for client-side with unsigned uploads)
@@ -149,7 +144,7 @@ type ChatMessage = {
   gifTinyUrl?: string; 
   gifContentDescription?: string; 
   isPinned?: boolean;
-  reactions?: Record<string, string[]>; 
+  reactions?: Record<string, string[]>; // Emoji as key, array of user UIDs as value
   replyToMessageId?: string;
   replyToSenderName?: string;
   replyToTextSnippet?: string;
@@ -211,8 +206,8 @@ type ChatMessage = {
  *    - Fetches GIFs, saves GIF details (including id, tinyUrl, contentDescription) to Firestore.
  *    - Implemented GIF favoriting using localStorage.
  *
- * 6. Emoji Send (Frontend - Implemented with emoji-mart):
- *    - Uses `emoji-mart` Picker component to append emojis to the text input.
+ * 6. Emoji Send (Frontend - Implemented with emoji-picker-react):
+ *    - Uses `emoji-picker-react` Picker component to append emojis to the text input and for reactions.
  *
  * 7. Voice Message Send (Frontend - Implemented with MediaRecorder & Cloudinary Upload):
  *    - Captures audio. Uploads the audio Blob to Cloudinary and saves the public URL and fileType to Firestore.
@@ -221,7 +216,7 @@ type ChatMessage = {
  * 8. Delete & Pin Message Features (Frontend - Implemented):
  *    - Interacts with Firestore to delete or update `isPinned` status.
  *
- * 9. Message Reactions (Frontend - Implemented with emoji-mart picker):
+ * 9. Message Reactions (Frontend - Implemented with emoji-picker-react picker):
  *    - Users can add/remove reactions. Stored in the `reactions` field of the message in Firestore.
  *
  * 10. Reply to Message (Frontend - UI and data model implemented):
@@ -258,7 +253,7 @@ const formatChatMessage = (text: string): string => {
   if (!text) return '';
   let formattedText = text;
   // Escape HTML to prevent XSS before applying markdown
-  formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt");
+  formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   // Bold: **text** or __text__
   formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
@@ -398,24 +393,24 @@ export default function CommunitiesPage() {
           const data = doc.data();
           return {
             id: doc.id,
-            text: data.text,
+            text: data.text || undefined,
             senderId: data.senderId,
             senderName: data.senderName,
-            senderAvatarUrl: data.senderAvatarUrl,
+            senderAvatarUrl: data.senderAvatarUrl || null,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
-            type: data.type || 'text', // Ensure type always has a value
-            fileUrl: data.fileUrl,
-            fileName: data.fileName,
-            fileType: data.fileType,
-            gifUrl: data.gifUrl,
-            gifId: data.gifId,
-            gifTinyUrl: data.gifTinyUrl,
-            gifContentDescription: data.gifContentDescription,
+            type: data.type || 'text', 
+            fileUrl: data.fileUrl || undefined,
+            fileName: data.fileName || undefined,
+            fileType: data.fileType || undefined,
+            gifUrl: data.gifUrl || undefined,
+            gifId: data.gifId || undefined,
+            gifTinyUrl: data.gifTinyUrl || undefined,
+            gifContentDescription: data.gifContentDescription || undefined,
             isPinned: data.isPinned || false,
             reactions: data.reactions || {},
-            replyToMessageId: data.replyToMessageId,
-            replyToSenderName: data.replyToSenderName,
-            replyToTextSnippet: data.replyToTextSnippet,
+            replyToMessageId: data.replyToMessageId || undefined,
+            replyToSenderName: data.replyToSenderName || undefined,
+            replyToTextSnippet: data.replyToTextSnippet || undefined,
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
@@ -483,7 +478,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text'; isPinned: boolean; reactions: Record<string, string[]>} = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -492,16 +487,6 @@ export default function CommunitiesPage() {
       type: 'text' as const,
       isPinned: false,
       reactions: {},
-      // fileUrl: undefined, // Explicitly undefined
-      // fileName: undefined,
-      // fileType: undefined,
-      // gifUrl: undefined,
-      // gifId: undefined,
-      // gifTinyUrl: undefined,
-      // gifContentDescription: undefined,
-      // replyToMessageId: undefined,
-      // replyToSenderName: undefined,
-      // replyToTextSnippet: undefined,
     };
 
     if (replyingToMessage) {
@@ -543,8 +528,7 @@ export default function CommunitiesPage() {
       messageType = 'voice_message';
     }
 
-
-    const messageData:  Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string; isPinned: boolean; reactions: Record<string, string[]>} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -555,14 +539,6 @@ export default function CommunitiesPage() {
       fileType: fileType, 
       isPinned: false,
       reactions: {},
-      // text: undefined,
-      // gifUrl: undefined,
-      // gifId: undefined,
-      // gifTinyUrl: undefined,
-      // gifContentDescription: undefined,
-      // replyToMessageId: undefined,
-      // replyToSenderName: undefined,
-      // replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -670,7 +646,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData:  Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; isPinned: boolean; reactions: Record<string, string[]>} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -682,13 +658,6 @@ export default function CommunitiesPage() {
       gifContentDescription: gif.content_description,
       isPinned: false,
       reactions: {},
-      // text: undefined,
-      // fileUrl: undefined,
-      // fileName: undefined,
-      // fileType: undefined,
-      // replyToMessageId: undefined,
-      // replyToSenderName: undefined,
-      // replyToTextSnippet: undefined,
     };
      if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -840,7 +809,7 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp' | 'replyToMessageId' | 'replyToSenderName' | 'replyToTextSnippet'> & { timestamp: any } = {
+    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; isPinned: boolean; reactions: Record<string, string[]>} = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || null,
@@ -1027,7 +996,7 @@ export default function CommunitiesPage() {
     <div className="flex h-full overflow-hidden bg-background">
       {/* Column 1: Community Server List */}
       <div className="h-full w-20 bg-muted/20 border-r border-border/30 overflow-hidden">
-        <div className="h-full"> {/* Removed ScrollArea, padding is enough */}
+        <div className="h-full"> 
           <div className="p-2 space-y-3">
             {placeholderCommunities.map((community) => (
               <button
@@ -1053,7 +1022,7 @@ export default function CommunitiesPage() {
             <div className="p-3 border-b border-border/40 shadow-sm shrink-0">
               <h2 className="text-lg font-semibold text-foreground truncate">{selectedCommunity.name}</h2>
             </div>
-            <ScrollArea className="flex-1 min-h-0"> {/* Ensure ScrollArea can shrink and grow */}
+            <ScrollArea className="flex-1 min-h-0"> 
               <div className="p-3 space-y-1">
                 {currentChannels.map((channel) => (
                   <Button
@@ -1144,7 +1113,7 @@ export default function CommunitiesPage() {
               </div>
             </div>
 
-            <ScrollArea className="flex-1 min-h-0 bg-card/30"> {/* Ensure ScrollArea can shrink and grow */}
+            <ScrollArea className="flex-1 min-h-0 bg-card/30"> 
               <div className="p-4 space-y-0.5">
                 {displayedMessages.length === 0 && selectedChannel.type === 'text' && !messages.some(m => m.senderId !== 'system') && (
                   <div className="text-center text-muted-foreground py-4">
@@ -1306,16 +1275,16 @@ export default function CommunitiesPage() {
                               <SmilePlus className="h-4 w-4" />
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
-                             <Picker
-                                data={data}
-                                onEmojiSelect={(emoji: any) => { 
-                                    handleToggleReaction(msg.id, emoji.native);
+                          <PopoverContent className="w-auto p-0">
+                             <EmojiPicker
+                                onEmojiClick={(emojiData: EmojiClickData) => { 
+                                    handleToggleReaction(msg.id, emojiData.emoji);
                                     setReactionPickerOpenForMessageId(null);
                                 }}
-                                theme={currentThemeMode}
-                                previewPosition="none"
-                                searchPlaceholder="Select a reaction. Search not available yet."
+                                theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+                                emojiStyle={EmojiStyle.NATIVE}
+                                searchPlaceholder="Search emoji..."
+                                previewConfig={{showPreview: false}}
                              />
                           </PopoverContent>
                         </Popover>
@@ -1415,17 +1384,17 @@ export default function CommunitiesPage() {
                             <Smile className="h-5 w-5" />
                         </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
-                        <Picker
-                            data={data}
-                            onEmojiSelect={(emoji: any) => { 
-                                setNewMessage(prev => prev + emoji.native);
+                    <PopoverContent className="w-auto p-0">
+                        <EmojiPicker
+                            onEmojiClick={(emojiData: EmojiClickData) => { 
+                                setNewMessage(prev => prev + emojiData.emoji);
                                 setChatEmojiPickerOpen(false);
                                 chatInputRef.current?.focus();
                             }}
-                            theme={currentThemeMode}
-                            previewPosition="none"
-                            searchPlaceholder="Select an emoji. Search not available yet."
+                            theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+                            emojiStyle={EmojiStyle.NATIVE}
+                            searchPlaceholder="Search emoji..."
+                            previewConfig={{showPreview: false}}
                         />
                     </PopoverContent>
                     </Popover>
@@ -1459,7 +1428,7 @@ export default function CommunitiesPage() {
                                     onChange={handleGifSearchChange}
                                     className="my-2"
                                 />
-                                <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]"> {/* Ensure ScrollArea can shrink/grow */}
+                                <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]"> 
                                     {loadingGifs ? (
                                         <div className="flex justify-center items-center h-full">
                                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -1501,7 +1470,7 @@ export default function CommunitiesPage() {
                                 </ScrollArea>
                             </TabsContent>
                             <TabsContent value="favorites">
-                                    <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]"> {/* Ensure ScrollArea can shrink/grow */}
+                                    <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]"> 
                                     {favoritedGifs.length > 0 ? (
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
                                         {favoritedGifs.map((gif) => (
@@ -1603,7 +1572,7 @@ export default function CommunitiesPage() {
                     )}
                 </div>
 
-                <ScrollArea className="flex-1 min-h-0"> {/* Ensure ScrollArea can shrink and grow */}
+                <ScrollArea className="flex-1 min-h-0"> 
                    <div className="px-4 pb-4 pt-0">
                         <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-4 px-4">
                         Members ({currentMembers.length})
@@ -1677,10 +1646,9 @@ export default function CommunitiesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users (coming soon)..." 
+                    placeholder="Search channels or users..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    disabled={true} // Keep disabled as search/selection not implemented
                 />
                 {/* Placeholder for recipient list */}
             </div>
