@@ -18,13 +18,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, MessageSquare as MessageSquareIcon, User as UserIcon } from 'lucide-react'; // Renamed MessageSquare to avoid conflict
+import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, MessageSquare as MessageSquareIcon, User as UserIcon, Mic } from 'lucide-react'; // Renamed MessageSquare to avoid conflict, added Mic
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
-import { Badge } from '@/components/ui/badge'; // Added missing import
+import { Badge } from '@/components/ui/badge';
 
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -50,7 +50,10 @@ interface TenorGif {
   content_description: string;
 }
 
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // SECURITY WARNING
+// SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
+// This key is included for prototyping purposes only.
+// For production, proxy requests through a backend (e.g., Firebase Cloud Function).
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
 
@@ -97,9 +100,7 @@ export default function MessagesPage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const { toast } = useToast();
 
-  // For this prototype, we'll simulate selecting one conversation.
-  // Replace 'OTHER_USER_PLACEHOLDER_UID' with an actual UID of another user in your Firebase for testing.
-  const [otherUserId, setOtherUserId] = useState<string | null>(null); // Set this to a test UID
+  const [otherUserId, setOtherUserId] = useState<string | null>(null);
   const [otherUserName, setOtherUserName] = useState<string | null>('Chat Partner');
   const [conversationId, setConversationId] = useState<string | null>(null);
 
@@ -134,16 +135,16 @@ export default function MessagesPage() {
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
       if (user) {
         setCurrentUser(user);
-        // For now, hardcode the other user for testing DMs
-        // In a real app, this would come from selecting a conversation from the list
-        const testOtherUserId = "OTHER_USER_PLACEHOLDER_UID"; // << IMPORTANT: REPLACE THIS WITH A REAL UID
+        const testOtherUserId = "REPLACE_WITH_ANOTHER_VALID_USER_ID"; // IMPORTANT: REPLACE THIS
         if (user.uid === testOtherUserId) {
-            toast({variant: "destructive", title: "Test User Error", description: "Please set OTHER_USER_PLACEHOLDER_UID to a different UID than the current user."});
+            toast({variant: "destructive", title: "Test User Error", description: "Please set the test other user ID to a different UID than the current user."});
             setIsCheckingAuth(false);
             return;
         }
-        setOtherUserId(testOtherUserId); 
-        setOtherUserName("Test User"); // Replace with actual name fetching if needed
+        setOtherUserId(testOtherUserId);
+        // In a real app, you'd fetch the other user's name from Firestore or another source
+        // For now, using a placeholder name:
+        setOtherUserName("Test DM Partner");
 
         const mode = localStorage.getItem(`theme_mode_${user.uid}`) as 'light' | 'dark';
         setCurrentThemeMode(mode || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
@@ -152,12 +153,12 @@ export default function MessagesPage() {
         setFavoritedGifs(storedFavorites ? JSON.parse(storedFavorites) : []);
         setIsCheckingAuth(false);
       } else {
-        // Redirect to login or handle appropriately
-        setIsCheckingAuth(false); // Or router.push('/login');
+        setIsCheckingAuth(false);
+        router.push('/login'); // Redirect to login if no user
       }
     });
     return () => unsubscribeAuth();
-  }, []);
+  }, [toast]); // Removed router from dependencies as it's stable
 
 
   useEffect(() => {
@@ -171,14 +172,14 @@ export default function MessagesPage() {
   useEffect(() => {
     if (conversationId && currentUser) {
       setMessages([]);
-      const messagesRef = collection(db, `direct_messages/${conversationId}/messages`);
-      const q = query(messagesRef, orderBy('timestamp', 'asc'));
+      const messagesQueryRef = collection(db, `direct_messages/${conversationId}/messages`);
+      const q = query(messagesQueryRef, orderBy('timestamp', 'asc'));
 
       const unsubscribeFirestore = onSnapshot(q, (querySnapshot) => {
-        const fetchedMessages = querySnapshot.docs.map(doc => {
-          const data = doc.data();
+        const fetchedMessages = querySnapshot.docs.map(docSnap => {
+          const data = docSnap.data();
           return {
-            id: doc.id,
+            id: docSnap.id,
             ...data,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
             isPinned: data.isPinned || false,
@@ -220,9 +221,37 @@ export default function MessagesPage() {
 
   const isGifFavorited = (gifId: string): boolean => !!favoritedGifs.find(fav => fav.id === gifId);
 
+  const ensureConversationDocument = async () => {
+    if (!currentUser || !otherUserId || !conversationId) {
+        toast({ variant: "destructive", title: "Error", description: "User or conversation not identified." });
+        return false;
+    }
+    const convoDocRef = doc(db, `direct_messages/${conversationId}`);
+    try {
+        const convoSnap = await getDoc(convoDocRef);
+        if (!convoSnap.exists()) {
+            await setDoc(convoDocRef, {
+                participants: [currentUser.uid, otherUserId].sort(),
+                createdAt: serverTimestamp(),
+                lastMessageTimestamp: serverTimestamp(),
+            });
+            console.log("Conversation document created:", conversationId);
+        }
+        return true;
+    } catch (error) {
+        console.error("Error ensuring conversation document:", error);
+        toast({ variant: "destructive", title: "Conversation Error", description: "Could not initiate or verify conversation." });
+        return false;
+    }
+  };
+
+
   const handleSendMessage = async (e?: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLInputElement>) => {
     if (e && 'preventDefault' in e) e.preventDefault();
-    if (newMessage.trim() === "" || !currentUser || !conversationId) return;
+    if (newMessage.trim() === "" || !currentUser || !conversationId || !otherUserId) return;
+
+    const conversationReady = await ensureConversationDocument();
+    if (!conversationReady) return;
 
     const messageData = {
       text: newMessage.trim(),
@@ -236,27 +265,31 @@ export default function MessagesPage() {
     };
 
     try {
-      const messagesRef = collection(db, `direct_messages/${conversationId}/messages`);
-      await addDoc(messagesRef, messageData);
+      const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
+      await addDoc(messagesColRef, messageData);
       
-      // Ensure conversation document exists and update last message info
       const convoDocRef = doc(db, `direct_messages/${conversationId}`);
-      await setDoc(convoDocRef, { 
-        participants: [currentUser.uid, otherUserId].sort(),
+      await updateDoc(convoDocRef, { 
         lastMessage: messageData.text,
         lastMessageTimestamp: serverTimestamp(),
-        // You might want to add participant_names, participant_avatars here for easier listing later
-      }, { merge: true });
+      });
 
       setNewMessage("");
     } catch (error) {
       console.error("Error sending DM:", error);
-      toast({ variant: "destructive", title: "Message Not Sent" });
+      toast({ variant: "destructive", title: "Message Not Sent", description: "Could not send your message." });
     }
   };
 
   const sendAttachmentMessageToFirestore = async (fileUrl: string, fileName: string, fileType: string, messageType: ChatMessage['type']) => {
-    if (!currentUser || !conversationId) return;
+    if (!currentUser || !conversationId || !otherUserId) {
+        toast({ variant: "destructive", title: "Error", description: "Cannot send attachment." });
+        return;
+    }
+
+    const conversationReady = await ensureConversationDocument();
+    if (!conversationReady) return;
+    
     const messageData = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -270,18 +303,18 @@ export default function MessagesPage() {
       reactions: {},
     };
     try {
-      const messagesRef = collection(db, `direct_messages/${conversationId}/messages`);
-      await addDoc(messagesRef, messageData);
+      const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
+      await addDoc(messagesColRef, messageData);
+
        const convoDocRef = doc(db, `direct_messages/${conversationId}`);
-        await setDoc(convoDocRef, { 
-            participants: [currentUser.uid, otherUserId].sort(),
+        await updateDoc(convoDocRef, { 
             lastMessage: messageType === 'image' ? 'Sent an image' : (messageType === 'voice_message' ? 'Sent a voice message' : 'Sent a file'),
             lastMessageTimestamp: serverTimestamp() 
-        }, { merge: true });
+        });
       toast({ title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Sent!` });
     } catch (error) {
       console.error(`Error sending ${messageType}:`, error);
-      toast({ variant: "destructive", title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Not Sent`});
+      toast({ variant: "destructive", title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Not Sent`, description: `Could not send your ${messageType}.`});
     }
   };
 
@@ -320,17 +353,23 @@ export default function MessagesPage() {
     if (!file) return;
     if (file.size > MAX_FILE_SIZE_BYTES) {
       toast({ variant: 'destructive', title: 'File Too Large', description: `Max ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB.` });
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
       return;
     }
     if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/') && !file.type.startsWith('audio/')) {
       toast({ variant: 'destructive', title: 'Invalid File Type' });
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
       return;
     }
     uploadFileToCloudinaryAndSend(file);
   };
 
   const handleSendGif = async (gif: TenorGif) => {
-    if (!currentUser || !conversationId) return;
+    if (!currentUser || !conversationId || !otherUserId) return;
+
+    const conversationReady = await ensureConversationDocument();
+    if (!conversationReady) return;
+
     const messageData = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -345,18 +384,17 @@ export default function MessagesPage() {
       reactions: {},
     };
     try {
-      const messagesRef = collection(db, `direct_messages/${conversationId}/messages`);
-      await addDoc(messagesRef, messageData);
+      const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
+      await addDoc(messagesColRef, messageData);
         const convoDocRef = doc(db, `direct_messages/${conversationId}`);
-        await setDoc(convoDocRef, { 
-            participants: [currentUser.uid, otherUserId].sort(),
+        await updateDoc(convoDocRef, { 
             lastMessage: 'Sent a GIF',
             lastMessageTimestamp: serverTimestamp() 
-        }, { merge: true });
+        });
       setShowGifPicker(false); setGifSearchTerm(""); setGifs([]);
     } catch (error) {
       console.error("Error sending GIF:", error);
-      toast({ variant: "destructive", title: "GIF Not Sent" });
+      toast({ variant: "destructive", title: "GIF Not Sent", description: "Could not send GIF." });
     }
   };
 
@@ -404,9 +442,9 @@ export default function MessagesPage() {
     const messageRef = doc(db, `direct_messages/${conversationId}/messages/${messageId}`);
     try {
       await runTransaction(db, async (transaction) => {
-        const messageDoc = await transaction.get(messageRef);
-        if (!messageDoc.exists()) throw new Error("Message not found");
-        const currentReactions = (messageDoc.data().reactions || {}) as Record<string, string[]>;
+        const messageDocSnap = await transaction.get(messageRef);
+        if (!messageDocSnap.exists()) throw new Error("Message not found");
+        const currentReactions = (messageDocSnap.data().reactions || {}) as Record<string, string[]>;
         const usersReacted = currentReactions[emoji] || [];
         const newUsersReacted = usersReacted.includes(currentUser.uid)
           ? usersReacted.filter(uid => uid !== currentUser.uid)
@@ -424,7 +462,7 @@ export default function MessagesPage() {
   };
 
   const fetchTrendingGifs = async () => {
-    if (!TENOR_API_KEY.startsWith("AIza")) { /* Basic check */
+    if (!TENOR_API_KEY.startsWith("AIza")) { 
         toast({ variant: "destructive", title: "Tenor API Key Invalid" }); setLoadingGifs(false); return;
     }
     setLoadingGifs(true);
@@ -517,17 +555,15 @@ export default function MessagesPage() {
     ? messages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
     : messages;
 
+  const router = useRouter(); // Added this as it's used but not imported
 
   if (isCheckingAuth || !currentUser) {
     return <SplashScreenDisplay />;
   }
   if (!otherUserId || !conversationId) {
-    // In a real app, user would select a conversation from the list
-    // For now, show a message if the test UID isn't set up or causes issues.
     return (
         <div className="flex h-full items-center justify-center bg-background text-muted-foreground">
-            <p>Select a conversation or ensure test user ID is set correctly.</p>
-            <p className="text-xs"> (Dev note: Replace OTHER_USER_PLACEHOLDER_UID in MessagesPage.tsx with a valid UID that is not the current user's) </p>
+            <p>Please replace 'REPLACE_WITH_ANOTHER_VALID_USER_ID' with a real UID for testing DMs.</p>
         </div>
     );
   }
@@ -547,11 +583,9 @@ export default function MessagesPage() {
                     variant="ghost" 
                     className={cn(
                         "w-full justify-start h-auto py-2.5",
-                        // Highlight if this convo's otherUserId matches the currently active one
                         convo.otherUserId === otherUserId && "bg-accent text-accent-foreground" 
                     )}
-                    // onClick={() => { setOtherUserId(convo.otherUserId); setOtherUserName(convo.otherUserName); }} // This would be for dynamic selection
-                    disabled // Disable selection for now as we hardcode one convo
+                    disabled 
                 >
                     <Avatar className="h-10 w-10 mr-3">
                         <AvatarImage src={convo.otherUserAvatar} alt={convo.otherUserName} data-ai-hint={convo.dataAiHint}/>
@@ -603,28 +637,28 @@ export default function MessagesPage() {
                 {displayedMessages.map((msg, index) => {
                   const previousMessage = index > 0 ? displayedMessages[index - 1] : null;
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
-                  const isCurrentUser = msg.senderId === currentUser.uid;
+                  const isCurrentUserSender = msg.senderId === currentUser.uid;
 
                   return (
                     <div
                       key={msg.id}
                       className={cn(
                         "flex items-start space-x-3 group relative hover:bg-muted/30 px-2 py-1 rounded-md",
-                         isCurrentUser && "justify-end"
+                         isCurrentUserSender && "justify-end"
                       )}
                     >
-                      {!isCurrentUser && showHeader && (
+                      {!isCurrentUserSender && showHeader && (
                         <Avatar className="mt-1 h-8 w-8 shrink-0">
                           <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       )}
-                       {!isCurrentUser && !showHeader && <div className="w-8 shrink-0" /> }
+                       {!isCurrentUserSender && !showHeader && <div className="w-8 shrink-0" /> }
 
-                      <div className={cn("flex-1 min-w-0 max-w-[75%]", isCurrentUser && "text-right")}>
+                      <div className={cn("flex-1 min-w-0 max-w-[75%]", isCurrentUserSender && "text-right")}>
                         {showHeader && (
-                          <div className={cn("flex items-baseline space-x-1.5", isCurrentUser && "justify-end")}>
-                            <p className="font-semibold text-sm text-foreground">{isCurrentUser ? "You" : msg.senderName}</p>
+                          <div className={cn("flex items-baseline space-x-1.5", isCurrentUserSender && "justify-end")}>
+                            <p className="font-semibold text-sm text-foreground">{isCurrentUserSender ? "You" : msg.senderName}</p>
                             <div className="flex items-baseline text-xs text-muted-foreground">
                               <p title={msg.timestamp ? format(msg.timestamp, 'PPpp') : undefined}>
                                 {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
@@ -635,8 +669,8 @@ export default function MessagesPage() {
                           </div>
                         )}
                          <div className={cn("mt-0.5 p-2 rounded-lg inline-block", 
-                            isCurrentUser ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
-                            showHeader ? "mt-0.5" : "mt-0"
+                            isCurrentUserSender ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
+                            showHeader ? "mt-0.5" : "mt-0" // No extra top margin if header is hidden
                         )}>
                             {msg.type === 'text' && msg.text && (
                                 <p className="text-sm whitespace-pre-wrap break-words"
@@ -668,7 +702,7 @@ export default function MessagesPage() {
                             )}
                         </div>
                         {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                            <div className={cn("mt-1.5 flex flex-wrap gap-1.5", isCurrentUser && "justify-end")}>
+                            <div className={cn("mt-1.5 flex flex-wrap gap-1.5", isCurrentUserSender && "justify-end")}>
                                 {Object.entries(msg.reactions).map(([emoji, userIds]) => (
                                     userIds.length > 0 && (
                                         <Button key={emoji} variant="outline" size="sm" onClick={() => handleToggleReaction(msg.id, emoji)}
@@ -681,15 +715,15 @@ export default function MessagesPage() {
                             </div>
                         )}
                       </div>
-                      {isCurrentUser && showHeader && (
+                      {isCurrentUserSender && showHeader && (
                         <Avatar className="mt-1 h-8 w-8 shrink-0 ml-3">
                           <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       )}
-                      {isCurrentUser && !showHeader && <div className="w-8 shrink-0 ml-3" />}
+                      {isCurrentUserSender && !showHeader && <div className="w-8 shrink-0 ml-3" />}
 
-                       <div className={cn("absolute top-0 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50", isCurrentUser ? "left-2" : "right-2")}>
+                       <div className={cn("absolute top-0 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50", isCurrentUserSender ? "left-2" : "right-2")}>
                         <Popover open={reactionPickerOpenForMessageId === msg.id} onOpenChange={(open) => setReactionPickerOpenForMessageId(open ? msg.id : null)}>
                           <PopoverTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="React">
@@ -733,7 +767,7 @@ export default function MessagesPage() {
                     <Button type="button" variant={isRecording ? "destructive" : "ghost"} size="icon"
                         className={cn("shrink-0", isRecording ? "text-destructive-foreground hover:bg-destructive/90" : "text-muted-foreground hover:text-foreground")}
                         title={isRecording ? "Stop Recording" : "Send Voice Message"} onClick={handleToggleRecording} disabled={hasMicPermission === false || isUploadingFile}>
-                        {isRecording ? <StopCircle className="h-5 w-5" /> : <UserIcon className="h-5 w-5" />} {/* Mic Icon */}
+                        {isRecording ? <StopCircle className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
                     </Button>
                     {hasMicPermission === false && <AlertTriangle className="h-5 w-5 text-destructive" title="Mic permission denied"/>}
                     <Popover open={chatEmojiPickerOpen} onOpenChange={setChatEmojiPickerOpen}>
@@ -806,6 +840,3 @@ export default function MessagesPage() {
     </div>
   );
 }
-
-
-    
