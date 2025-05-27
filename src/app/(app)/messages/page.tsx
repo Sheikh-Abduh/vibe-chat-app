@@ -20,7 +20,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, User as UserIcon, Mic, Bookmark, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign } from 'lucide-react';
+import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, User as UserIcon, Mic, Bookmark, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign, Phone, VideoIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -309,19 +309,15 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'text'; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; mentionedUserIds: string[]; text: string; } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text';} = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(),
       type: 'text' as const,
-      isPinned: false,
-      reactions: {},
-      isForwarded: false,
-      mentionedUserIds: [],
     };
 
+    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
@@ -370,22 +366,18 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; mentionedUserIds: string[];} = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string;} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType,
-      isPinned: false,
-      reactions: {},
-      isForwarded: false,
-      mentionedUserIds: [],
     };
 
-     if (replyingToMessage) {
+    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
+    if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
         let snippet = replyingToMessage.text || '';
@@ -465,23 +457,19 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; mentionedUserIds: string[];} = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string;} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
-      isPinned: false,
-      reactions: {},
-      isForwarded: false,
-      mentionedUserIds: [],
     };
 
-     if (replyingToMessage) {
+    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
+    if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
         let snippet = replyingToMessage.text || '';
@@ -606,20 +594,16 @@ export default function MessagesPage() {
         return;
     }
 
-    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; forwardedFromSenderName: string; mentionedUserIds: string[];} = {
+    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; isForwarded: boolean; forwardedFromSenderName: string;} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(),
       type: forwardingMessage.type,
-      isPinned: false,
-      reactions: {},
       isForwarded: true,
       forwardedFromSenderName: forwardingMessage.senderName,
-      mentionedUserIds: [], 
     };
     
-    // Copy relevant content fields
+    if(currentUser.photoURL) forwardedMessageData.senderAvatarUrl = currentUser.photoURL;
     if (forwardingMessage.text) forwardedMessageData.text = forwardingMessage.text;
     if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
     if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
@@ -879,6 +863,16 @@ export default function MessagesPage() {
                     </div>
                 ) : (
                     <>
+                         {otherUserId !== currentUser.uid && (
+                            <>
+                                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Start Voice Call (Coming Soon)" onClick={() => toast({title: "Coming Soon!", description: "Voice call feature will be implemented."})}>
+                                    <Phone className="h-5 w-5"/>
+                                </Button>
+                                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Start Video Call (Coming Soon)" onClick={() => toast({title: "Coming Soon!", description: "Video call feature will be implemented."})}>
+                                    <VideoIcon className="h-5 w-5"/>
+                                </Button>
+                            </>
+                        )}
                         <Button
                             variant="ghost"
                             size="icon"
@@ -1277,10 +1271,9 @@ export default function MessagesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users (coming soon)..." 
+                    placeholder="Search channels or users..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    disabled // Keep disabled until search is functional
                 />
                 {/* Placeholder for recipient list */}
             </div>

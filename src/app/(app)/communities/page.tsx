@@ -35,7 +35,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign, Phone, VideoIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -464,15 +464,15 @@ export default function CommunitiesPage() {
 
       return () => unsubscribeFirestore();
 
-    } else if (selectedChannel) {
-      setMessages([{
-        id: 'channel-info-' + selectedChannel.id,
-        text: `This is a ${selectedChannel.type} channel. Chat functionality is for text channels.`,
-        senderId: 'system',
-        senderName: 'System',
-        timestamp: new Date(),
-        type: 'text',
-      }]);
+    } else if (selectedChannel && (selectedChannel.type === 'voice' || selectedChannel.type === 'video')) {
+        setMessages([{
+            id: 'channel-info-' + selectedChannel.id,
+            text: `This is a ${selectedChannel.type} channel. Interactive voice/video features coming soon!`,
+            senderId: 'system',
+            senderName: 'System',
+            timestamp: new Date(),
+            type: 'text',
+        }]);
     } else {
       setMessages([]);
     }
@@ -509,21 +509,16 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'text'; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; mentionedUserIds: string[]; text: string; } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text'; } = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: 'text' as const,
-      isPinned: false,
-      reactions: {},
-      isForwarded: false,
-      mentionedUserIds: [],
     };
-
-
-    if (replyingToMessage) {
+    
+    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
+    if(replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
         let snippet = replyingToMessage.text || '';
@@ -533,15 +528,12 @@ export default function CommunitiesPage() {
         else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
         messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
     }
-
-    // Basic @mention detection for potential future structured storage
+    
     const mentions = newMessage.match(/@([\w.-]+)/g);
     if (mentions) {
-        // In a real app, you'd resolve these usernames to UIDs
-        // For now, just storing usernames.
+        // For now, not storing structured mentions yet
         // messageData.mentionedUserIds = mentions.map(m => m.substring(1)); 
     }
-
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
@@ -572,22 +564,18 @@ export default function CommunitiesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; mentionedUserIds: string[];} = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string;} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType, 
-      isPinned: false,
-      reactions: {},
-      isForwarded: false,
-      mentionedUserIds: [],
     };
 
-     if (replyingToMessage) {
+    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
+    if(replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
         let snippet = replyingToMessage.text || '';
@@ -621,7 +609,7 @@ export default function CommunitiesPage() {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
     formData.append('api_key', CLOUDINARY_API_KEY);
-    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); // Cloudinary often handles audio under 'video' resource type
+    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); 
 
     try {
       const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${isVoiceMessage ? 'video' : 'auto'}/upload`, {
@@ -692,22 +680,19 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; mentionedUserIds: string[];} = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
-      isPinned: false,
-      reactions: {},
-      isForwarded: false,
-      mentionedUserIds: [],
     };
-     if (replyingToMessage) {
+
+    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
+    if(replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
         let snippet = replyingToMessage.text || '';
@@ -857,20 +842,16 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; forwardedFromSenderName: string; mentionedUserIds: string[];} = {
+    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; isForwarded: boolean; forwardedFromSenderName: string; } = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-        senderAvatarUrl: currentUser.photoURL || null,
         timestamp: serverTimestamp(),
         type: forwardingMessage.type,
-        isPinned: false,
-        reactions: {},
         isForwarded: true,
         forwardedFromSenderName: forwardingMessage.senderName,
-        mentionedUserIds: [], 
     };
     
-    // Copy relevant content fields
+    if(currentUser.photoURL) forwardedMessageData.senderAvatarUrl = currentUser.photoURL;
     if (forwardingMessage.text) forwardedMessageData.text = forwardingMessage.text;
     if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
     if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
@@ -899,8 +880,8 @@ export default function CommunitiesPage() {
     if (!previousMessage) return true;
     if (currentMessage.senderId !== previousMessage.senderId) return true;
     if (currentMessage.timestamp.getTime() - previousMessage.timestamp.getTime() > TIMESTAMP_GROUPING_THRESHOLD_MS) return true;
-    if (currentMessage.replyToMessageId !== previousMessage.replyToMessageId) return true; // Show header if reply context changes
-    if (currentMessage.isForwarded !== previousMessage.isForwarded) return true; // Show header if forwarding state changes
+    if (currentMessage.replyToMessageId !== previousMessage.replyToMessageId) return true;
+    if (currentMessage.isForwarded !== previousMessage.isForwarded) return true;
     return false;
   };
 
@@ -1229,6 +1210,14 @@ export default function CommunitiesPage() {
                      (showPinnedMessages ? "No pinned messages in this channel." :
                      (messages.length === 0 && !currentUser ? "Loading messages..." : "No messages yet. Be the first to say something!"))}
                   </div>
+                )}
+                {selectedChannel.type !== 'text' && (
+                    <div className="text-center text-muted-foreground py-4 flex flex-col items-center justify-center h-full">
+                        {selectedChannel.type === 'voice' ? <Mic className="h-16 w-16 mb-4 text-primary/70"/> : <Video className="h-16 w-16 mb-4 text-primary/70"/>}
+                        <p className="text-lg font-medium">This is a {selectedChannel.type} channel.</p>
+                        <p>Voice and video features are coming soon!</p>
+                        <p className="text-sm mt-1">You would join the call and see other participants here.</p>
+                    </div>
                 )}
                 {displayedMessages.map((msg, index) => {
                   const previousMessage = index > 0 ? displayedMessages[index - 1] : null;
@@ -1658,10 +1647,8 @@ export default function CommunitiesPage() {
                 </form>
               </div>
             ) : (
-              <div className="p-3 border-t border-border/40 shrink-0">
-                <p className="text-sm text-muted-foreground text-center">
-                  Voice and video channel interactions are not yet implemented.
-                </p>
+              <div className="p-3 border-t border-border/40 shrink-0 flex items-center justify-center h-full">
+                 {/* Placeholder for non-text channels if input area needs specific UI */}
               </div>
             )}
           </>
@@ -1784,10 +1771,9 @@ export default function CommunitiesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users (coming soon)..." 
+                    placeholder="Search channels or users..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    disabled // Keep disabled until search is functional
                 />
                 {/* Placeholder for recipient list */}
             </div>

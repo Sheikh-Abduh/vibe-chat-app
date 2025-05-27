@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useState, Suspense } from 'react'; // Added React and Suspense
+import React, { useEffect, useState, Suspense } from 'react'; 
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { onAuthStateChanged, signOut as firebaseSignOut, type User } from 'firebase/auth';
@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
-import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search, Users, Edit3, Heart, Info, Gift, PersonStanding, Hash, Sparkles } from 'lucide-react';
+import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search, Users, Edit3, Heart, Info, Gift, PersonStanding, Hash, Sparkles, BellDot } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -31,7 +31,7 @@ import {
   SidebarMenuButton,
   SidebarInset,
 } from '@/components/ui/sidebar';
-// Removed LoadingProvider and useAppLoading import
+
 
 interface UserStoredDetails {
   hobbies: string;
@@ -50,9 +50,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userDetails, setUserDetails] = useState<UserStoredDetails | null>(null);
-  // Removed isNavigationLoading and setIsNavigationLoading from useAppLoading
-
-  // Removed useEffect for router.events as it's not compatible with App Router's useRouter from next/navigation
+  
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -97,7 +95,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   }, [router, pathname]); 
 
   const handleLogout = async () => {
-    setIsCheckingAuth(true); // Show splash during logout
+    setIsCheckingAuth(true); 
     try {
       await firebaseSignOut(auth);
       setCurrentUser(null);
@@ -118,7 +116,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     }
   };
 
-  if (isCheckingAuth) { // Simplified condition: only show splash for initial auth check
+  if (isCheckingAuth) { 
     return <SplashScreenDisplay />;
   }
   
@@ -308,8 +306,12 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 </Link>
               </div>
 
-              <div className="ml-auto flex items-center space-x-4">
-                <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground">
+              <div className="ml-auto flex items-center space-x-2">
+                 <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground" onClick={() => toast({title: "Coming Soon!", description: "Activity feed will be implemented."})}>
+                  <BellDot className="h-5 w-5" />
+                  <span className="sr-only">Activity Feed</span>
+                </Button>
+                <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground" onClick={() => toast({title: "Coming Soon!", description: "Global search will be implemented."})}>
                   <Search className="h-5 w-5" />
                   <span className="sr-only">Search</span>
                 </Button>
@@ -328,6 +330,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 }
 
 export default function AuthenticatedAppLayout({ children }: { children: React.ReactNode }) {
-  // Removed LoadingProvider as it's no longer needed with Suspense for route changes
   return <AppLayoutContent>{children}</AppLayoutContent>;
 }
+
