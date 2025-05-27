@@ -9,7 +9,7 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
-import { Picker } from 'emoji-mart';
+import Picker from 'emoji-mart';
 import data from '@emoji-mart/data';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -18,7 +18,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, MessageSquare as MessageSquareIcon, User as UserIcon, Mic, Bookmark, Reply, Share2, X } from 'lucide-react';
+import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, MessageSquare as MessageSquareIcon, User as UserIcon, Mic, Bookmark, Reply, Share2, X, Search, MessageSquareReply } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -50,7 +50,10 @@ interface TenorGif {
   content_description: string;
 }
 
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // WARNING: Client-side key
+// SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
+// This key is included for prototyping purposes only.
+// For production, proxy requests through a backend (e.g., Firebase Cloud Function).
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; 
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
 
@@ -141,6 +144,7 @@ export default function MessagesPage() {
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null);
   const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
   const [isForwardDialogOpen, setIsForwardDialogOpen] = useState(false);
+  const [forwardSearchTerm, setForwardSearchTerm] = useState("");
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
@@ -319,7 +323,7 @@ export default function MessagesPage() {
     }
   };
 
-  const sendAttachmentMessageToFirestore = async (fileUrl: string, fileName: string, fileType: string, messageType: ChatMessage['type']) => {
+  const sendAttachmentMessageToFirestore = async (fileUrl: string, fileName: string, fileType: string) => {
     if (!currentUser || !conversationId || !otherUserId) {
         toast({ variant: "destructive", title: "Error", description: "Cannot send attachment." });
         return;
@@ -328,6 +332,13 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
     
+    let messageType: ChatMessage['type'] = 'file';
+    if (fileType.startsWith('image/')) {
+      messageType = 'image';
+    } else if (fileType.startsWith('audio/')) {
+      messageType = 'voice_message';
+    }
+
     const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -384,10 +395,7 @@ export default function MessagesPage() {
       if (!response.ok) throw new Error((await response.json()).error?.message || 'Cloudinary upload failed.');
       const data = await response.json();
       if (data.secure_url) {
-        let messageType: ChatMessage['type'] = 'file';
-        if (file.type.startsWith('image/')) messageType = 'image';
-        else if (isVoiceMessage || file.type.startsWith('audio/')) messageType = 'voice_message';
-        await sendAttachmentMessageToFirestore(data.secure_url, data.original_filename || file.name, file.type, messageType);
+        await sendAttachmentMessageToFirestore(data.secure_url, data.original_filename || file.name, file.type);
       } else throw new Error('Cloudinary did not return a URL.');
     } catch (error: any) {
       console.error("Upload Failed:", error);
@@ -608,6 +616,7 @@ export default function MessagesPage() {
     } finally {
       setIsForwardDialogOpen(false);
       setForwardingMessage(null);
+      setForwardSearchTerm("");
     }
   };
 
@@ -781,6 +790,15 @@ export default function MessagesPage() {
                 <Button
                     variant="ghost"
                     size="icon"
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={() => toast({ title: "Message Search", description: "DM search coming soon!"})}
+                    title="Search Messages in DM"
+                >
+                    <Search className="h-5 w-5" />
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="icon"
                     className={cn("text-muted-foreground hover:text-foreground", showPinnedMessages && "text-primary bg-primary/10")}
                     onClick={() => setShowPinnedMessages(!showPinnedMessages)}
                     title={showPinnedMessages ? "Show All Messages" : "Show Pinned Messages"}
@@ -809,28 +827,35 @@ export default function MessagesPage() {
                 {displayedMessages.map((msg, index) => {
                   const previousMessage = index > 0 ? displayedMessages[index - 1] : null;
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
-                  const isCurrentUserSender = msg.senderId === currentUser.uid;
+                  const isCurrentUserMsg = msg.senderId === currentUser.uid;
+                  let hasBeenRepliedTo = false;
+                  if (isCurrentUserMsg) {
+                    hasBeenRepliedTo = displayedMessages.some(
+                      (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
+                    );
+                  }
+
 
                   return (
                     <div
                       key={msg.id}
                       className={cn(
                         "flex items-start space-x-3 group relative hover:bg-muted/30 px-2 py-1 rounded-md",
-                         isCurrentUserSender && "justify-end"
+                         isCurrentUserMsg && "justify-end"
                       )}
                     >
-                      {!isCurrentUserSender && showHeader && (
+                      {!isCurrentUserMsg && showHeader && (
                         <Avatar className="mt-1 h-8 w-8 shrink-0">
                           <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       )}
-                       {!isCurrentUserSender && !showHeader && <div className="w-8 shrink-0" /> }
+                       {!isCurrentUserMsg && !showHeader && <div className="w-8 shrink-0" /> }
 
-                      <div className={cn("flex-1 min-w-0 max-w-[75%]", isCurrentUserSender && "text-right")}>
+                      <div className={cn("flex-1 min-w-0 max-w-[75%]", isCurrentUserMsg && "text-right")}>
                         {showHeader && (
-                          <div className={cn("flex items-baseline space-x-1.5", isCurrentUserSender && "justify-end")}>
-                            <p className="font-semibold text-sm text-foreground">{isCurrentUserSender ? "You" : msg.senderName}</p>
+                          <div className={cn("flex items-baseline space-x-1.5", isCurrentUserMsg && "justify-end")}>
+                            <p className="font-semibold text-sm text-foreground">{isCurrentUserMsg ? "You" : msg.senderName}</p>
                             <div className="flex items-baseline text-xs text-muted-foreground">
                               <p title={msg.timestamp ? format(msg.timestamp, 'PPpp') : undefined}>
                                 {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
@@ -838,16 +863,17 @@ export default function MessagesPage() {
                               {msg.timestamp && <p className="ml-1.5">({format(msg.timestamp, 'p')})</p>}
                             </div>
                             {msg.isPinned && <Pin className="h-3 w-3 text-amber-400 ml-1" title="Pinned Message"/>}
+                            {hasBeenRepliedTo && <MessageSquareReply className="h-3 w-3 text-blue-400 ml-1" title="Someone replied to this" />}
                           </div>
                         )}
                          {msg.replyToMessageId && (
-                            <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max", isCurrentUserSender ? "ml-auto" : "mr-auto")}>
+                            <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max", isCurrentUserMsg ? "ml-auto" : "mr-auto")}>
                                 Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>: 
                                 <span className="italic ml-1 truncate">"{msg.replyToTextSnippet}"</span>
                             </div>
                         )}
                          <div className={cn("mt-0.5 p-2 rounded-lg inline-block", 
-                            isCurrentUserSender ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
+                            isCurrentUserMsg ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
                             showHeader ? "mt-0.5" : "mt-0"
                         )}>
                             {msg.type === 'text' && msg.text && (
@@ -880,7 +906,7 @@ export default function MessagesPage() {
                             )}
                         </div>
                         {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                            <div className={cn("mt-1.5 flex flex-wrap gap-1.5", isCurrentUserSender && "justify-end")}>
+                            <div className={cn("mt-1.5 flex flex-wrap gap-1.5", isCurrentUserMsg && "justify-end")}>
                                 {Object.entries(msg.reactions).map(([emoji, userIds]) => (
                                     userIds.length > 0 && (
                                         <Button key={emoji} variant="outline" size="sm" onClick={() => handleToggleReaction(msg.id, emoji)}
@@ -893,15 +919,15 @@ export default function MessagesPage() {
                             </div>
                         )}
                       </div>
-                      {isCurrentUserSender && showHeader && (
+                      {isCurrentUserMsg && showHeader && (
                         <Avatar className="mt-1 h-8 w-8 shrink-0 ml-3">
                           <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       )}
-                      {isCurrentUserSender && !showHeader && <div className="w-8 shrink-0 ml-3" />}
+                      {isCurrentUserMsg && !showHeader && <div className="w-8 shrink-0 ml-3" />}
 
-                       <div className={cn("absolute top-0 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50", isCurrentUserSender ? "left-2" : "right-2")}>
+                       <div className={cn("absolute top-0 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50", isCurrentUserMsg ? "left-2" : "right-2")}>
                         <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" 
                             onClick={() => {
                                 setForwardingMessage(msg);
@@ -1108,11 +1134,15 @@ export default function MessagesPage() {
                  </div>
             )}
             <div className="grid gap-4 py-4">
-                <Input placeholder="Search channels or users (coming soon)..." disabled/>
+                <Input 
+                    placeholder="Search channels or users (coming soon)..." 
+                    value={forwardSearchTerm}
+                    onChange={(e) => setForwardSearchTerm(e.target.value)}
+                />
                 {/* Placeholder for recipient list */}
             </div>
             <DialogFooter>
-                <Button variant="outline" onClick={() => setIsForwardDialogOpen(false)}>Cancel</Button>
+                <Button variant="outline" onClick={() => {setIsForwardDialogOpen(false); setForwardSearchTerm("");}}>Cancel</Button>
                 <Button onClick={handleForwardMessage}>
                     Forward
                 </Button>

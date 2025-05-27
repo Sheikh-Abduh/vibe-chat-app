@@ -8,7 +8,7 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
-import { Picker } from 'emoji-mart';
+import Picker from 'emoji-mart';
 import data from '@emoji-mart/data'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -19,7 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -316,6 +316,7 @@ export default function CommunitiesPage() {
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null);
   const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
   const [isForwardDialogOpen, setIsForwardDialogOpen] = useState(false);
+  const [forwardSearchTerm, setForwardSearchTerm] = useState("");
 
 
   useEffect(() => {
@@ -575,9 +576,10 @@ export default function CommunitiesPage() {
       const data = await response.json();
       const secureUrl = data.secure_url;
       const originalFilename = data.original_filename || file.name;
+      const fileType = file.type;
 
       if (secureUrl) {
-        await sendAttachmentMessageToFirestore(secureUrl, originalFilename, file.type);
+        await sendAttachmentMessageToFirestore(secureUrl, originalFilename, fileType);
       } else {
         throw new Error('Cloudinary did not return a URL.');
       }
@@ -822,6 +824,7 @@ export default function CommunitiesPage() {
     } finally {
         setIsForwardDialogOpen(false);
         setForwardingMessage(null);
+        setForwardSearchTerm("");
     }
   };
 
@@ -1061,6 +1064,15 @@ export default function CommunitiesPage() {
                 <h3 className="text-lg font-semibold text-foreground">{selectedChannel.name}</h3>
               </div>
               <div className="flex items-center space-x-2">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={() => toast({ title: "Message Search", description: "Message search coming soon!"})}
+                    title="Search Messages in Channel"
+                >
+                    <Search className="h-5 w-5" />
+                </Button>
                 {selectedChannel.type === 'text' && (
                     <Button
                         variant="ghost"
@@ -1098,6 +1110,13 @@ export default function CommunitiesPage() {
                 {displayedMessages.map((msg, index) => {
                   const previousMessage = index > 0 ? displayedMessages[index - 1] : null;
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
+                  const isMyMessage = currentUser?.uid === msg.senderId;
+                  let hasBeenRepliedTo = false;
+                  if (isMyMessage) {
+                    hasBeenRepliedTo = displayedMessages.some(
+                      (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
+                    );
+                  }
 
                   return (
                     <div
@@ -1131,6 +1150,7 @@ export default function CommunitiesPage() {
                                 )}
                             </div>
                             {msg.isPinned && <Pin className="h-3 w-3 text-amber-400 ml-1" title="Pinned Message"/>}
+                            {hasBeenRepliedTo && <MessageSquareReply className="h-3 w-3 text-blue-400 ml-1" title="Someone replied to this" />}
                           </div>
                         )}
                         {msg.replyToMessageId && (
@@ -1608,11 +1628,15 @@ export default function CommunitiesPage() {
                  </div>
             )}
             <div className="grid gap-4 py-4">
-                <Input placeholder="Search channels or users (coming soon)..." disabled/>
+                <Input 
+                    placeholder="Search channels or users (coming soon)..." 
+                    value={forwardSearchTerm}
+                    onChange={(e) => setForwardSearchTerm(e.target.value)}
+                />
                 {/* Placeholder for recipient list */}
             </div>
             <DialogFooter>
-                <Button variant="outline" onClick={() => setIsForwardDialogOpen(false)}>Cancel</Button>
+                <Button variant="outline" onClick={() => {setIsForwardDialogOpen(false); setForwardSearchTerm("");}}>Cancel</Button>
                 <Button onClick={handleForwardMessage}>
                     Forward
                 </Button>
@@ -1622,4 +1646,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
