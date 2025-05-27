@@ -174,6 +174,14 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+             <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname.startsWith('/activity')} tooltip="Activity">
+                  <Link href="/activity">
+                    <BellDot /> 
+                    Activity
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.startsWith('/settings')} tooltip="Settings">
                 <Link href="/settings">
@@ -307,9 +315,13 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
               </div>
 
               <div className="ml-auto flex items-center space-x-2">
-                 <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground" onClick={() => toast({title: "Coming Soon!", description: "Activity feed will be implemented."})}>
-                  <BellDot className="h-5 w-5" />
-                  <span className="sr-only">Activity Feed</span>
+                 <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground relative" asChild>
+                    <Link href="/activity">
+                        <BellDot className="h-5 w-5" />
+                        {/* Placeholder badge - replace with dynamic count */}
+                        <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground p-1.5">3</span> 
+                        <span className="sr-only">Activity Feed</span>
+                    </Link>
                 </Button>
                 <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground" onClick={() => toast({title: "Coming Soon!", description: "Global search will be implemented."})}>
                   <Search className="h-5 w-5" />
@@ -332,4 +344,5 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 export default function AuthenticatedAppLayout({ children }: { children: React.ReactNode }) {
   return <AppLayoutContent>{children}</AppLayoutContent>;
 }
+
 

@@ -35,7 +35,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign, Phone, VideoIcon } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -147,6 +147,7 @@ type ChatMessage = {
   reactions?: Record<string, string[]>; // Emoji as key, array of user UIDs as value
   replyToMessageId?: string;
   replyToSenderName?: string;
+  replyToSenderId?: string; // Added for notification generation
   replyToTextSnippet?: string;
   isForwarded?: boolean;
   forwardedFromSenderName?: string;
@@ -183,10 +184,11 @@ type ChatMessage = {
  *          - `reactions`: object (e.g., {"👍": ["uid1", "uid2"], "❤️": ["uid1"]})
  *          - `replyToMessageId`: string (optional, ID of the message being replied to)
  *          - `replyToSenderName`: string (optional, name of the original sender)
+ *          - `replyToSenderId`: string (optional, UID of the original sender)
  *          - `replyToTextSnippet`: string (optional, a short snippet of the original message text)
  *          - `isForwarded`: boolean (optional)
  *          - `forwardedFromSenderName`: string (optional, name of the original sender of the forwarded message)
- *          - `mentionedUserIds`: string[] (optional, array of UIDs for users mentioned)
+ *          - `mentionedUserIds`: string[] (optional, array of UIDs for users mentioned - for backend notification processing)
  *    - Firestore Security Rules: Crucial for access control.
  *      - Users can only write messages to channels they are members of.
  *      - Restrict reading messages to members.
@@ -201,6 +203,7 @@ type ChatMessage = {
  * 3. Sending Text Messages (Frontend - Implemented with Firestore):
  *    - Saves to Firestore. Now includes reply context if applicable.
  *    - Includes basic Markdown formatting for bold, italic, strikethrough, underline, superscript, subscript.
+ *    - Parses for @mentions and stores them in `mentionedUserIds`.
  *
  * 4. File/Image Upload (Frontend - Implemented with Cloudinary):
  *    - Uploads to Cloudinary, then saves message details (URL, filename, fileType) to Firestore.
@@ -227,7 +230,7 @@ type ChatMessage = {
  *
  * 10. Reply to Message (Frontend - UI and data model implemented):
  *     - UI indicator for message being replied to.
- *     - Saves reply context (`replyToMessageId`, `replyToSenderName`, `replyToTextSnippet`) to Firestore.
+ *     - Saves reply context (`replyToMessageId`, `replyToSenderName`, `replyToSenderId`, `replyToTextSnippet`) to Firestore.
  *     - Renders replied-to message snippet above the reply.
  *
  * 11. Forward Message (Frontend - Basic UI & hardcoded forward to first text channel implemented):
@@ -239,7 +242,8 @@ type ChatMessage = {
  *     - Typing "@" in chat input triggers a popover with members of the current channel.
  *     - Selecting a member inserts "@username" into input.
  *     - Messages containing "@username" patterns are styled.
- *     - Backend for notifications or structured mention storage is not implemented.
+ *     - `mentionedUserIds` (array of strings, e.g. ["@username1", "@username2"]) is saved to Firestore for backend processing.
+ *       (A real system would resolve these to UIDs before saving).
  *
  * 13. Client-Side Message Search (Frontend - Basic filtering of loaded messages implemented):
  *     - Search icon in chat header toggles a search input.
@@ -436,6 +440,7 @@ export default function CommunitiesPage() {
             reactions: data.reactions || {},
             replyToMessageId: data.replyToMessageId,
             replyToSenderName: data.replyToSenderName,
+            replyToSenderId: data.replyToSenderId,
             replyToTextSnippet: data.replyToTextSnippet,
             isForwarded: data.isForwarded || false,
             forwardedFromSenderName: data.forwardedFromSenderName,
@@ -509,18 +514,24 @@ export default function CommunitiesPage() {
       return;
     }
 
+    const messageText = newMessage.trim();
+    const mentionMatches = messageText.match(/@[\w.-]+/g) || [];
+    const mentionedUserIds = mentionMatches; // Storing raw @username strings for now.
+
     const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text'; } = {
-      text: newMessage.trim(),
+      text: messageText,
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       timestamp: serverTimestamp(), 
       type: 'text' as const,
+      mentionedUserIds: mentionedUserIds.length > 0 ? mentionedUserIds : undefined,
     };
     
     if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
     if(replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
+        messageData.replyToSenderId = replyingToMessage.senderId;
         let snippet = replyingToMessage.text || '';
         if (replyingToMessage.type === 'image') snippet = 'Image';
         else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
@@ -529,12 +540,6 @@ export default function CommunitiesPage() {
         messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
     }
     
-    const mentions = newMessage.match(/@([\w.-]+)/g);
-    if (mentions) {
-        // For now, not storing structured mentions yet
-        // messageData.mentionedUserIds = mentions.map(m => m.substring(1)); 
-    }
-
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       await addDoc(messagesRef, messageData as ChatMessage); 
@@ -564,7 +569,7 @@ export default function CommunitiesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string;} = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       timestamp: serverTimestamp(), 
@@ -578,6 +583,7 @@ export default function CommunitiesPage() {
     if(replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
+        messageData.replyToSenderId = replyingToMessage.senderId;
         let snippet = replyingToMessage.text || '';
         if (replyingToMessage.type === 'image') snippet = 'Image';
         else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
@@ -680,7 +686,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; } = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       timestamp: serverTimestamp(), 
@@ -695,6 +701,7 @@ export default function CommunitiesPage() {
     if(replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
+        messageData.replyToSenderId = replyingToMessage.senderId;
         let snippet = replyingToMessage.text || '';
         if (replyingToMessage.type === 'image') snippet = 'Image';
         else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
@@ -842,7 +849,7 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; isForwarded: boolean; forwardedFromSenderName: string; } = {
+    const forwardedMessageData: Partial<ChatMessage> = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         timestamp: serverTimestamp(),
@@ -1390,7 +1397,7 @@ export default function CommunitiesPage() {
                                 }}
                                 theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
                                 emojiStyle={EmojiStyle.NATIVE}
-                                searchPlaceholder="Search emoji..."
+                                searchPlaceholder="Search emoji... (Full search not yet implemented)"
                                 previewConfig={{showPreview: false}}
                              />
                           </PopoverContent>
@@ -1771,7 +1778,7 @@ export default function CommunitiesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users..." 
+                    placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
                 />

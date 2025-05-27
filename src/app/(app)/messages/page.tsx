@@ -72,10 +72,11 @@ type ChatMessage = {
   reactions?: Record<string, string[]>;
   replyToMessageId?: string;
   replyToSenderName?: string;
+  replyToSenderId?: string; // Added for notification generation
   replyToTextSnippet?: string;
   isForwarded?: boolean;
   forwardedFromSenderName?: string;
-  mentionedUserIds?: string[];
+  mentionedUserIds?: string[]; // For potential backend processing of mentions
 };
 
 interface DmConversation {
@@ -228,6 +229,7 @@ export default function MessagesPage() {
             reactions: data.reactions || {},
             replyToMessageId: data.replyToMessageId,
             replyToSenderName: data.replyToSenderName,
+            replyToSenderId: data.replyToSenderId,
             replyToTextSnippet: data.replyToTextSnippet,
             isForwarded: data.isForwarded || false,
             forwardedFromSenderName: data.forwardedFromSenderName,
@@ -309,18 +311,25 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text';} = {
-      text: newMessage.trim(),
+    const messageText = newMessage.trim();
+    const mentionMatches = messageText.match(/@[\w.-]+/g) || [];
+    // In a real app, resolve these @usernames to UIDs before saving
+    const mentionedUserIds = mentionMatches; 
+
+    const messageData: Partial<ChatMessage> = {
+      text: messageText,
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       timestamp: serverTimestamp(),
       type: 'text' as const,
+      senderAvatarUrl: currentUser.photoURL || null,
+      mentionedUserIds: mentionedUserIds.length > 0 ? mentionedUserIds : undefined, // Omit if empty
     };
 
-    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
+        messageData.replyToSenderId = replyingToMessage.senderId;
         let snippet = replyingToMessage.text || '';
         if (replyingToMessage.type === 'image') snippet = 'Image';
         else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
@@ -366,7 +375,7 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string;} = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       timestamp: serverTimestamp(), 
@@ -374,12 +383,13 @@ export default function MessagesPage() {
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType,
+      senderAvatarUrl: currentUser.photoURL || null,
     };
 
-    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
+        messageData.replyToSenderId = replyingToMessage.senderId;
         let snippet = replyingToMessage.text || '';
         if (replyingToMessage.type === 'image') snippet = 'Image';
         else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
@@ -457,7 +467,7 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string;} = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       timestamp: serverTimestamp(), 
@@ -466,12 +476,13 @@ export default function MessagesPage() {
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
+      senderAvatarUrl: currentUser.photoURL || null,
     };
 
-    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
+        messageData.replyToSenderId = replyingToMessage.senderId;
         let snippet = replyingToMessage.text || '';
         if (replyingToMessage.type === 'image') snippet = 'Image';
         else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
@@ -594,16 +605,16 @@ export default function MessagesPage() {
         return;
     }
 
-    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; isForwarded: boolean; forwardedFromSenderName: string;} = {
+    const forwardedMessageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       timestamp: serverTimestamp(),
       type: forwardingMessage.type,
       isForwarded: true,
       forwardedFromSenderName: forwardingMessage.senderName,
+      senderAvatarUrl: currentUser.photoURL || null,
     };
     
-    if(currentUser.photoURL) forwardedMessageData.senderAvatarUrl = currentUser.photoURL;
     if (forwardingMessage.text) forwardedMessageData.text = forwardingMessage.text;
     if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
     if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
@@ -1271,7 +1282,7 @@ export default function MessagesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users..." 
+                    placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
                 />
