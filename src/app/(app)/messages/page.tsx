@@ -310,16 +310,16 @@ export default function MessagesPage() {
       type: 'text' as const,
       isPinned: false,
       reactions: {},
-      fileUrl: undefined,
-      fileName: undefined,
-      fileType: undefined,
-      gifUrl: undefined,
-      gifId: undefined,
-      gifTinyUrl: undefined,
-      gifContentDescription: undefined,
-      replyToMessageId: undefined,
-      replyToSenderName: undefined,
-      replyToTextSnippet: undefined,
+      // fileUrl: undefined,
+      // fileName: undefined,
+      // fileType: undefined,
+      // gifUrl: undefined,
+      // gifId: undefined,
+      // gifTinyUrl: undefined,
+      // gifContentDescription: undefined,
+      // replyToMessageId: undefined,
+      // replyToSenderName: undefined,
+      // replyToTextSnippet: undefined,
     };
 
     if (replyingToMessage) {
@@ -380,14 +380,14 @@ export default function MessagesPage() {
       fileType: fileType,
       isPinned: false,
       reactions: {},
-      text: undefined,
-      gifUrl: undefined,
-      gifId: undefined,
-      gifTinyUrl: undefined,
-      gifContentDescription: undefined,
-      replyToMessageId: undefined,
-      replyToSenderName: undefined,
-      replyToTextSnippet: undefined,
+      // text: undefined,
+      // gifUrl: undefined,
+      // gifId: undefined,
+      // gifTinyUrl: undefined,
+      // gifContentDescription: undefined,
+      // replyToMessageId: undefined,
+      // replyToSenderName: undefined,
+      // replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -482,13 +482,13 @@ export default function MessagesPage() {
       gifContentDescription: gif.content_description,
       isPinned: false,
       reactions: {},
-      text: undefined,
-      fileUrl: undefined,
-      fileName: undefined,
-      fileType: undefined,
-      replyToMessageId: undefined,
-      replyToSenderName: undefined,
-      replyToTextSnippet: undefined,
+      // text: undefined,
+      // fileUrl: undefined,
+      // fileName: undefined,
+      // fileType: undefined,
+      // replyToMessageId: undefined,
+      // replyToSenderName: undefined,
+      // replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -781,7 +781,7 @@ export default function MessagesPage() {
         <div className="p-3 border-b border-border/40 shadow-sm shrink-0">
           <Input placeholder="Search DMs..." className="bg-muted border-border/60"/>
         </div>
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0"> {/* Added min-h-0 */}
           <div className="p-2 space-y-1">
              <Button 
                 key={savedMessagesConversation.id} 
@@ -864,7 +864,7 @@ export default function MessagesPage() {
               </div>
             </div>
 
-            <ScrollArea className="flex-1 bg-card/30">
+            <ScrollArea className="flex-1 min-h-0 bg-card/30"> {/* Added min-h-0 */}
               <div className="p-4 space-y-0.5">
                 {displayedMessages.length === 0 && (
                   <div className="text-center text-muted-foreground py-4">
@@ -1001,7 +1001,7 @@ export default function MessagesPage() {
                                 }} 
                                 theme={currentThemeMode} 
                                 previewPosition="none" 
-                                searchPlaceholder="Select a reaction. Search not available yet."
+                                searchPlaceholder="Select an emoji. Search not available yet."
                              />
                           </PopoverContent>
                         </Popover>
@@ -1091,7 +1091,7 @@ export default function MessagesPage() {
                         <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="search">Search</TabsTrigger><TabsTrigger value="favorites">Favorites</TabsTrigger></TabsList>
                         <TabsContent value="search">
                             <Input type="text" placeholder="Search Tenor GIFs..." value={gifSearchTerm} onChange={handleGifSearchChange} className="my-2"/>
-                            <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]">
+                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-200px)]"> {/* Added min-h-0 */}
                             {loadingGifs ? <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                                 : gifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
                                 {gifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
@@ -1102,7 +1102,7 @@ export default function MessagesPage() {
                             </ScrollArea>
                         </TabsContent>
                         <TabsContent value="favorites">
-                            <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]">
+                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-150px)]"> {/* Added min-h-0 */}
                             {favoritedGifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
                                 {favoritedGifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
                                 <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, 33vw" className="object-cover group-hover:scale-105" unoptimized/></button>
@@ -1146,7 +1146,7 @@ export default function MessagesPage() {
                          <p className="text-xs text-muted-foreground mt-1 italic">Status: Away (placeholder)</p>
                     </div>
                 </div>
-                <ScrollArea className="flex-1">
+                <ScrollArea className="flex-1 min-h-0"> {/* Added min-h-0 */}
                     <div className="p-4 space-y-3">
                         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">About</h4>
                         <p className="text-sm text-foreground/90">User bio placeholder. This is where a short description about the user would go.</p>
@@ -1205,7 +1205,7 @@ export default function MessagesPage() {
                     placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    
+                    disabled // Keep disabled as search/selection not implemented
                 />
                 {/* Placeholder for recipient list */}
             </div>
@@ -1220,4 +1220,3 @@ export default function MessagesPage() {
     </div>
   );
 }
-  

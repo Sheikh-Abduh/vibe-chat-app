@@ -492,16 +492,16 @@ export default function CommunitiesPage() {
       type: 'text' as const,
       isPinned: false,
       reactions: {},
-      fileUrl: undefined,
-      fileName: undefined,
-      fileType: undefined,
-      gifUrl: undefined,
-      gifId: undefined,
-      gifTinyUrl: undefined,
-      gifContentDescription: undefined,
-      replyToMessageId: undefined,
-      replyToSenderName: undefined,
-      replyToTextSnippet: undefined,
+      // fileUrl: undefined, // Explicitly undefined
+      // fileName: undefined,
+      // fileType: undefined,
+      // gifUrl: undefined,
+      // gifId: undefined,
+      // gifTinyUrl: undefined,
+      // gifContentDescription: undefined,
+      // replyToMessageId: undefined,
+      // replyToSenderName: undefined,
+      // replyToTextSnippet: undefined,
     };
 
     if (replyingToMessage) {
@@ -555,14 +555,14 @@ export default function CommunitiesPage() {
       fileType: fileType, 
       isPinned: false,
       reactions: {},
-      text: undefined,
-      gifUrl: undefined,
-      gifId: undefined,
-      gifTinyUrl: undefined,
-      gifContentDescription: undefined,
-      replyToMessageId: undefined,
-      replyToSenderName: undefined,
-      replyToTextSnippet: undefined,
+      // text: undefined,
+      // gifUrl: undefined,
+      // gifId: undefined,
+      // gifTinyUrl: undefined,
+      // gifContentDescription: undefined,
+      // replyToMessageId: undefined,
+      // replyToSenderName: undefined,
+      // replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -682,13 +682,13 @@ export default function CommunitiesPage() {
       gifContentDescription: gif.content_description,
       isPinned: false,
       reactions: {},
-      text: undefined,
-      fileUrl: undefined,
-      fileName: undefined,
-      fileType: undefined,
-      replyToMessageId: undefined,
-      replyToSenderName: undefined,
-      replyToTextSnippet: undefined,
+      // text: undefined,
+      // fileUrl: undefined,
+      // fileName: undefined,
+      // fileType: undefined,
+      // replyToMessageId: undefined,
+      // replyToSenderName: undefined,
+      // replyToTextSnippet: undefined,
     };
      if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -1027,7 +1027,7 @@ export default function CommunitiesPage() {
     <div className="flex h-full overflow-hidden bg-background">
       {/* Column 1: Community Server List */}
       <div className="h-full w-20 bg-muted/20 border-r border-border/30 overflow-hidden">
-        <ScrollArea className="h-full">
+        <div className="h-full"> {/* Removed ScrollArea, padding is enough */}
           <div className="p-2 space-y-3">
             {placeholderCommunities.map((community) => (
               <button
@@ -1043,7 +1043,7 @@ export default function CommunitiesPage() {
               </button>
             ))}
           </div>
-        </ScrollArea>
+        </div>
       </div>
 
       {/* Column 2: Channel List */}
@@ -1053,7 +1053,7 @@ export default function CommunitiesPage() {
             <div className="p-3 border-b border-border/40 shadow-sm shrink-0">
               <h2 className="text-lg font-semibold text-foreground truncate">{selectedCommunity.name}</h2>
             </div>
-            <ScrollArea className="h-full">
+            <ScrollArea className="flex-1 min-h-0"> {/* Ensure ScrollArea can shrink and grow */}
               <div className="p-3 space-y-1">
                 {currentChannels.map((channel) => (
                   <Button
@@ -1144,7 +1144,7 @@ export default function CommunitiesPage() {
               </div>
             </div>
 
-            <ScrollArea className="flex-1 bg-card/30">
+            <ScrollArea className="flex-1 min-h-0 bg-card/30"> {/* Ensure ScrollArea can shrink and grow */}
               <div className="p-4 space-y-0.5">
                 {displayedMessages.length === 0 && selectedChannel.type === 'text' && !messages.some(m => m.senderId !== 'system') && (
                   <div className="text-center text-muted-foreground py-4">
@@ -1459,7 +1459,7 @@ export default function CommunitiesPage() {
                                     onChange={handleGifSearchChange}
                                     className="my-2"
                                 />
-                                <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]">
+                                <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]"> {/* Ensure ScrollArea can shrink/grow */}
                                     {loadingGifs ? (
                                         <div className="flex justify-center items-center h-full">
                                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -1501,7 +1501,7 @@ export default function CommunitiesPage() {
                                 </ScrollArea>
                             </TabsContent>
                             <TabsContent value="favorites">
-                                    <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]">
+                                    <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]"> {/* Ensure ScrollArea can shrink/grow */}
                                     {favoritedGifs.length > 0 ? (
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
                                         {favoritedGifs.map((gif) => (
@@ -1603,7 +1603,7 @@ export default function CommunitiesPage() {
                     )}
                 </div>
 
-                <ScrollArea className="flex-1 min-h-0"> 
+                <ScrollArea className="flex-1 min-h-0"> {/* Ensure ScrollArea can shrink and grow */}
                    <div className="px-4 pb-4 pt-0">
                         <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-4 px-4">
                         Members ({currentMembers.length})
@@ -1680,7 +1680,7 @@ export default function CommunitiesPage() {
                     placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    
+                    disabled={true} // Keep disabled as search/selection not implemented
                 />
                 {/* Placeholder for recipient list */}
             </div>
