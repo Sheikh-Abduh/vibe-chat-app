@@ -419,26 +419,27 @@ export default function CommunitiesPage() {
           const data = docSnap.data();
           return {
             id: docSnap.id,
-            text: data.text || undefined,
+            text: data.text,
             senderId: data.senderId,
             senderName: data.senderName,
-            senderAvatarUrl: data.senderAvatarUrl || null,
+            senderAvatarUrl: data.senderAvatarUrl,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
             type: data.type || 'text', 
-            fileUrl: data.fileUrl || undefined,
-            fileName: data.fileName || undefined,
-            fileType: data.fileType || undefined,
-            gifUrl: data.gifUrl || undefined,
-            gifId: data.gifId || undefined,
-            gifTinyUrl: data.gifTinyUrl || undefined,
-            gifContentDescription: data.gifContentDescription || undefined,
+            fileUrl: data.fileUrl,
+            fileName: data.fileName,
+            fileType: data.fileType,
+            gifUrl: data.gifUrl,
+            gifId: data.gifId,
+            gifTinyUrl: data.gifTinyUrl,
+            gifContentDescription: data.gifContentDescription,
             isPinned: data.isPinned || false,
             reactions: data.reactions || {},
-            replyToMessageId: data.replyToMessageId || undefined,
-            replyToSenderName: data.replyToSenderName || undefined,
-            replyToTextSnippet: data.replyToTextSnippet || undefined,
+            replyToMessageId: data.replyToMessageId,
+            replyToSenderName: data.replyToSenderName,
+            replyToTextSnippet: data.replyToTextSnippet,
             isForwarded: data.isForwarded || false,
-            forwardedFromSenderName: data.forwardedFromSenderName || undefined,
+            forwardedFromSenderName: data.forwardedFromSenderName,
+            mentionedUserIds: data.mentionedUserIds || [],
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
@@ -457,7 +458,6 @@ export default function CommunitiesPage() {
                 senderName: 'System',
                 timestamp: new Date(),
                 type: 'text',
-                reactions: {},
             }]);
         }
       });
@@ -472,7 +472,6 @@ export default function CommunitiesPage() {
         senderName: 'System',
         timestamp: new Date(),
         type: 'text',
-        reactions: {},
       }]);
     } else {
       setMessages([]);
@@ -510,7 +509,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'text'; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; mentionedUserIds: string[]; text: string; } = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -519,20 +518,10 @@ export default function CommunitiesPage() {
       type: 'text' as const,
       isPinned: false,
       reactions: {},
-      fileUrl: undefined,
-      fileName: undefined,
-      fileType: undefined,
-      gifUrl: undefined,
-      gifId: undefined,
-      gifTinyUrl: undefined,
-      gifContentDescription: undefined,
       isForwarded: false,
-      forwardedFromSenderName: undefined,
-      mentionedUserIds: [], // Add mentionedUserIds for future backend processing
-      replyToMessageId: undefined,
-      replyToSenderName: undefined,
-      replyToTextSnippet: undefined,
+      mentionedUserIds: [],
     };
+
 
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -556,7 +545,7 @@ export default function CommunitiesPage() {
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-      await addDoc(messagesRef, messageData); 
+      await addDoc(messagesRef, messageData as ChatMessage); 
       setNewMessage("");
       setReplyingToMessage(null);
       setShowMentionSuggestions(false);
@@ -583,7 +572,7 @@ export default function CommunitiesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; mentionedUserIds: string[];} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -594,17 +583,8 @@ export default function CommunitiesPage() {
       fileType: fileType, 
       isPinned: false,
       reactions: {},
-      text: undefined,
-      gifUrl: undefined,
-      gifId: undefined,
-      gifTinyUrl: undefined,
-      gifContentDescription: undefined,
       isForwarded: false,
-      forwardedFromSenderName: undefined,
       mentionedUserIds: [],
-      replyToMessageId: undefined,
-      replyToSenderName: undefined,
-      replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -620,7 +600,7 @@ export default function CommunitiesPage() {
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-      await addDoc(messagesRef, messageData);
+      await addDoc(messagesRef, messageData as ChatMessage);
       setReplyingToMessage(null);
       toast({ title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Sent!`, description: `${fileName} has been sent.` });
     } catch (error) {
@@ -712,7 +692,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; mentionedUserIds: string[];} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -724,16 +704,8 @@ export default function CommunitiesPage() {
       gifContentDescription: gif.content_description,
       isPinned: false,
       reactions: {},
-      text: undefined,
-      fileUrl: undefined,
-      fileName: undefined,
-      fileType: undefined,
       isForwarded: false,
-      forwardedFromSenderName: undefined,
       mentionedUserIds: [],
-      replyToMessageId: undefined,
-      replyToSenderName: undefined,
-      replyToTextSnippet: undefined,
     };
      if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -748,7 +720,7 @@ export default function CommunitiesPage() {
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-      await addDoc(messagesRef, messageData);
+      await addDoc(messagesRef, messageData as ChatMessage);
       setShowGifPicker(false);
       setGifSearchTerm("");
       setGifs([]);
@@ -885,7 +857,7 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; isPinned: boolean; reactions: Record<string, string[]>; isForwarded: boolean; forwardedFromSenderName: string; mentionedUserIds: string[];} = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || null,
@@ -893,25 +865,24 @@ export default function CommunitiesPage() {
         type: forwardingMessage.type,
         isPinned: false,
         reactions: {},
-        text: forwardingMessage.text, // Original text
-        fileUrl: forwardingMessage.fileUrl,
-        fileName: forwardingMessage.fileName,
-        fileType: forwardingMessage.fileType,
-        gifUrl: forwardingMessage.gifUrl,
-        gifId: forwardingMessage.gifId,
-        gifTinyUrl: forwardingMessage.gifTinyUrl,
-        gifContentDescription: forwardingMessage.gifContentDescription,
         isForwarded: true,
         forwardedFromSenderName: forwardingMessage.senderName,
-        replyToMessageId: undefined, // Forwarded messages don't carry over reply context
-        replyToSenderName: undefined,
-        replyToTextSnippet: undefined,
-        mentionedUserIds: [], // Clear mentions on forward
+        mentionedUserIds: [], 
     };
     
+    // Copy relevant content fields
+    if (forwardingMessage.text) forwardedMessageData.text = forwardingMessage.text;
+    if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
+    if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
+    if (forwardingMessage.fileType) forwardedMessageData.fileType = forwardingMessage.fileType;
+    if (forwardingMessage.gifUrl) forwardedMessageData.gifUrl = forwardingMessage.gifUrl;
+    if (forwardingMessage.gifId) forwardedMessageData.gifId = forwardingMessage.gifId;
+    if (forwardingMessage.gifTinyUrl) forwardedMessageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
+    if (forwardingMessage.gifContentDescription) forwardedMessageData.gifContentDescription = forwardingMessage.gifContentDescription;
+
     try {
         const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${targetChannel.id}/messages`);
-        await addDoc(messagesRef, forwardedMessageData); 
+        await addDoc(messagesRef, forwardedMessageData as ChatMessage); 
         toast({ title: "Message Forwarded", description: `Message forwarded to #${targetChannel.name}.` });
     } catch (error) {
         console.error("Error forwarding message:", error);
@@ -1305,7 +1276,7 @@ export default function CommunitiesPage() {
                             {hasBeenRepliedTo && <MessageSquareReply className="h-3 w-3 text-blue-400 ml-1" title="Someone replied to this" />}
                           </div>
                         )}
-                        {msg.replyToMessageId && (
+                        {msg.replyToMessageId && msg.replyToSenderName && msg.replyToTextSnippet && (
                             <div className="mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max">
                                 <div className="flex items-center">
                                   <CornerUpRight className="h-3 w-3 mr-1.5 text-primary/70" />
@@ -1805,9 +1776,9 @@ export default function CommunitiesPage() {
             {forwardingMessage && (
                  <div className="mt-2 p-2 border rounded-md bg-muted/50 text-sm">
                     <p className="font-medium text-foreground mb-1">Message from: {forwardingMessage.senderName}</p>
-                    {forwardingMessage.type === 'text' && <p className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatChatMessage(forwardingMessage.text!) }} />}
-                    {forwardingMessage.type === 'image' && <Image src={forwardingMessage.fileUrl!} alt="Forwarded Image" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" data-ai-hint="forwarded content" />}
-                    {forwardingMessage.type === 'gif' && <Image src={forwardingMessage.gifUrl!} alt="Forwarded GIF" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" unoptimized data-ai-hint="forwarded content"/>}
+                    {forwardingMessage.type === 'text' && forwardingMessage.text && <p className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatChatMessage(forwardingMessage.text) }} />}
+                    {forwardingMessage.type === 'image' && forwardingMessage.fileUrl && <Image src={forwardingMessage.fileUrl} alt="Forwarded Image" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" data-ai-hint="forwarded content" />}
+                    {forwardingMessage.type === 'gif' && forwardingMessage.gifUrl && <Image src={forwardingMessage.gifUrl} alt="Forwarded GIF" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" unoptimized data-ai-hint="forwarded content"/>}
                     {/* Add more previews for other types if needed */}
                  </div>
             )}
@@ -1816,6 +1787,7 @@ export default function CommunitiesPage() {
                     placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
+                    disabled // Keep disabled until search is functional
                 />
                 {/* Placeholder for recipient list */}
             </div>
