@@ -19,7 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2 } from 'lucide-react'; // Added Reply, Share2
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -277,6 +277,7 @@ export default function CommunitiesPage() {
 
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [showPinnedMessages, setShowPinnedMessages] = useState(false);
+  const [isRightBarOpen, setIsRightBarOpen] = useState(true);
 
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [gifSearchTerm, setGifSearchTerm] = useState("");
@@ -961,7 +962,13 @@ export default function CommunitiesPage() {
                         {showPinnedMessages ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
                     </Button>
                 )}
-                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className={cn("text-muted-foreground hover:text-foreground", isRightBarOpen && "bg-accent/20 text-accent")}
+                  onClick={() => setIsRightBarOpen(!isRightBarOpen)}
+                  title={isRightBarOpen ? "Hide Server Info" : "Show Server Info"}
+                >
                   <Users className="h-5 w-5" />
                 </Button>
               </div>
@@ -1349,9 +1356,8 @@ export default function CommunitiesPage() {
       </div>
 
       {/* Column 4: Right-Hand Info Bar */}
-      <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden">
-        {selectedCommunity ? (
-          <>
+      {isRightBarOpen && selectedCommunity && (
+        <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden">
             <div className="relative h-32 w-full shrink-0">
                <Image
                 src={selectedCommunity.bannerUrl}
@@ -1412,11 +1418,14 @@ export default function CommunitiesPage() {
                     <Settings className="mr-2 h-4 w-4" /> Community Settings
                 </Button>
             </div>
-          </>
-        ) : (
-          <div className="p-4 text-center text-muted-foreground flex-1 flex items-center justify-center">No community selected.</div>
-        )}
-      </div>
+        </div>
+      )}
+      {!selectedCommunity && isRightBarOpen && (
+        <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col items-center justify-center text-muted-foreground p-4 text-center overflow-hidden">
+            No community selected.
+        </div>
+      )}
+
 
       <AlertDialog open={!!deletingMessageId} onOpenChange={(open) => !open && setDeletingMessageId(null)}>
         <AlertDialogContent>

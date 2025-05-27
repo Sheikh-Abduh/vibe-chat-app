@@ -74,11 +74,11 @@ type ChatMessage = {
 };
 
 interface DmConversation {
-  id: string; // For 'saved_messages', this could be currentUser.uid + '_self' or similar
+  id: string; 
   name: string;
   avatarUrl?: string;
   dataAiHint?: string;
-  partnerId: string; // For 'saved_messages', this is currentUser.uid
+  partnerId: string; 
 }
 
 const formatChatMessage = (text: string): string => {
@@ -101,7 +101,7 @@ export default function MessagesPage() {
   const router = useRouter();
 
   const [selectedConversation, setSelectedConversation] = useState<DmConversation | null>(null);
-  const [otherUserId, setOtherUserId] = useState<string | null>(null); // This will be currentUser.uid for "Saved Messages"
+  const [otherUserId, setOtherUserId] = useState<string | null>(null); 
   const [otherUserName, setOtherUserName] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [dmPartnerProfile, setDmPartnerProfile] = useState<Partial<User> | null>(null);
@@ -115,6 +115,7 @@ export default function MessagesPage() {
 
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [showPinnedMessages, setShowPinnedMessages] = useState(false);
+  const [isMessagesRightBarOpen, setIsMessagesRightBarOpen] = useState(true);
 
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [gifSearchTerm, setGifSearchTerm] = useState("");
@@ -148,8 +149,8 @@ export default function MessagesPage() {
         };
         setSelectedConversation(savedMessagesConvo);
         setOtherUserId(user.uid);
-        setOtherUserName('Saved Messages'); // For chat header
-        setDmPartnerProfile({ // For right info bar
+        setOtherUserName('Saved Messages'); 
+        setDmPartnerProfile({ 
             uid: user.uid,
             displayName: user.displayName || "You",
             photoURL: user.photoURL,
@@ -242,21 +243,18 @@ export default function MessagesPage() {
     try {
         const convoSnap = await getDoc(convoDocRef);
         if (!convoSnap.exists()) {
-            // Ensure participants array is always [uid1, uid2] even for self-chat.
             const participants = [currentUser.uid, otherUserId].sort();
-             if (currentUser.uid === otherUserId && participants.length === 1) { // Special case for self-chat if only one UID added
-                 participants.push(currentUser.uid); // Add self again to satisfy size=2 rule
+             if (currentUser.uid === otherUserId && participants.length === 1) {
+                 participants.push(currentUser.uid); 
              }
-
 
             await setDoc(convoDocRef, {
                 participants: participants,
                 createdAt: serverTimestamp(),
                 lastMessageTimestamp: serverTimestamp(),
-                // Optionally store user info for quick display in conversation lists
                 [`user_${currentUser.uid}_name`]: currentUser.displayName || "User",
                 [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
-                [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || "User", // Use fetched partner profile if available
+                [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || "User", 
                 [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || null,
             });
         }
@@ -594,7 +592,7 @@ export default function MessagesPage() {
   return (
     <div className="flex h-full overflow-hidden bg-background">
       {/* Column 1: Conversation List */}
-      <div className="h-full w-72 bg-card border-r border-border/40 flex flex-col">
+      <div className="h-full w-72 bg-card border-r border-border/40 flex flex-col overflow-hidden">
         <div className="p-3 border-b border-border/40 shadow-sm shrink-0">
           <Input placeholder="Search DMs..." className="bg-muted border-border/60"/>
         </div>
@@ -657,6 +655,15 @@ export default function MessagesPage() {
                     title={showPinnedMessages ? "Show All Messages" : "Show Pinned Messages"}
                 >
                     {showPinnedMessages ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className={cn("text-muted-foreground hover:text-foreground", isMessagesRightBarOpen && "bg-accent/20 text-accent")}
+                  onClick={() => setIsMessagesRightBarOpen(!isMessagesRightBarOpen)}
+                  title={isMessagesRightBarOpen ? "Hide User Info" : "Show User Info"}
+                >
+                  <UserIcon className="h-5 w-5" />
                 </Button>
               </div>
             </div>
@@ -870,9 +877,8 @@ export default function MessagesPage() {
       </div>
 
       {/* Column 3: DM Partner Info Bar */}
-      <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden">
-         {selectedConversation && dmPartnerProfile ? (
-            <>
+      {isMessagesRightBarOpen && selectedConversation && dmPartnerProfile && (
+          <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden">
                 <div className="p-4 border-b border-border/40 shadow-sm shrink-0">
                     <div className="flex flex-col items-center text-center">
                         <Avatar className="h-24 w-24 mb-3 border-2 border-primary shadow-md">
@@ -882,7 +888,7 @@ export default function MessagesPage() {
                             </AvatarFallback>
                         </Avatar>
                         <h3 className="text-xl font-semibold text-foreground">{dmPartnerProfile.displayName || 'User'}</h3>
-                        {dmPartnerProfile.email && selectedConversation.id === `${currentUser?.uid}_self` && ( // Only show email for "Saved Messages"
+                        {dmPartnerProfile.email && selectedConversation.id === `${currentUser?.uid}_self` && (
                             <p className="text-sm text-muted-foreground">{dmPartnerProfile.email}</p>
                         )}
                          <p className="text-xs text-muted-foreground mt-1 italic">Status: Away (placeholder)</p>
@@ -905,13 +911,13 @@ export default function MessagesPage() {
                          <Button variant="outline" className="w-full mt-4" onClick={() => toast({title: "Coming Soon", description: "Viewing full profiles will be available later."})}>View Full Profile</Button>
                     </div>
                 </ScrollArea>
-            </>
-         ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground p-4 text-center">
-                {currentUser ? "Select a conversation to see details." : "Loading user..."}
             </div>
-         )}
-      </div>
+      )}
+      {!selectedConversation && isMessagesRightBarOpen && (
+         <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col items-center justify-center text-muted-foreground p-4 text-center overflow-hidden">
+            Select a conversation to see details.
+         </div>
+      )}
 
 
       <AlertDialog open={!!deletingMessageId} onOpenChange={(open) => !open && setDeletingMessageId(null)}>
