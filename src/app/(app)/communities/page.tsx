@@ -218,8 +218,9 @@ type ChatMessage = {
  *     - Saves reply context (`replyToMessageId`, `replyToSenderName`, `replyToTextSnippet`) to Firestore.
  *     - Renders replied-to message snippet above the reply.
  *
- * 11. Forward Message (Frontend - Placeholder UI implemented):
- *     - Opens a dialog to simulate forwarding. Full implementation requires recipient selection UI and backend logic.
+ * 11. Forward Message (Frontend - Basic UI & simulated send implemented):
+ *     - Opens a dialog to show the message to forward.
+ *     - For now, "forwards" to the first text channel of the current community (needs dynamic recipient selection).
  *
  * 12. UI/UX Enhancements:
  *     - Loading states for all async operations (partially implemented).
@@ -775,9 +776,53 @@ export default function CommunitiesPage() {
     chatInputRef.current?.focus();
   };
 
-  const handleForwardClick = (message: ChatMessage) => {
-    setForwardingMessage(message);
-    setIsForwardDialogOpen(true);
+  const handleForwardMessage = async () => {
+    if (!forwardingMessage || !currentUser || !selectedCommunity) {
+        toast({ variant: "destructive", title: "Forward Error", description: "Cannot forward message." });
+        return;
+    }
+
+    const targetChannel = currentChannels.find(ch => ch.type === 'text');
+    if (!targetChannel) {
+        toast({ variant: "destructive", title: "Forward Error", description: "No text channel found in this community to forward to." });
+        setIsForwardDialogOpen(false);
+        setForwardingMessage(null);
+        return;
+    }
+
+    const forwardedMessageData: any = {
+        senderId: currentUser.uid,
+        senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+        senderAvatarUrl: currentUser.photoURL || null,
+        timestamp: serverTimestamp(),
+        type: forwardingMessage.type,
+        isPinned: false,
+        reactions: {},
+        // Indicate it's forwarded (optional, for UI styling)
+        // isForwarded: true, 
+        // originalSenderName: forwardingMessage.senderName,
+    };
+
+    if (forwardingMessage.text) forwardedMessageData.text = forwardingMessage.text;
+    if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
+    if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
+    if (forwardingMessage.fileType) forwardedMessageData.fileType = forwardingMessage.fileType;
+    if (forwardingMessage.gifUrl) forwardedMessageData.gifUrl = forwardingMessage.gifUrl;
+    if (forwardingMessage.gifId) forwardedMessageData.gifId = forwardingMessage.gifId;
+    if (forwardingMessage.gifTinyUrl) forwardedMessageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
+    if (forwardingMessage.gifContentDescription) forwardedMessageData.gifContentDescription = forwardingMessage.gifContentDescription;
+    
+    try {
+        const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${targetChannel.id}/messages`);
+        await addDoc(messagesRef, forwardedMessageData);
+        toast({ title: "Message Forwarded", description: `Message forwarded to #${targetChannel.name}.` });
+    } catch (error) {
+        console.error("Error forwarding message:", error);
+        toast({ variant: "destructive", title: "Forward Failed", description: "Could not forward the message." });
+    } finally {
+        setIsForwardDialogOpen(false);
+        setForwardingMessage(null);
+    }
   };
 
 
@@ -1179,7 +1224,11 @@ export default function CommunitiesPage() {
                         )}
                       </div>
                        <div className="absolute top-0 right-2 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50">
-                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" onClick={() => handleForwardClick(msg)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" 
+                            onClick={() => {
+                                setForwardingMessage(msg);
+                                setIsForwardDialogOpen(true);
+                            }}>
                           <Share2 className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Reply" onClick={() => handleReplyClick(msg)}>
@@ -1546,7 +1595,7 @@ export default function CommunitiesPage() {
             <DialogHeader>
                 <DialogTitle>Forward Message</DialogTitle>
                 <DialogDescription>
-                    Select a channel or user to forward this message to.
+                    Select a channel or user to forward this message to. (Recipient selection coming soon)
                 </DialogDescription>
             </DialogHeader>
             {forwardingMessage && (
@@ -1564,14 +1613,7 @@ export default function CommunitiesPage() {
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => setIsForwardDialogOpen(false)}>Cancel</Button>
-                <Button 
-                    onClick={() => {
-                        toast({ title: "Forward Successful (Simulated)", description: "Message has been forwarded."});
-                        setIsForwardDialogOpen(false);
-                        setForwardingMessage(null);
-                    }}
-                    
-                >
+                <Button onClick={handleForwardMessage}>
                     Forward
                 </Button>
             </DialogFooter>

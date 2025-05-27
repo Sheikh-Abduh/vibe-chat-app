@@ -528,9 +528,87 @@ export default function MessagesPage() {
     chatInputRef.current?.focus();
   };
 
-  const handleForwardClick = (message: ChatMessage) => {
-    setForwardingMessage(message);
-    setIsForwardDialogOpen(true);
+  const handleForwardMessage = async () => {
+    if (!forwardingMessage || !currentUser || !conversationId) {
+      toast({ variant: "destructive", title: "Forward Error", description: "Cannot forward message." });
+      return;
+    }
+  
+    // For DMs, forward to "Saved Messages"
+    const targetConversationId = `${currentUser.uid}_${currentUser.uid}`.split('_').sort().join('_'); // Ensure sorted
+    const targetIsSelf = targetConversationId === conversationId && otherUserId === currentUser.uid;
+
+    const conversationReady = await ensureConversationDocument(); // Ensure current convo doc exists
+    if (!conversationReady && !targetIsSelf) { // If not forwarding to self, current convo must be ready.
+         toast({ variant: "destructive", title: "Forward Error", description: "Could not prepare current conversation." });
+        return;
+    }
+     // Ensure the "Saved Messages" conversation document exists if forwarding to self
+    if (targetIsSelf) {
+        const selfConvoDocRef = doc(db, `direct_messages/${targetConversationId}`);
+        const selfConvoSnap = await getDoc(selfConvoDocRef);
+        if (!selfConvoSnap.exists()) {
+            await setDoc(selfConvoDocRef, {
+                participants: [currentUser.uid, currentUser.uid],
+                createdAt: serverTimestamp(),
+                lastMessageTimestamp: serverTimestamp(),
+                [`user_${currentUser.uid}_name`]: currentUser.displayName || "User",
+                [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
+            });
+        }
+    }
+
+
+    const forwardedMessageData: any = {
+      senderId: currentUser.uid,
+      senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+      senderAvatarUrl: currentUser.photoURL || null,
+      timestamp: serverTimestamp(),
+      type: forwardingMessage.type,
+      isPinned: false,
+      reactions: {},
+      // You might want to add specific fields to indicate it's a forwarded message
+      // isForwarded: true,
+      // originalSenderName: forwardingMessage.senderName,
+      // originalTimestamp: forwardingMessage.timestamp,
+    };
+  
+    // Copy content fields
+    if (forwardingMessage.text) forwardedMessageData.text = forwardingMessage.text;
+    if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
+    if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
+    if (forwardingMessage.fileType) forwardedMessageData.fileType = forwardingMessage.fileType;
+    if (forwardingMessage.gifUrl) forwardedMessageData.gifUrl = forwardingMessage.gifUrl;
+    if (forwardingMessage.gifId) forwardedMessageData.gifId = forwardingMessage.gifId;
+    if (forwardingMessage.gifTinyUrl) forwardedMessageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
+    if (forwardingMessage.gifContentDescription) forwardedMessageData.gifContentDescription = forwardingMessage.gifContentDescription;
+  
+    try {
+      const messagesColRef = collection(db, `direct_messages/${targetConversationId}/messages`);
+      await addDoc(messagesColRef, forwardedMessageData);
+  
+      // Update last message for the target conversation
+      const convoDocRef = doc(db, `direct_messages/${targetConversationId}`);
+      let lastMessageText = "Forwarded message";
+      if (forwardedMessageData.text) lastMessageText = forwardedMessageData.text;
+      else if (forwardedMessageData.type === 'image') lastMessageText = "Forwarded an image";
+      else if (forwardedMessageData.type === 'gif') lastMessageText = "Forwarded a GIF";
+      else if (forwardedMessageData.type === 'file') lastMessageText = "Forwarded a file";
+      else if (forwardedMessageData.type === 'voice_message') lastMessageText = "Forwarded a voice message";
+      
+      await updateDoc(convoDocRef, {
+        lastMessage: lastMessageText,
+        lastMessageTimestamp: serverTimestamp(),
+      });
+  
+      toast({ title: "Message Forwarded", description: "Message forwarded to Saved Messages." });
+    } catch (error) {
+      console.error("Error forwarding message:", error);
+      toast({ variant: "destructive", title: "Forward Failed", description: "Could not forward the message." });
+    } finally {
+      setIsForwardDialogOpen(false);
+      setForwardingMessage(null);
+    }
   };
 
   const fetchTrendingGifs = async () => {
@@ -824,7 +902,11 @@ export default function MessagesPage() {
                       {isCurrentUserSender && !showHeader && <div className="w-8 shrink-0 ml-3" />}
 
                        <div className={cn("absolute top-0 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50", isCurrentUserSender ? "left-2" : "right-2")}>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" onClick={() => handleForwardClick(msg)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" 
+                            onClick={() => {
+                                setForwardingMessage(msg);
+                                setIsForwardDialogOpen(true);
+                            }}>
                           <Share2 className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Reply" onClick={() => handleReplyClick(msg)}>
@@ -1013,7 +1095,7 @@ export default function MessagesPage() {
             <DialogHeader>
                 <DialogTitle>Forward Message</DialogTitle>
                 <DialogDescription>
-                    Select a channel or user to forward this message to.
+                    Select a channel or user to forward this message to. (Recipient selection coming soon)
                 </DialogDescription>
             </DialogHeader>
             {forwardingMessage && (
@@ -1031,14 +1113,7 @@ export default function MessagesPage() {
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => setIsForwardDialogOpen(false)}>Cancel</Button>
-                <Button 
-                    onClick={() => {
-                        toast({ title: "Forward Successful (Simulated)", description: "Message has been forwarded."});
-                        setIsForwardDialogOpen(false);
-                        setForwardingMessage(null);
-                    }}
-                    
-                >
+                <Button onClick={handleForwardMessage}>
                     Forward
                 </Button>
             </DialogFooter>
@@ -1048,4 +1123,3 @@ export default function MessagesPage() {
   );
 }
   
-
