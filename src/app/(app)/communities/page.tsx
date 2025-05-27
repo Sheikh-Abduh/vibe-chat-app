@@ -19,7 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2 } from 'lucide-react'; // Added Reply, Share2
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -36,11 +36,10 @@ const ALLOWED_FILE_TYPES = [
   'application/pdf',
   'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .doc, .docx
   'text/plain',
-  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', // Added common audio types
+  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 
 ];
 
 
-// Placeholder Data
 const placeholderCommunities = [
   { id: '1', name: 'Gamers Unite', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'controller abstract', description: 'A community for all things gaming, from retro to modern.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'gaming landscape', tags: ['Gaming', 'PC', 'Consoles', 'Retro', 'eSports'] },
   { id: '2', name: 'Bookworms Corner', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'book open', description: 'Discuss your favorite books, authors, and genres.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'library shelf', tags: ['Books', 'Reading', 'Fiction', 'Non-Fiction', 'Literature'] },
@@ -137,7 +136,7 @@ type ChatMessage = {
   type: 'text' | 'image' | 'file' | 'gif' | 'voice_message';
   fileUrl?: string;
   fileName?: string;
-  fileType?: string; // Added to store MIME type for voice messages
+  fileType?: string; 
   gifUrl?: string;
   gifId?: string; 
   gifTinyUrl?: string; 
@@ -233,7 +232,7 @@ interface TenorGif {
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // Your actual key
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; 
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
 const formatChatMessage = (text: string): string => {
@@ -487,7 +486,7 @@ export default function CommunitiesPage() {
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
-      fileType: fileType, // Store the MIME type
+      fileType: fileType, 
       isPinned: false,
     };
 
@@ -513,7 +512,7 @@ export default function CommunitiesPage() {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
     formData.append('api_key', CLOUDINARY_API_KEY);
-    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); // Cloudinary treats audio like video for storage/transformation
+    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); 
 
     try {
       const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${isVoiceMessage ? 'video' : 'auto'}/upload`, {
@@ -824,7 +823,7 @@ export default function CommunitiesPage() {
     } else {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' }); // Specify MIME type
+            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' }); 
             audioChunksRef.current = [];
 
             mediaRecorderRef.current.ondataavailable = (event) => {
@@ -836,7 +835,7 @@ export default function CommunitiesPage() {
                 const audioFile = new File([audioBlob], `voice_message_${Date.now()}.webm`, { type: 'audio/webm' });
                 
                 toast({ title: "Voice Message Recorded", description: "Uploading to Cloudinary..." });
-                await uploadFileToCloudinaryAndSend(audioFile, true); // Pass true for isVoiceMessage
+                await uploadFileToCloudinaryAndSend(audioFile, true); 
 
                 stream.getTracks().forEach(track => track.stop()); 
             };
@@ -1099,6 +1098,12 @@ export default function CommunitiesPage() {
                         )}
                       </div>
                        <div className="absolute top-0 right-2 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50">
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" onClick={() => toast({title: "Feature Coming Soon", description: "Forwarding messages will be available later."})}>
+                          <Share2 className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Reply" onClick={() => toast({title: "Feature Coming Soon", description: "Replying to messages will be available later."})}>
+                          <Reply className="h-4 w-4" />
+                        </Button>
                         <Popover open={reactionPickerOpenForMessageId === msg.id} onOpenChange={(open) => setReactionPickerOpenForMessageId(open ? msg.id : null)}>
                           <PopoverTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="React to message">
@@ -1344,7 +1349,7 @@ export default function CommunitiesPage() {
       </div>
 
       {/* Column 4: Right-Hand Info Bar */}
-      <div className="h-full w-72 bg-card border-l border-border/40 hidden lg:flex flex-col overflow-hidden">
+      <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden">
         {selectedCommunity ? (
           <>
             <div className="relative h-32 w-full shrink-0">

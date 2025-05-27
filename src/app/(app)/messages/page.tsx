@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation'; // Added missing import
+import { useRouter } from 'next/navigation';
 import type { User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -16,10 +16,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, MessageSquare as MessageSquareIcon, User as UserIcon, Mic } from 'lucide-react';
+import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, MessageSquare as MessageSquareIcon, User as UserIcon, Mic, Bookmark, Reply, Share2 } from 'lucide-react'; // Added Bookmark, Reply, Share2
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -51,10 +50,7 @@ interface TenorGif {
   content_description: string;
 }
 
-// SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
-// This key is included for prototyping purposes only.
-// For production, proxy requests through a backend (e.g., Firebase Cloud Function).
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // WARNING: Client-side key
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
 
@@ -77,11 +73,13 @@ type ChatMessage = {
   reactions?: Record<string, string[]>;
 };
 
-// Placeholder for a list of conversations - in a real app, this would be dynamic
-const placeholderConversations = [
-    { id: 'convo1', otherUserName: 'Alice Wonderland', otherUserAvatar: 'https://placehold.co/40x40.png', dataAiHint: 'woman portrait', lastMessage: 'See you then!', lastMessageTime: '10:30 AM', unreadCount: 2, otherUserId: 'OTHER_USER_PLACEHOLDER_UID_ALICE' },
-    { id: 'convo2', otherUserName: 'Bob The Builder', otherUserAvatar: 'https://placehold.co/40x40.png', dataAiHint: 'man construction', lastMessage: 'Sounds good.', lastMessageTime: 'Yesterday', unreadCount: 0, otherUserId: 'OTHER_USER_PLACEHOLDER_UID_BOB' },
-];
+interface DmConversation {
+  id: string; // For 'saved_messages', this could be currentUser.uid + '_self' or similar
+  name: string;
+  avatarUrl?: string;
+  dataAiHint?: string;
+  partnerId: string; // For 'saved_messages', this is currentUser.uid
+}
 
 const formatChatMessage = (text: string): string => {
   if (!text) return '';
@@ -100,11 +98,14 @@ export default function MessagesPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const { toast } = useToast();
-  const router = useRouter(); // Hook call
+  const router = useRouter();
 
-  const [otherUserId, setOtherUserId] = useState<string | null>(null);
-  const [otherUserName, setOtherUserName] = useState<string | null>('Chat Partner');
+  const [selectedConversation, setSelectedConversation] = useState<DmConversation | null>(null);
+  const [otherUserId, setOtherUserId] = useState<string | null>(null); // This will be currentUser.uid for "Saved Messages"
+  const [otherUserName, setOtherUserName] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [dmPartnerProfile, setDmPartnerProfile] = useState<Partial<User> | null>(null);
+
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -137,16 +138,23 @@ export default function MessagesPage() {
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
       if (user) {
         setCurrentUser(user);
-        const testOtherUserId = "REPLACE_WITH_ANOTHER_VALID_USER_ID"; // IMPORTANT: REPLACE THIS
-        if (user.uid === testOtherUserId) {
-            toast({variant: "destructive", title: "Test User Error", description: "Please set the test other user ID to a different UID than the current user."});
-            setIsCheckingAuth(false);
-            return;
-        }
-        setOtherUserId(testOtherUserId);
-        // In a real app, you'd fetch the other user's name from Firestore or another source
-        // For now, using a placeholder name:
-        setOtherUserName("Test DM Partner");
+        // Auto-select "Saved Messages" on load
+        const savedMessagesConvo: DmConversation = {
+            id: `${user.uid}_self`,
+            name: 'Saved Messages',
+            partnerId: user.uid,
+            avatarUrl: user.photoURL || undefined,
+            dataAiHint: 'bookmark save',
+        };
+        setSelectedConversation(savedMessagesConvo);
+        setOtherUserId(user.uid);
+        setOtherUserName('Saved Messages'); // For chat header
+        setDmPartnerProfile({ // For right info bar
+            uid: user.uid,
+            displayName: user.displayName || "You",
+            photoURL: user.photoURL,
+            email: user.email,
+        });
 
         const mode = localStorage.getItem(`theme_mode_${user.uid}`) as 'light' | 'dark';
         setCurrentThemeMode(mode || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
@@ -156,17 +164,19 @@ export default function MessagesPage() {
         setIsCheckingAuth(false);
       } else {
         setIsCheckingAuth(false);
-        router.push('/login'); // Redirect to login if no user
+        router.push('/login');
       }
     });
     return () => unsubscribeAuth();
-  }, [toast, router]);
+  }, [router]);
 
 
   useEffect(() => {
     if (currentUser && otherUserId) {
       const ids = [currentUser.uid, otherUserId].sort();
       setConversationId(`${ids[0]}_${ids[1]}`);
+    } else {
+        setConversationId(null);
     }
   }, [currentUser, otherUserId]);
 
@@ -232,12 +242,23 @@ export default function MessagesPage() {
     try {
         const convoSnap = await getDoc(convoDocRef);
         if (!convoSnap.exists()) {
+            // Ensure participants array is always [uid1, uid2] even for self-chat.
+            const participants = [currentUser.uid, otherUserId].sort();
+             if (currentUser.uid === otherUserId && participants.length === 1) { // Special case for self-chat if only one UID added
+                 participants.push(currentUser.uid); // Add self again to satisfy size=2 rule
+             }
+
+
             await setDoc(convoDocRef, {
-                participants: [currentUser.uid, otherUserId].sort(),
+                participants: participants,
                 createdAt: serverTimestamp(),
-                lastMessageTimestamp: serverTimestamp(), // Initialize this field
+                lastMessageTimestamp: serverTimestamp(),
+                // Optionally store user info for quick display in conversation lists
+                [`user_${currentUser.uid}_name`]: currentUser.displayName || "User",
+                [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
+                [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || "User", // Use fetched partner profile if available
+                [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || null,
             });
-            console.log("Conversation document created:", conversationId);
         }
         return true;
     } catch (error) {
@@ -561,58 +582,70 @@ export default function MessagesPage() {
   if (isCheckingAuth || !currentUser) {
     return <SplashScreenDisplay />;
   }
-  if (!otherUserId || !conversationId) {
-    return (
-        <div className="flex h-full items-center justify-center bg-background text-muted-foreground">
-            <p>Please replace 'REPLACE_WITH_ANOTHER_VALID_USER_ID' with a real UID for testing DMs.</p>
-        </div>
-    );
-  }
+  
+  const savedMessagesConversation: DmConversation = {
+    id: `${currentUser.uid}_self`,
+    name: 'Saved Messages',
+    partnerId: currentUser.uid,
+    avatarUrl: currentUser.photoURL || undefined,
+    dataAiHint: 'bookmark save',
+  };
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
-      {/* Column 1: Conversation List (Placeholder) */}
+      {/* Column 1: Conversation List */}
       <div className="h-full w-72 bg-card border-r border-border/40 flex flex-col">
         <div className="p-3 border-b border-border/40 shadow-sm shrink-0">
           <Input placeholder="Search DMs..." className="bg-muted border-border/60"/>
         </div>
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1">
-            {placeholderConversations.map(convo => (
-                <Button 
-                    key={convo.id} 
-                    variant="ghost" 
-                    className={cn(
-                        "w-full justify-start h-auto py-2.5",
-                        convo.otherUserId === otherUserId && "bg-accent text-accent-foreground" 
+             <Button 
+                key={savedMessagesConversation.id} 
+                variant="ghost" 
+                className={cn(
+                    "w-full justify-start h-auto py-2.5",
+                    selectedConversation?.id === savedMessagesConversation.id && "bg-accent text-accent-foreground" 
+                )}
+                onClick={() => {
+                    setSelectedConversation(savedMessagesConversation);
+                    setOtherUserId(savedMessagesConversation.partnerId);
+                    setOtherUserName(savedMessagesConversation.name);
+                    setDmPartnerProfile({
+                        uid: currentUser.uid,
+                        displayName: currentUser.displayName || "You",
+                        photoURL: currentUser.photoURL,
+                        email: currentUser.email,
+                    });
+                }}
+             >
+                <Avatar className="h-10 w-10 mr-3">
+                    {savedMessagesConversation.avatarUrl ? (
+                         <AvatarImage src={savedMessagesConversation.avatarUrl} alt={savedMessagesConversation.name} data-ai-hint={savedMessagesConversation.dataAiHint}/>
+                    ) : (
+                        <Bookmark className="h-5 w-5 text-muted-foreground" />
                     )}
-                    disabled 
-                >
-                    <Avatar className="h-10 w-10 mr-3">
-                        <AvatarImage src={convo.otherUserAvatar} alt={convo.otherUserName} data-ai-hint={convo.dataAiHint}/>
-                        <AvatarFallback>{convo.otherUserName.substring(0,1)}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 truncate text-left">
-                        <p className="font-semibold text-sm">{convo.otherUserName}</p>
-                        <p className="text-xs text-muted-foreground truncate">{convo.lastMessage}</p>
-                    </div>
-                    <div className="ml-auto text-xs text-muted-foreground text-right">
-                        <p>{convo.lastMessageTime}</p>
-                        {convo.unreadCount > 0 && <Badge variant="destructive" className="mt-1 px-1.5 py-0.5">{convo.unreadCount}</Badge>}
-                    </div>
-                </Button>
-            ))}
+                    <AvatarFallback><Bookmark /></AvatarFallback>
+                </Avatar>
+                <div className="flex-1 truncate text-left">
+                    <p className="font-semibold text-sm">{savedMessagesConversation.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">Messages you save for later</p>
+                </div>
+            </Button>
           </div>
         </ScrollArea>
       </div>
 
       {/* Column 2: Chat Area */}
       <div className="h-full flex-1 bg-background flex flex-col overflow-hidden">
-        {otherUserId && conversationId ? (
+        {selectedConversation && otherUserId && conversationId ? (
           <>
             <div className="p-3 border-b border-border/40 shadow-sm flex items-center justify-between shrink-0">
               <div className="flex items-center">
-                <MessageSquareIcon className="mr-2 h-5 w-5 text-muted-foreground" />
+                 <Avatar className="h-8 w-8 mr-3">
+                    <AvatarImage src={selectedConversation.avatarUrl || dmPartnerProfile?.photoURL || undefined} alt={otherUserName || ''} data-ai-hint={selectedConversation.dataAiHint}/>
+                    <AvatarFallback>{(otherUserName || 'U').substring(0,1)}</AvatarFallback>
+                </Avatar>
                 <h3 className="text-lg font-semibold text-foreground">{otherUserName || 'Direct Message'}</h3>
               </div>
               <div className="flex items-center space-x-2">
@@ -671,7 +704,7 @@ export default function MessagesPage() {
                         )}
                          <div className={cn("mt-0.5 p-2 rounded-lg inline-block", 
                             isCurrentUserSender ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
-                            showHeader ? "mt-0.5" : "mt-0" // No extra top margin if header is hidden
+                            showHeader ? "mt-0.5" : "mt-0"
                         )}>
                             {msg.type === 'text' && msg.text && (
                                 <p className="text-sm whitespace-pre-wrap break-words"
@@ -725,6 +758,12 @@ export default function MessagesPage() {
                       {isCurrentUserSender && !showHeader && <div className="w-8 shrink-0 ml-3" />}
 
                        <div className={cn("absolute top-0 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50", isCurrentUserSender ? "left-2" : "right-2")}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" onClick={() => toast({title: "Feature Coming Soon", description: "Forwarding messages will be available later."})}>
+                          <Share2 className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Reply" onClick={() => toast({title: "Feature Coming Soon", description: "Replying to messages will be available later."})}>
+                          <Reply className="h-4 w-4" />
+                        </Button>
                         <Popover open={reactionPickerOpenForMessageId === msg.id} onOpenChange={(open) => setReactionPickerOpenForMessageId(open ? msg.id : null)}>
                           <PopoverTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="React">
@@ -824,11 +863,57 @@ export default function MessagesPage() {
             </form>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground">
-            Select a conversation to start chatting.
+          <div className="flex-1 flex items-center justify-center text-muted-foreground p-4">
+            {currentUser ? "Select 'Saved Messages' to start." : <SplashScreenDisplay />}
           </div>
         )}
       </div>
+
+      {/* Column 3: DM Partner Info Bar */}
+      <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden">
+         {selectedConversation && dmPartnerProfile ? (
+            <>
+                <div className="p-4 border-b border-border/40 shadow-sm shrink-0">
+                    <div className="flex flex-col items-center text-center">
+                        <Avatar className="h-24 w-24 mb-3 border-2 border-primary shadow-md">
+                            <AvatarImage src={dmPartnerProfile.photoURL || undefined} alt={dmPartnerProfile.displayName || 'User'} data-ai-hint="person portrait"/>
+                            <AvatarFallback className="text-3xl">
+                                {(dmPartnerProfile.displayName || 'U').substring(0,1).toUpperCase()}
+                            </AvatarFallback>
+                        </Avatar>
+                        <h3 className="text-xl font-semibold text-foreground">{dmPartnerProfile.displayName || 'User'}</h3>
+                        {dmPartnerProfile.email && selectedConversation.id === `${currentUser?.uid}_self` && ( // Only show email for "Saved Messages"
+                            <p className="text-sm text-muted-foreground">{dmPartnerProfile.email}</p>
+                        )}
+                         <p className="text-xs text-muted-foreground mt-1 italic">Status: Away (placeholder)</p>
+                    </div>
+                </div>
+                <ScrollArea className="flex-1">
+                    <div className="p-4 space-y-3">
+                        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">About</h4>
+                        <p className="text-sm text-foreground/90">User bio placeholder. This is where a short description about the user would go.</p>
+                        
+                        {selectedConversation.id !== `${currentUser?.uid}_self` && (
+                            <>
+                                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mt-3">Mutual Interests</h4>
+                                <div className="flex flex-wrap gap-1.5">
+                                    <Badge variant="secondary">#Placeholder</Badge>
+                                    <Badge variant="secondary">#Tags</Badge>
+                                </div>
+                            </>
+                        )}
+                         <Button variant="outline" className="w-full mt-4" onClick={() => toast({title: "Coming Soon", description: "Viewing full profiles will be available later."})}>View Full Profile</Button>
+                    </div>
+                </ScrollArea>
+            </>
+         ) : (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground p-4 text-center">
+                {currentUser ? "Select a conversation to see details." : "Loading user..."}
+            </div>
+         )}
+      </div>
+
+
       <AlertDialog open={!!deletingMessageId} onOpenChange={(open) => !open && setDeletingMessageId(null)}>
         <AlertDialogContent>
             <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the message.</AlertDialogDescription></AlertDialogHeader>
@@ -841,5 +926,4 @@ export default function MessagesPage() {
     </div>
   );
 }
-
-    
+  
