@@ -35,7 +35,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -150,6 +150,7 @@ type ChatMessage = {
   replyToTextSnippet?: string;
   isForwarded?: boolean;
   forwardedFromSenderName?: string;
+  mentionedUserIds?: string[]; // For potential backend processing of mentions
 };
 
 /**
@@ -185,6 +186,7 @@ type ChatMessage = {
  *          - `replyToTextSnippet`: string (optional, a short snippet of the original message text)
  *          - `isForwarded`: boolean (optional)
  *          - `forwardedFromSenderName`: string (optional, name of the original sender of the forwarded message)
+ *          - `mentionedUserIds`: string[] (optional, array of UIDs for users mentioned)
  *    - Firestore Security Rules: Crucial for access control.
  *      - Users can only write messages to channels they are members of.
  *      - Restrict reading messages to members.
@@ -232,14 +234,24 @@ type ChatMessage = {
  *     - Opens a dialog to show the message to forward.
  *     - "Forwards" by creating a new message from the current user to the first text channel of the current community.
  *     - Includes `isForwarded` and `forwardedFromSenderName` fields in Firestore.
+ * 
+ * 12. @Mentions (Frontend - Basic visual styling & rudimentary suggestions implemented):
+ *     - Typing "@" in chat input triggers a popover with members of the current channel.
+ *     - Selecting a member inserts "@username" into input.
+ *     - Messages containing "@username" patterns are styled.
+ *     - Backend for notifications or structured mention storage is not implemented.
  *
- * 12. UI/UX Enhancements:
+ * 13. Client-Side Message Search (Frontend - Basic filtering of loaded messages implemented):
+ *     - Search icon in chat header toggles a search input.
+ *     - Filters currently displayed messages; does not search full history in Firestore.
+ *
+ * 14. UI/UX Enhancements:
  *     - Loading states for file uploads and GIF fetching.
  *     - Error handling with toasts.
  *     - Timestamp grouping for messages from the same sender within a short interval.
  *     - Pinned messages toggle.
  *
- * 13. Voice & Video Channels (Advanced - WebRTC):
+ * 15. Voice & Video Channels (Advanced - WebRTC):
  *     - Requires a WebRTC service (e.g., Agora, Twilio Video) or a library with Firebase.
  * =============================================================================
  */
@@ -272,6 +284,8 @@ const formatChatMessage = (text: string): string => {
   formattedText = formattedText.replace(/\^\^(.*?)\^\^/g, '<sup>$1</sup>');
   // Subscript: vvtextvv
   formattedText = formattedText.replace(/vv(.*?)vv/g, '<sub>$1</sub>');
+  // @Mentions: @username (basic styling)
+  formattedText = formattedText.replace(/@([\w.-]+)/g, '<span class="bg-accent/20 text-accent font-medium px-1 rounded">@$1</span>');
   
   // IMPORTANT: In a production app, use a proper Markdown library and sanitizer (e.g., DOMPurify + marked)
   // to prevent XSS vulnerabilities if the text can come from untrusted sources or if more complex Markdown is needed.
@@ -300,11 +314,11 @@ export default function CommunitiesPage() {
 
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [gifSearchTerm, setGifSearchTerm] = useState("");
-  const [gifs, setGifs] = useState<TenorGif[]>([]);
+  const [gifs, setGifs] = useState<TenorGifType[]>([]);
   const [loadingGifs, setLoadingGifs] = useState(false);
   const gifSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [gifPickerView, setGifPickerView] = useState<'search' | 'favorites'>('search');
-  const [favoritedGifs, setFavoritedGifs] = useState<TenorGif[]>([]);
+  const [favoritedGifs, setFavoritedGifs] = useState<TenorGifType[]>([]);
 
   const [isRecording, setIsRecording] = useState(false);
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
@@ -321,6 +335,13 @@ export default function CommunitiesPage() {
   const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
   const [isForwardDialogOpen, setIsForwardDialogOpen] = useState(false);
   const [forwardSearchTerm, setForwardSearchTerm] = useState("");
+
+  const [isChatSearchOpen, setIsChatSearchOpen] = useState(false);
+  const [chatSearchTerm, setChatSearchTerm] = useState("");
+  const chatSearchInputRef = useRef<HTMLInputElement>(null);
+
+  const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
+  const mentionSuggestionsRef = useRef<HTMLDivElement>(null);
 
 
   useEffect(() => {
@@ -340,7 +361,7 @@ export default function CommunitiesPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  useEffect(scrollToBottom, [messages, showPinnedMessages]);
+  useEffect(scrollToBottom, [messages, showPinnedMessages, chatSearchTerm]);
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
@@ -364,7 +385,7 @@ export default function CommunitiesPage() {
     return `favorited_gifs_${currentUser.uid}`;
   }
 
-  const handleToggleFavoriteGif = (gif: TenorGif) => {
+  const handleToggleFavoriteGif = (gif: TenorGifType) => {
     if (!currentUser) return;
     const key = getFavoriteStorageKey();
     if (!key) return;
@@ -394,10 +415,10 @@ export default function CommunitiesPage() {
       const q = query(messagesRef, orderBy('timestamp', 'asc'));
 
       const unsubscribeFirestore = onSnapshot(q, (querySnapshot) => {
-        const fetchedMessages = querySnapshot.docs.map(doc => {
-          const data = doc.data();
+        const fetchedMessages = querySnapshot.docs.map(docSnap => {
+          const data = docSnap.data();
           return {
-            id: doc.id,
+            id: docSnap.id,
             text: data.text || undefined,
             senderId: data.senderId,
             senderName: data.senderName,
@@ -465,12 +486,16 @@ export default function CommunitiesPage() {
     setSelectedChannel(firstChannel);
     setShowPinnedMessages(false);
     setReplyingToMessage(null);
+    setIsChatSearchOpen(false);
+    setChatSearchTerm("");
   };
 
   const handleSelectChannel = (channel: Channel) => {
     setSelectedChannel(channel);
     setShowPinnedMessages(false);
     setReplyingToMessage(null);
+    setIsChatSearchOpen(false);
+    setChatSearchTerm("");
     if (channel.type === 'text' && chatInputRef.current) {
         chatInputRef.current.focus();
     }
@@ -485,7 +510,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text'; isPinned: boolean; reactions: Record<string, string[]>} = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -494,7 +519,6 @@ export default function CommunitiesPage() {
       type: 'text' as const,
       isPinned: false,
       reactions: {},
-      // Ensure all optional fields are at least undefined or null if not set
       fileUrl: undefined,
       fileName: undefined,
       fileType: undefined,
@@ -504,6 +528,10 @@ export default function CommunitiesPage() {
       gifContentDescription: undefined,
       isForwarded: false,
       forwardedFromSenderName: undefined,
+      mentionedUserIds: [], // Add mentionedUserIds for future backend processing
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
 
     if (replyingToMessage) {
@@ -517,11 +545,21 @@ export default function CommunitiesPage() {
         messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
     }
 
+    // Basic @mention detection for potential future structured storage
+    const mentions = newMessage.match(/@([\w.-]+)/g);
+    if (mentions) {
+        // In a real app, you'd resolve these usernames to UIDs
+        // For now, just storing usernames.
+        // messageData.mentionedUserIds = mentions.map(m => m.substring(1)); 
+    }
+
+
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       await addDoc(messagesRef, messageData); 
       setNewMessage("");
       setReplyingToMessage(null);
+      setShowMentionSuggestions(false);
     } catch (error) {
         console.error("Error sending message:", error);
         toast({
@@ -545,7 +583,7 @@ export default function CommunitiesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string; isPinned: boolean; reactions: Record<string, string[]>} = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -563,6 +601,10 @@ export default function CommunitiesPage() {
       gifContentDescription: undefined,
       isForwarded: false,
       forwardedFromSenderName: undefined,
+      mentionedUserIds: [],
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -665,12 +707,12 @@ export default function CommunitiesPage() {
   };
 
 
-  const handleSendGif = async (gif: TenorGif) => {
+  const handleSendGif = async (gif: TenorGifType) => {
     if (!currentUser || !selectedCommunity || !selectedChannel || selectedChannel.type !== 'text') {
       return;
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; isPinned: boolean; reactions: Record<string, string[]>} = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -688,6 +730,10 @@ export default function CommunitiesPage() {
       fileType: undefined,
       isForwarded: false,
       forwardedFromSenderName: undefined,
+      mentionedUserIds: [],
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
      if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -722,7 +768,7 @@ export default function CommunitiesPage() {
         toast({ variant: "destructive", title: "Cannot Favorite", description: "GIF information missing."});
         return;
     }
-    const gifToFavorite: TenorGif = {
+    const gifToFavorite: TenorGifType = {
         id: message.gifId,
         media_formats: {
             tinygif: { url: message.gifTinyUrl, dims: [] }, 
@@ -839,7 +885,7 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; isPinned: boolean; reactions: Record<string, string[]>} = {
+    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || null,
@@ -860,6 +906,7 @@ export default function CommunitiesPage() {
         replyToMessageId: undefined, // Forwarded messages don't carry over reply context
         replyToSenderName: undefined,
         replyToTextSnippet: undefined,
+        mentionedUserIds: [], // Clear mentions on forward
     };
     
     try {
@@ -1018,16 +1065,50 @@ export default function CommunitiesPage() {
     }
   };
 
-
+  const handleChatSearchToggle = () => {
+    setIsChatSearchOpen(!isChatSearchOpen);
+    if (!isChatSearchOpen && chatSearchInputRef.current) {
+        setTimeout(() => chatSearchInputRef.current?.focus(), 0);
+    } else {
+        setChatSearchTerm(""); // Clear search when closing
+    }
+  };
+  
   const currentChannels = selectedCommunity ? placeholderChannels[selectedCommunity.id] || [] : [];
   const currentMembers = selectedCommunity ? placeholderMembers[selectedCommunity.id] || [] : [];
 
   const userName = currentUser?.displayName || currentUser?.email?.split('@')[0] || "User";
   const userAvatar = currentUser?.photoURL;
 
+  const filteredMessages = messages.filter(msg => {
+    if (!chatSearchTerm.trim()) return true;
+    if (msg.text?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
+    if (msg.fileName?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
+    if (msg.senderName?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
+    if (msg.gifContentDescription?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
+    return false;
+  });
+
   const displayedMessages = showPinnedMessages
-    ? messages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-    : messages;
+    ? filteredMessages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+    : filteredMessages;
+
+  const handleMentionInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNewMessage(value);
+    if (value.endsWith('@') && selectedChannel?.type === 'text') {
+        setShowMentionSuggestions(true);
+    } else {
+        setShowMentionSuggestions(false);
+    }
+  };
+
+  const handleMentionSelect = (memberName: string) => {
+    setNewMessage(prev => prev.substring(0, prev.lastIndexOf('@') + 1) + memberName + " ");
+    setShowMentionSuggestions(false);
+    chatInputRef.current?.focus();
+  };
+
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
@@ -1114,48 +1195,68 @@ export default function CommunitiesPage() {
                 <selectedChannel.icon className="mr-2 h-5 w-5 text-muted-foreground" />
                 <h3 className="text-lg font-semibold text-foreground">{selectedChannel.name}</h3>
               </div>
-              <div className="flex items-center space-x-2">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted-foreground hover:text-foreground"
-                    onClick={() => toast({ title: "Message Search", description: "Message search coming soon!"})}
-                    title="Search Messages in Channel"
-                >
-                    <Search className="h-5 w-5" />
-                </Button>
-                {selectedChannel.type === 'text' && (
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className={cn(
-                            "text-muted-foreground hover:text-foreground",
-                            showPinnedMessages && "text-primary bg-primary/10 hover:text-primary/90 hover:bg-primary/20"
+              <div className={cn("flex items-center space-x-2", isChatSearchOpen && "w-full")}>
+                {isChatSearchOpen ? (
+                    <div className="flex items-center w-full bg-muted rounded-md px-2">
+                        <Search className="h-4 w-4 text-muted-foreground mr-2"/>
+                        <Input
+                            ref={chatSearchInputRef}
+                            type="text"
+                            placeholder={`Search in #${selectedChannel.name}...`}
+                            className="flex-1 bg-transparent h-8 text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                            value={chatSearchTerm}
+                            onChange={(e) => setChatSearchTerm(e.target.value)}
+                        />
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={handleChatSearchToggle}>
+                            <X className="h-4 w-4"/>
+                        </Button>
+                    </div>
+                ) : (
+                    <>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={handleChatSearchToggle}
+                            title="Search Messages in Channel"
+                        >
+                            <Search className="h-5 w-5" />
+                        </Button>
+                        {selectedChannel.type === 'text' && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn(
+                                    "text-muted-foreground hover:text-foreground",
+                                    showPinnedMessages && "text-primary bg-primary/10 hover:text-primary/90 hover:bg-primary/20"
+                                )}
+                                onClick={() => setShowPinnedMessages(!showPinnedMessages)}
+                                title={showPinnedMessages ? "Show All Messages" : "Show Pinned Messages"}
+                            >
+                                {showPinnedMessages ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
+                            </Button>
                         )}
-                        onClick={() => setShowPinnedMessages(!showPinnedMessages)}
-                        title={showPinnedMessages ? "Show All Messages" : "Show Pinned Messages"}
-                    >
-                        {showPinnedMessages ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
-                    </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className={cn("text-muted-foreground hover:text-foreground", isRightBarOpen && "bg-accent/20 text-accent")}
+                          onClick={() => setIsRightBarOpen(!isRightBarOpen)}
+                          title={isRightBarOpen ? "Hide Server Info" : "Show Server Info"}
+                        >
+                          <Users className="h-5 w-5" />
+                        </Button>
+                    </>
                 )}
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className={cn("text-muted-foreground hover:text-foreground", isRightBarOpen && "bg-accent/20 text-accent")}
-                  onClick={() => setIsRightBarOpen(!isRightBarOpen)}
-                  title={isRightBarOpen ? "Hide Server Info" : "Show Server Info"}
-                >
-                  <Users className="h-5 w-5" />
-                </Button>
               </div>
             </div>
 
             <ScrollArea className="flex-1 min-h-0 bg-card/30"> 
               <div className="p-4 space-y-0.5">
-                {displayedMessages.length === 0 && selectedChannel.type === 'text' && !messages.some(m => m.senderId !== 'system') && (
-                  <div className="text-center text-muted-foreground py-4">
-                    {showPinnedMessages ? "No pinned messages in this channel." :
-                     (messages.length === 0 && !currentUser && selectedChannel.type === 'text' ? "Loading messages..." : "No messages yet. Be the first to say something!")}
+                {displayedMessages.length === 0 && selectedChannel.type === 'text' && (
+                   <div className="text-center text-muted-foreground py-4">
+                    {chatSearchTerm.trim() ? "No messages found matching your search." : 
+                     (showPinnedMessages ? "No pinned messages in this channel." :
+                     (messages.length === 0 && !currentUser ? "Loading messages..." : "No messages yet. Be the first to say something!"))}
                   </div>
                 )}
                 {displayedMessages.map((msg, index) => {
@@ -1351,7 +1452,7 @@ export default function CommunitiesPage() {
             </ScrollArea>
 
             {selectedChannel.type === 'text' ? (
-              <div className="p-3 border-t border-border/40 shrink-0">
+              <div className="p-3 border-t border-border/40 shrink-0 relative">
                 {replyingToMessage && (
                     <div className="mb-2 p-2 text-sm bg-muted rounded-md flex justify-between items-center">
                         <div>
@@ -1369,6 +1470,26 @@ export default function CommunitiesPage() {
                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setReplyingToMessage(null)}>
                             <X className="h-4 w-4"/>
                         </Button>
+                    </div>
+                )}
+                {showMentionSuggestions && (
+                    <div 
+                        ref={mentionSuggestionsRef}
+                        className="absolute bottom-full left-0 mb-1 w-full max-w-sm bg-popover border border-border shadow-lg rounded-md max-h-48 overflow-y-auto z-20"
+                    >
+                        {currentMembers.length > 0 ? (
+                            currentMembers.map(member => (
+                                <button
+                                    key={member.id}
+                                    onClick={() => handleMentionSelect(member.name)}
+                                    className="block w-full text-left px-3 py-1.5 text-sm hover:bg-accent"
+                                >
+                                    {member.name}
+                                </button>
+                            ))
+                        ) : (
+                            <p className="p-2 text-xs text-muted-foreground">No members to mention.</p>
+                        )}
                     </div>
                 )}
                 <form onSubmit={handleSendMessage} className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
@@ -1398,10 +1519,10 @@ export default function CommunitiesPage() {
                     <Input
                         ref={chatInputRef}
                         type="text"
-                        placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (use **bold**, *italic*, ~~strike~~, ++underline++, ^^super^^, vvsubvv)`}
+                        placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (use **bold**, @mention, etc.)`}
                         className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
                         value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
+                        onChange={handleMentionInputChange}
                         onKeyPress={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey && !isRecording && !isUploadingFile) {
                             handleSendMessage(e);
@@ -1692,10 +1813,9 @@ export default function CommunitiesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users..." 
+                    placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    disabled // Re-disable until search is functional
                 />
                 {/* Placeholder for recipient list */}
             </div>
@@ -1711,3 +1831,4 @@ export default function CommunitiesPage() {
   );
 }
 
+    

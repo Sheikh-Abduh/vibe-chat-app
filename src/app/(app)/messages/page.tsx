@@ -20,7 +20,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, User as UserIcon, Mic, Bookmark, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight } from 'lucide-react';
+import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, User as UserIcon, Mic, Bookmark, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -75,6 +75,7 @@ type ChatMessage = {
   replyToTextSnippet?: string;
   isForwarded?: boolean;
   forwardedFromSenderName?: string;
+  mentionedUserIds?: string[];
 };
 
 interface DmConversation {
@@ -95,6 +96,7 @@ const formatChatMessage = (text: string): string => {
   formattedText = formattedText.replace(/\+\+(.*?)\+\+/g, '<u>$1</u>');
   formattedText = formattedText.replace(/\^\^(.*?)\^\^/g, '<sup>$1</sup>');
   formattedText = formattedText.replace(/vv(.*?)vv/g, '<sub>$1</sub>');
+  formattedText = formattedText.replace(/@([\w.-]+)/g, '<span class="bg-accent/20 text-accent font-medium px-1 rounded">@$1</span>');
   return formattedText;
 };
 
@@ -143,6 +145,14 @@ export default function MessagesPage() {
   const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
   const [isForwardDialogOpen, setIsForwardDialogOpen] = useState(false);
   const [forwardSearchTerm, setForwardSearchTerm] = useState("");
+
+  const [isChatSearchOpen, setIsChatSearchOpen] = useState(false);
+  const [chatSearchTerm, setChatSearchTerm] = useState("");
+  const chatSearchInputRef = useRef<HTMLInputElement>(null);
+  
+  const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
+  const mentionSuggestionsRef = useRef<HTMLDivElement>(null);
+
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
@@ -236,7 +246,7 @@ export default function MessagesPage() {
   
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  useEffect(scrollToBottom, [messages, showPinnedMessages]);
+  useEffect(scrollToBottom, [messages, showPinnedMessages, chatSearchTerm]);
   
   const getFavoriteStorageKey = () => currentUser ? `favorited_gifs_${currentUser.uid}` : null;
 
@@ -298,7 +308,7 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text'; isPinned: boolean; reactions: Record<string, string[]> } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -316,6 +326,10 @@ export default function MessagesPage() {
       gifContentDescription: undefined,
       isForwarded: false,
       forwardedFromSenderName: undefined,
+      mentionedUserIds: [],
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
 
     if (replyingToMessage) {
@@ -343,6 +357,7 @@ export default function MessagesPage() {
 
       setNewMessage("");
       setReplyingToMessage(null);
+      setShowMentionSuggestions(false);
     } catch (error) {
       console.error("Error sending DM:", error);
       toast({ variant: "destructive", title: "Message Not Sent", description: "Could not send your message." });
@@ -365,7 +380,7 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string; isPinned: boolean; reactions: Record<string, string[]>} = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -383,6 +398,10 @@ export default function MessagesPage() {
       gifContentDescription: undefined,
       isForwarded: false,
       forwardedFromSenderName: undefined,
+      mentionedUserIds: [],
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -465,7 +484,7 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; isPinned: boolean; reactions: Record<string, string[]> } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -483,6 +502,10 @@ export default function MessagesPage() {
       fileType: undefined,
       isForwarded: false,
       forwardedFromSenderName: undefined,
+      mentionedUserIds: [],
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -610,7 +633,7 @@ export default function MessagesPage() {
         return;
     }
 
-    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; isPinned: boolean; reactions: Record<string, string[]>} = {
+    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -631,6 +654,7 @@ export default function MessagesPage() {
       replyToMessageId: undefined, // Forwarded messages don't carry over reply context
       replyToSenderName: undefined,
       replyToTextSnippet: undefined,
+      mentionedUserIds: [], // Clear mentions on forward
     };
   
     try {
@@ -753,11 +777,44 @@ export default function MessagesPage() {
     if (currentMessage.isForwarded !== previousMessage.isForwarded) return true;
     return false;
   };
+
+  const handleChatSearchToggle = () => {
+    setIsChatSearchOpen(!isChatSearchOpen);
+    if (!isChatSearchOpen && chatSearchInputRef.current) {
+        setTimeout(() => chatSearchInputRef.current?.focus(), 0);
+    } else {
+        setChatSearchTerm(""); // Clear search when closing
+    }
+  };
+
+  const filteredMessages = messages.filter(msg => {
+    if (!chatSearchTerm.trim()) return true;
+    if (msg.text?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
+    if (msg.fileName?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
+    if (msg.senderName?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
+    if (msg.gifContentDescription?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
+    return false;
+  });
   
   const displayedMessages = showPinnedMessages
-    ? messages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-    : messages;
+    ? filteredMessages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+    : filteredMessages;
 
+  const handleMentionInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNewMessage(value);
+    if (value.endsWith('@') && otherUserId && currentUser?.uid !== otherUserId) { // Only show for other users
+        setShowMentionSuggestions(true);
+    } else {
+        setShowMentionSuggestions(false);
+    }
+  };
+
+  const handleMentionSelect = (memberName: string) => {
+    setNewMessage(prev => prev.substring(0, prev.lastIndexOf('@') + 1) + memberName + " ");
+    setShowMentionSuggestions(false);
+    chatInputRef.current?.focus();
+  };
 
   if (isCheckingAuth || !currentUser) {
     return <SplashScreenDisplay />;
@@ -799,6 +856,8 @@ export default function MessagesPage() {
                     });
                     setReplyingToMessage(null);
                     setShowPinnedMessages(false);
+                    setIsChatSearchOpen(false);
+                    setChatSearchTerm("");
                 }}
              >
                 <Avatar className="h-10 w-10 mr-3">
@@ -830,34 +889,53 @@ export default function MessagesPage() {
                 </Avatar>
                 <h3 className="text-lg font-semibold text-foreground">{otherUserName || 'Direct Message'}</h3>
               </div>
-              <div className="flex items-center space-x-2">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted-foreground hover:text-foreground"
-                    onClick={() => toast({ title: "Message Search", description: "DM search coming soon!"})}
-                    title="Search Messages in DM"
-                >
-                    <Search className="h-5 w-5" />
-                </Button>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn("text-muted-foreground hover:text-foreground", showPinnedMessages && "text-primary bg-primary/10")}
-                    onClick={() => setShowPinnedMessages(!showPinnedMessages)}
-                    title={showPinnedMessages ? "Show All Messages" : "Show Pinned Messages"}
-                >
-                    {showPinnedMessages ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className={cn("text-muted-foreground hover:text-foreground", isMessagesRightBarOpen && "bg-accent/20 text-accent")}
-                  onClick={() => setIsMessagesRightBarOpen(!isMessagesRightBarOpen)}
-                  title={isMessagesRightBarOpen ? "Hide User Info" : "Show User Info"}
-                >
-                  <UserIcon className="h-5 w-5" />
-                </Button>
+              <div className={cn("flex items-center space-x-2", isChatSearchOpen && "w-full")}>
+                 {isChatSearchOpen ? (
+                    <div className="flex items-center w-full bg-muted rounded-md px-2">
+                        <Search className="h-4 w-4 text-muted-foreground mr-2"/>
+                        <Input
+                            ref={chatSearchInputRef}
+                            type="text"
+                            placeholder={`Search in DMs with ${otherUserName || 'User'}...`}
+                            className="flex-1 bg-transparent h-8 text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                            value={chatSearchTerm}
+                            onChange={(e) => setChatSearchTerm(e.target.value)}
+                        />
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={handleChatSearchToggle}>
+                            <X className="h-4 w-4"/>
+                        </Button>
+                    </div>
+                ) : (
+                    <>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={handleChatSearchToggle}
+                            title="Search Messages in DM"
+                        >
+                            <Search className="h-5 w-5" />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn("text-muted-foreground hover:text-foreground", showPinnedMessages && "text-primary bg-primary/10")}
+                            onClick={() => setShowPinnedMessages(!showPinnedMessages)}
+                            title={showPinnedMessages ? "Show All Messages" : "Show Pinned Messages"}
+                        >
+                            {showPinnedMessages ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className={cn("text-muted-foreground hover:text-foreground", isMessagesRightBarOpen && "bg-accent/20 text-accent")}
+                          onClick={() => setIsMessagesRightBarOpen(!isMessagesRightBarOpen)}
+                          title={isMessagesRightBarOpen ? "Hide User Info" : "Show User Info"}
+                        >
+                          <UserIcon className="h-5 w-5" />
+                        </Button>
+                    </>
+                 )}
               </div>
             </div>
 
@@ -865,7 +943,8 @@ export default function MessagesPage() {
               <div className="p-4 space-y-0.5">
                 {displayedMessages.length === 0 && (
                   <div className="text-center text-muted-foreground py-4">
-                    {showPinnedMessages ? "No pinned DMs in this conversation." : "No messages yet. Start the conversation!"}
+                    {chatSearchTerm.trim() ? "No DMs found matching your search." : 
+                     (showPinnedMessages ? "No pinned DMs in this conversation." : "No messages yet. Start the conversation!")}
                   </div>
                 )}
                 {displayedMessages.map((msg, index) => {
@@ -1026,7 +1105,7 @@ export default function MessagesPage() {
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
-            <div className="p-3 border-t border-border/40 shrink-0">
+            <div className="p-3 border-t border-border/40 shrink-0 relative">
                 {replyingToMessage && (
                     <div className="mb-2 p-2 text-sm bg-muted rounded-md flex justify-between items-center">
                         <div>
@@ -1046,6 +1125,24 @@ export default function MessagesPage() {
                         </Button>
                     </div>
                 )}
+                {showMentionSuggestions && (
+                    <div 
+                        ref={mentionSuggestionsRef}
+                        className="absolute bottom-full left-0 mb-1 w-full max-w-sm bg-popover border border-border shadow-lg rounded-md max-h-48 overflow-y-auto z-20"
+                    >
+                        {otherUserId && currentUser?.uid !== otherUserId && dmPartnerProfile?.displayName && (
+                            <button
+                                onClick={() => handleMentionSelect(dmPartnerProfile.displayName!)}
+                                className="block w-full text-left px-3 py-1.5 text-sm hover:bg-accent"
+                            >
+                                {dmPartnerProfile.displayName}
+                            </button>
+                        )}
+                        {(currentUser?.uid === otherUserId || !dmPartnerProfile?.displayName ) && (
+                             <p className="p-2 text-xs text-muted-foreground">No one to mention here.</p>
+                        )}
+                    </div>
+                )}
                 <form onSubmit={handleSendMessage} className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
                     <input type="file" ref={attachmentInputRef} onChange={handleFileSelected} className="hidden" accept={ALLOWED_FILE_TYPES.join(',')} disabled={isUploadingFile || isRecording} />
                     {isUploadingFile ? <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" /> : (
@@ -1053,9 +1150,9 @@ export default function MessagesPage() {
                         <Paperclip className="h-5 w-5" />
                     </Button>
                     )}
-                    <Input ref={chatInputRef} type="text" placeholder={isRecording ? "Recording..." : `Message ${otherUserName || 'User'}... (use **bold**, *italic*, etc.)`}
+                    <Input ref={chatInputRef} type="text" placeholder={isRecording ? "Recording..." : `Message ${otherUserName || 'User'}... (@mention, **bold**)`}
                         className="flex-1 bg-transparent text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
-                        value={newMessage} onChange={(e) => setNewMessage(e.target.value)}
+                        value={newMessage} onChange={handleMentionInputChange}
                         onKeyPress={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isRecording && !isUploadingFile) handleSendMessage(e); }}
                         disabled={isRecording || isUploadingFile}
                     />
@@ -1208,10 +1305,9 @@ export default function MessagesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users..." 
+                    placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    disabled // Re-disable until search is functional
                 />
                 {/* Placeholder for recipient list */}
             </div>
@@ -1227,3 +1323,4 @@ export default function MessagesPage() {
   );
 }
 
+    
