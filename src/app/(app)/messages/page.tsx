@@ -9,8 +9,8 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
-import dynamic from 'next/dynamic'; // Import dynamic
-import data from '@emoji-mart/data';
+import dynamic from 'next/dynamic';
+import type { TenorGif as TenorGifType } from '@/types/tenor';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -26,11 +26,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { Badge } from '@/components/ui/badge';
 
-// Dynamically import Picker from emoji-mart with SSR disabled
+
 const Picker = dynamic(() => import('emoji-mart').then(mod => mod.Picker), {
   ssr: false,
   loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
 });
+import data from '@emoji-mart/data';
 
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -42,24 +43,18 @@ const ALLOWED_FILE_TYPES = [
   'application/pdf',
   'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
-  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav',
+  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg',
 ];
 
 const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
 
-interface TenorGif {
-  id: string;
-  media_formats: {
-    tinygif: { url: string; dims: number[] };
-    gif: { url: string; dims: number[] };
-  };
-  content_description: string;
-}
+interface TenorGif extends TenorGifType {}
+
 
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; 
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // THIS IS A SECURITY RISK FOR PRODUCTION
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
 
@@ -96,7 +91,7 @@ interface DmConversation {
 const formatChatMessage = (text: string): string => {
   if (!text) return '';
   let formattedText = text;
-  formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt");
   formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
   formattedText = formattedText.replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>');
   formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
@@ -209,23 +204,24 @@ export default function MessagesPage() {
           const data = docSnap.data();
           return {
             id: docSnap.id,
-            ...data,
+            text: data.text,
+            senderId: data.senderId,
+            senderName: data.senderName,
+            senderAvatarUrl: data.senderAvatarUrl,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
+            type: data.type,
+            fileUrl: data.fileUrl,
+            fileName: data.fileName,
+            fileType: data.fileType,
+            gifUrl: data.gifUrl,
+            gifId: data.gifId,
+            gifTinyUrl: data.gifTinyUrl,
+            gifContentDescription: data.gifContentDescription,
             isPinned: data.isPinned || false,
             reactions: data.reactions || {},
-             // Ensure all fields for ChatMessage are present, providing defaults if necessary
-            text: data.text || undefined,
-            senderAvatarUrl: data.senderAvatarUrl || null,
-            fileUrl: data.fileUrl || undefined,
-            fileName: data.fileName || undefined,
-            fileType: data.fileType || undefined,
-            gifUrl: data.gifUrl || undefined,
-            gifId: data.gifId || undefined,
-            gifTinyUrl: data.gifTinyUrl || undefined,
-            gifContentDescription: data.gifContentDescription || undefined,
-            replyToMessageId: data.replyToMessageId || undefined,
-            replyToSenderName: data.replyToSenderName || undefined,
-            replyToTextSnippet: data.replyToTextSnippet || undefined,
+            replyToMessageId: data.replyToMessageId,
+            replyToSenderName: data.replyToSenderName,
+            replyToTextSnippet: data.replyToTextSnippet,
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
@@ -272,8 +268,7 @@ export default function MessagesPage() {
     try {
         const convoSnap = await getDoc(convoDocRef);
         if (!convoSnap.exists()) {
-            const participants = [currentUser.uid, otherUserId].sort();
-             // For self-chat "Saved Messages", participants array should contain current user's UID twice
+            let participants = [currentUser.uid, otherUserId].sort();
              if (currentUser.uid === otherUserId && participants.length === 1 && participants[0] === currentUser.uid) { 
                  participants.push(currentUser.uid); 
              }
@@ -305,14 +300,26 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'fileUrl' | 'fileName' | 'fileType' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any } = {
+    const messageData: ChatMessage = {
+      id: '', // Firestore will generate
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(),
+      timestamp: serverTimestamp() as any, // Placeholder
       type: 'text' as const,
       isPinned: false,
+      reactions: {},
+      fileUrl: undefined,
+      fileName: undefined,
+      fileType: undefined,
+      gifUrl: undefined,
+      gifId: undefined,
+      gifTinyUrl: undefined,
+      gifContentDescription: undefined,
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
 
     if (replyingToMessage) {
@@ -334,7 +341,6 @@ export default function MessagesPage() {
       await updateDoc(convoDocRef, { 
         lastMessage: messageData.text,
         lastMessageTimestamp: serverTimestamp(),
-        // Optionally update participant details if they might change
         [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
       });
@@ -363,16 +369,26 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any ; fileType: string } = {
+    const messageData: ChatMessage = {
+      id: '', // Firestore will generate
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(),
+      timestamp: serverTimestamp() as any, // Placeholder
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType,
       isPinned: false,
+      reactions: {},
+      text: undefined,
+      gifUrl: undefined,
+      gifId: undefined,
+      gifTinyUrl: undefined,
+      gifContentDescription: undefined,
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -454,17 +470,26 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'fileUrl' | 'fileName' | 'fileType' | 'reactions'> & { timestamp: any } = {
+    const messageData: ChatMessage = {
+      id: '', // Firestore will generate
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(),
+      timestamp: serverTimestamp() as any, // Placeholder
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
       isPinned: false,
+      reactions: {},
+      text: undefined,
+      fileUrl: undefined,
+      fileName: undefined,
+      fileType: undefined,
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
 
      if (replyingToMessage) {
@@ -570,16 +595,14 @@ export default function MessagesPage() {
         return;
     }
   
-    // For DMs, forward to "Saved Messages"
     const targetConversationId = [currentUser.uid, currentUser.uid].sort().join('_'); 
 
-    // Ensure the "Saved Messages" conversation document exists
     const savedMessagesConvoDocRef = doc(db, `direct_messages/${targetConversationId}`);
     try {
         const savedMessagesConvoSnap = await getDoc(savedMessagesConvoDocRef);
         if (!savedMessagesConvoSnap.exists()) {
             await setDoc(savedMessagesConvoDocRef, {
-                participants: [currentUser.uid, currentUser.uid], // Both participants are the current user
+                participants: [currentUser.uid, currentUser.uid],
                 createdAt: serverTimestamp(),
                 lastMessageTimestamp: serverTimestamp(),
                 [`user_${currentUser.uid}_name`]: currentUser.displayName || "You",
@@ -594,8 +617,8 @@ export default function MessagesPage() {
         return;
     }
 
-    const forwardedMessageData: any = {
-      senderId: currentUser.uid, // Message is sent by current user into their saved messages
+    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; isPinned: boolean; reactions: Record<string, string[]> } = {
+      senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(),
@@ -603,13 +626,12 @@ export default function MessagesPage() {
       isPinned: false,
       reactions: {},
       // Optionally add fields to indicate it's forwarded from original sender
-      originalSenderId: forwardingMessage.senderId,
-      originalSenderName: forwardingMessage.senderName,
-      originalTimestamp: forwardingMessage.timestamp, // Keep original timestamp for reference
+      // originalSenderId: forwardingMessage.senderId,
+      // originalSenderName: forwardingMessage.senderName,
+      // originalTimestamp: forwardingMessage.timestamp, // Keep original timestamp for reference
       text: forwardingMessage.text ? `Forwarded from ${forwardingMessage.senderName}:\n${forwardingMessage.text}` : `Forwarded message from ${forwardingMessage.senderName}`,
     };
   
-    // Copy other content fields
     if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
     if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
     if (forwardingMessage.fileType) forwardedMessageData.fileType = forwardingMessage.fileType;
@@ -620,12 +642,11 @@ export default function MessagesPage() {
   
     try {
       const messagesColRef = collection(db, `direct_messages/${targetConversationId}/messages`);
-      await addDoc(messagesColRef, forwardedMessageData);
+      await addDoc(messagesColRef, forwardedMessageData as any);
   
-      // Update last message for the target conversation
       const convoDocRef = doc(db, `direct_messages/${targetConversationId}`);
       let lastMessageText = "Forwarded message";
-      if (forwardedMessageData.text) lastMessageText = forwardedMessageData.text;
+      if (forwardedMessageData.text && forwardedMessageData.type === 'text') lastMessageText = forwardedMessageData.text; // only use text if it's a text message
       else if (forwardedMessageData.type === 'image') lastMessageText = "Forwarded an image";
       else if (forwardedMessageData.type === 'gif') lastMessageText = "Forwarded a GIF";
       else if (forwardedMessageData.type === 'file') lastMessageText = "Forwarded a file";
@@ -721,7 +742,7 @@ export default function MessagesPage() {
           toast({ title: "Voice Message Recorded", description: "Uploading..." });
           await uploadFileToCloudinaryAndSend(audioFile, true);
           stream.getTracks().forEach(track => track.stop());
-          setReplyingToMessage(null); // Cancel reply after sending voice message
+          setReplyingToMessage(null);
         };
         mediaRecorderRef.current.start(); setIsRecording(true);
       } catch (error) {
@@ -782,6 +803,7 @@ export default function MessagesPage() {
                         email: currentUser.email,
                     });
                     setReplyingToMessage(null);
+                    setShowPinnedMessages(false);
                 }}
              >
                 <Avatar className="h-10 w-10 mr-3">
@@ -856,7 +878,7 @@ export default function MessagesPage() {
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
                   const isCurrentUserMsg = msg.senderId === currentUser.uid;
                   let hasBeenRepliedTo = false;
-                  if (isCurrentUserMsg && currentUser) { // Added currentUser check
+                  if (isCurrentUserMsg && currentUser) { 
                     hasBeenRepliedTo = displayedMessages.some(
                       (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
                     );
@@ -981,7 +1003,7 @@ export default function MessagesPage() {
                                 }} 
                                 theme={currentThemeMode} 
                                 previewPosition="none" 
-                                searchPlaceholder="Select a reaction. Search not available yet."
+                                searchPlaceholder="Select an emoji. Search not available yet."
                              />
                           </PopoverContent>
                         </Popover>
@@ -1201,3 +1223,5 @@ export default function MessagesPage() {
   );
 }
   
+
+    

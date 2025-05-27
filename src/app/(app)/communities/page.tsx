@@ -8,8 +8,8 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
-import dynamic from 'next/dynamic'; // Import dynamic
-import data from '@emoji-mart/data'
+import dynamic from 'next/dynamic';
+import type { TenorGif as TenorGifType } from '@/types/tenor'; // Assuming you might create a types file
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -25,11 +25,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-// Dynamically import Picker from emoji-mart with SSR disabled
 const Picker = dynamic(() => import('emoji-mart').then(mod => mod.Picker), {
   ssr: false,
   loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
 });
+import data from '@emoji-mart/data'
+
 
 // Cloudinary configuration (API Key is safe for client-side with unsigned uploads)
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -41,7 +42,7 @@ const ALLOWED_FILE_TYPES = [
   'application/pdf',
   'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .doc, .docx
   'text/plain',
-  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 
+  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', // Added mpeg for mp3
 ];
 
 
@@ -244,26 +245,19 @@ type ChatMessage = {
 
 const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
 
-interface TenorGif {
-  id: string;
-  media_formats: {
-    tinygif: { url: string; dims: number[] };
-    gif: { url: string; dims: number[] };
-  };
-  content_description: string;
-}
+interface TenorGif extends TenorGifType {} // Use the imported type
 
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; 
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // THIS IS A SECURITY RISK FOR PRODUCTION
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
 const formatChatMessage = (text: string): string => {
   if (!text) return '';
   let formattedText = text;
   // Escape HTML to prevent XSS before applying markdown
-  formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt");
 
   // Bold: **text** or __text__
   formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
@@ -403,23 +397,24 @@ export default function CommunitiesPage() {
           const data = doc.data();
           return {
             id: doc.id,
-            ...data,
+            text: data.text,
+            senderId: data.senderId,
+            senderName: data.senderName,
+            senderAvatarUrl: data.senderAvatarUrl,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
+            type: data.type,
+            fileUrl: data.fileUrl,
+            fileName: data.fileName,
+            fileType: data.fileType,
+            gifUrl: data.gifUrl,
+            gifId: data.gifId,
+            gifTinyUrl: data.gifTinyUrl,
+            gifContentDescription: data.gifContentDescription,
             isPinned: data.isPinned || false,
             reactions: data.reactions || {},
-            // Ensure all fields for ChatMessage are present, providing defaults if necessary
-            text: data.text || undefined,
-            senderAvatarUrl: data.senderAvatarUrl || null,
-            fileUrl: data.fileUrl || undefined,
-            fileName: data.fileName || undefined,
-            fileType: data.fileType || undefined,
-            gifUrl: data.gifUrl || undefined,
-            gifId: data.gifId || undefined,
-            gifTinyUrl: data.gifTinyUrl || undefined,
-            gifContentDescription: data.gifContentDescription || undefined,
-            replyToMessageId: data.replyToMessageId || undefined,
-            replyToSenderName: data.replyToSenderName || undefined,
-            replyToTextSnippet: data.replyToTextSnippet || undefined,
+            replyToMessageId: data.replyToMessageId,
+            replyToSenderName: data.replyToSenderName,
+            replyToTextSnippet: data.replyToTextSnippet,
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
@@ -487,14 +482,26 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'fileUrl' | 'fileName' | 'fileType' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any } = {
+    const messageData: ChatMessage = {
+      id: '', // Firestore will generate this
       text: newMessage.trim(),
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(),
+      timestamp: serverTimestamp() as any, // Placeholder, will be server timestamp
       type: 'text' as const,
       isPinned: false,
+      reactions: {},
+      fileUrl: undefined,
+      fileName: undefined,
+      fileType: undefined,
+      gifUrl: undefined,
+      gifId: undefined,
+      gifTinyUrl: undefined,
+      gifContentDescription: undefined,
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
 
     if (replyingToMessage) {
@@ -537,17 +544,28 @@ export default function CommunitiesPage() {
     }
 
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'gifUrl' | 'gifId' | 'gifTinyUrl' | 'gifContentDescription' | 'reactions'> & { timestamp: any; fileType: string } = {
+    const messageData: ChatMessage = {
+      id: '', // Firestore will generate this
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(),
+      timestamp: serverTimestamp() as any, // Placeholder
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType, 
       isPinned: false,
+      reactions: {},
+      text: undefined,
+      gifUrl: undefined,
+      gifId: undefined,
+      gifTinyUrl: undefined,
+      gifContentDescription: undefined,
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
+
      if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
@@ -652,17 +670,26 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'text' | 'fileUrl' | 'fileName' | 'fileType' | 'reactions'> & { timestamp: any } = {
+    const messageData: ChatMessage = {
+      id: '', // Firestore will generate
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(),
+      timestamp: serverTimestamp() as any, // Placeholder
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
       isPinned: false,
+      reactions: {},
+      text: undefined,
+      fileUrl: undefined,
+      fileName: undefined,
+      fileType: undefined,
+      replyToMessageId: undefined,
+      replyToSenderName: undefined,
+      replyToTextSnippet: undefined,
     };
      if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -814,7 +841,7 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const forwardedMessageData: any = {
+    const forwardedMessageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; isPinned: boolean; reactions: Record<string, string[]> } = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || null,
@@ -822,9 +849,6 @@ export default function CommunitiesPage() {
         type: forwardingMessage.type,
         isPinned: false,
         reactions: {},
-        // Indicate it's forwarded (optional, for UI styling)
-        // isForwarded: true, 
-        // originalSenderName: forwardingMessage.senderName,
     };
 
     if (forwardingMessage.text) forwardedMessageData.text = forwardingMessage.text;
@@ -838,7 +862,7 @@ export default function CommunitiesPage() {
     
     try {
         const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${targetChannel.id}/messages`);
-        await addDoc(messagesRef, forwardedMessageData);
+        await addDoc(messagesRef, forwardedMessageData as any); // Cast to any to satisfy addDoc, ChatMessage with all fields
         toast({ title: "Message Forwarded", description: `Message forwarded to #${targetChannel.name}.` });
     } catch (error) {
         console.error("Error forwarding message:", error);
@@ -1135,7 +1159,7 @@ export default function CommunitiesPage() {
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
                   const isMyMessage = currentUser?.uid === msg.senderId;
                   let hasBeenRepliedTo = false;
-                  if (isMyMessage && currentUser) { // Added currentUser check
+                  if (isMyMessage && currentUser) { 
                     hasBeenRepliedTo = displayedMessages.some(
                       (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
                     );
@@ -1674,3 +1698,5 @@ export default function CommunitiesPage() {
   );
 }
 
+
+    
