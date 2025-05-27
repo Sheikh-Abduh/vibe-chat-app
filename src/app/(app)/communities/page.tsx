@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
@@ -405,7 +406,7 @@ export default function CommunitiesPage() {
             title: "Error loading messages",
             description: "Could not load messages for this channel.",
         });
-        if (selectedChannel) { // Check if selectedChannel is not null
+        if (selectedChannel) { 
             setMessages([{
                 id: 'system-error-' + selectedChannel.id,
                 text: `Error loading messages for #${selectedChannel.name}. Please try again later.`,
@@ -1569,7 +1570,7 @@ export default function CommunitiesPage() {
                         setIsForwardDialogOpen(false);
                         setForwardingMessage(null);
                     }}
-                    disabled // Disabled until recipient selection is implemented
+                    
                 >
                     Forward
                 </Button>
@@ -1579,3 +1580,4 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+

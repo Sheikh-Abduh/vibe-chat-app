@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
@@ -249,7 +250,7 @@ export default function MessagesPage() {
         const convoSnap = await getDoc(convoDocRef);
         if (!convoSnap.exists()) {
             const participants = [currentUser.uid, otherUserId].sort();
-             if (currentUser.uid === otherUserId && participants.length === 1 && participants[0] === currentUser.uid) { // Fixed condition
+             if (currentUser.uid === otherUserId && participants.length === 1 && participants[0] === currentUser.uid) { 
                  participants.push(currentUser.uid); 
              }
 
@@ -779,7 +780,7 @@ export default function MessagesPage() {
                                <div className="relative max-w-[300px] mt-1 group/gif">
                                     <Image src={msg.gifUrl} alt={msg.gifContentDescription || "GIF"} width={0} height={0} style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem' }} unoptimized priority={false} data-ai-hint="animated gif" />
                                     {currentUser && msg.gifId && (
-                                        <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover/gif:opacity-100" onClick={() => handleFavoriteGifFromChat(msg)} title={isGifFavorited(msg.gifId) ? "Unfavorite" : "Favorite"}>
+                                        <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleFavoriteGifFromChat(msg)} title={isGifFavorited(msg.gifId) ? "Unfavorite" : "Favorite"}>
                                             <Star className={cn("h-4 w-4", isGifFavorited(msg.gifId) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
                                         </Button>
                                     )}
@@ -1036,7 +1037,7 @@ export default function MessagesPage() {
                         setIsForwardDialogOpen(false);
                         setForwardingMessage(null);
                     }}
-                    disabled // Disabled until recipient selection is implemented
+                    
                 >
                     Forward
                 </Button>
@@ -1047,3 +1048,4 @@ export default function MessagesPage() {
   );
 }
   
+
