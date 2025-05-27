@@ -9,7 +9,7 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
-import { Picker } from 'emoji-mart';
+import dynamic from 'next/dynamic'; // Import dynamic
 import data from '@emoji-mart/data';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -25,6 +25,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { Badge } from '@/components/ui/badge';
+
+// Dynamically import Picker from emoji-mart with SSR disabled
+const Picker = dynamic(() => import('emoji-mart').then(mod => mod.Picker), {
+  ssr: false,
+  loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
+});
 
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -207,6 +213,19 @@ export default function MessagesPage() {
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
             isPinned: data.isPinned || false,
             reactions: data.reactions || {},
+             // Ensure all fields for ChatMessage are present, providing defaults if necessary
+            text: data.text || undefined,
+            senderAvatarUrl: data.senderAvatarUrl || null,
+            fileUrl: data.fileUrl || undefined,
+            fileName: data.fileName || undefined,
+            fileType: data.fileType || undefined,
+            gifUrl: data.gifUrl || undefined,
+            gifId: data.gifId || undefined,
+            gifTinyUrl: data.gifTinyUrl || undefined,
+            gifContentDescription: data.gifContentDescription || undefined,
+            replyToMessageId: data.replyToMessageId || undefined,
+            replyToSenderName: data.replyToSenderName || undefined,
+            replyToTextSnippet: data.replyToTextSnippet || undefined,
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
@@ -547,8 +566,8 @@ export default function MessagesPage() {
 
   const handleForwardMessage = async () => {
     if (!forwardingMessage || !currentUser ) {
-      toast({ variant: "destructive", title: "Forward Error", description: "Cannot forward message." });
-      return;
+        toast({ variant: "destructive", title: "Forward Error", description: "Cannot forward message." });
+        return;
     }
   
     // For DMs, forward to "Saved Messages"
@@ -837,7 +856,7 @@ export default function MessagesPage() {
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
                   const isCurrentUserMsg = msg.senderId === currentUser.uid;
                   let hasBeenRepliedTo = false;
-                  if (isCurrentUserMsg) {
+                  if (isCurrentUserMsg && currentUser) { // Added currentUser check
                     hasBeenRepliedTo = displayedMessages.some(
                       (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
                     );
@@ -1172,7 +1191,7 @@ export default function MessagesPage() {
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => {setIsForwardDialogOpen(false); setForwardingMessage(null); setForwardSearchTerm("");}}>Cancel</Button>
-                <Button onClick={handleForwardMessage}>
+                <Button onClick={handleForwardMessage} >
                     Forward
                 </Button>
             </DialogFooter>

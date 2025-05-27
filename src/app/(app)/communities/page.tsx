@@ -8,7 +8,7 @@ import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
-import { Picker } from 'emoji-mart';
+import dynamic from 'next/dynamic'; // Import dynamic
 import data from '@emoji-mart/data'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -25,6 +25,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+// Dynamically import Picker from emoji-mart with SSR disabled
+const Picker = dynamic(() => import('emoji-mart').then(mod => mod.Picker), {
+  ssr: false,
+  loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
+});
 
 // Cloudinary configuration (API Key is safe for client-side with unsigned uploads)
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -402,6 +407,19 @@ export default function CommunitiesPage() {
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
             isPinned: data.isPinned || false,
             reactions: data.reactions || {},
+            // Ensure all fields for ChatMessage are present, providing defaults if necessary
+            text: data.text || undefined,
+            senderAvatarUrl: data.senderAvatarUrl || null,
+            fileUrl: data.fileUrl || undefined,
+            fileName: data.fileName || undefined,
+            fileType: data.fileType || undefined,
+            gifUrl: data.gifUrl || undefined,
+            gifId: data.gifId || undefined,
+            gifTinyUrl: data.gifTinyUrl || undefined,
+            gifContentDescription: data.gifContentDescription || undefined,
+            replyToMessageId: data.replyToMessageId || undefined,
+            replyToSenderName: data.replyToSenderName || undefined,
+            replyToTextSnippet: data.replyToTextSnippet || undefined,
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
@@ -926,6 +944,7 @@ export default function CommunitiesPage() {
         navigator.permissions.query({ name: 'microphone' as PermissionName }).then(status => {
             if (status.state === 'granted') setHasMicPermission(true);
             else if (status.state === 'denied') setHasMicPermission(false);
+            // If 'prompt', we'll ask when needed.
         });
     }
   }, []);
@@ -1116,7 +1135,7 @@ export default function CommunitiesPage() {
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
                   const isMyMessage = currentUser?.uid === msg.senderId;
                   let hasBeenRepliedTo = false;
-                  if (isMyMessage) {
+                  if (isMyMessage && currentUser) { // Added currentUser check
                     hasBeenRepliedTo = displayedMessages.some(
                       (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
                     );
@@ -1654,3 +1673,4 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+
