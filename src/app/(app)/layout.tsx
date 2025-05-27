@@ -31,6 +31,7 @@ import {
   SidebarMenuButton,
   SidebarInset,
 } from '@/components/ui/sidebar';
+import { LoadingProvider, useAppLoading } from '@/contexts/LoadingContext'; // Changed useLoading to useAppLoading
 
 interface UserStoredDetails {
   hobbies: string;
@@ -42,17 +43,31 @@ interface UserStoredDetails {
   status: string;
 }
 
-export default function AppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userDetails, setUserDetails] = useState<UserStoredDetails | null>(null);
+  const { isNavigationLoading, setIsNavigationLoading } = useAppLoading();
+
+  useEffect(() => {
+    const handleRouteChangeStart = () => setIsNavigationLoading(true);
+    const handleRouteChangeComplete = () => setIsNavigationLoading(false);
+    const handleRouteChangeError = () => setIsNavigationLoading(false);
+
+    router.events?.on('routeChangeStart', handleRouteChangeStart);
+    router.events?.on('routeChangeComplete', handleRouteChangeComplete);
+    router.events?.on('routeChangeError', handleRouteChangeError);
+
+    return () => {
+      router.events?.off('routeChangeStart', handleRouteChangeStart);
+      router.events?.off('routeChangeComplete', handleRouteChangeComplete);
+      router.events?.off('routeChangeError', handleRouteChangeError);
+    };
+  }, [router.events, setIsNavigationLoading]);
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -60,6 +75,8 @@ export default function AppLayout({
         setCurrentUser(user);
         const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
         if (onboardingComplete === 'true') {
+          // If onboarding is complete, we can stop checking auth for THIS initial load.
+          // Subsequent navigation loading is handled by router.events.
           setIsCheckingAuth(false);
         } else {
           if (pathname.startsWith('/onboarding')) {
@@ -94,35 +111,49 @@ export default function AppLayout({
       }
     });
     return () => unsubscribe();
-  }, [router, pathname]);
+  }, [router, pathname, setIsNavigationLoading]); // Added setIsNavigationLoading to dependencies to ensure context is stable
 
   const handleLogout = async () => {
     try {
+      setIsNavigationLoading(true); // Show splash during logout process
       await firebaseSignOut(auth);
       setCurrentUser(null);
       setUserDetails(null);
+      // Clear all user-specific localStorage
+      if (currentUser) {
+        Object.keys(localStorage).forEach(key => {
+            if (key.includes(currentUser.uid)) {
+                localStorage.removeItem(key);
+            }
+        });
+      }
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      router.push('/login');
+      router.push('/login'); 
     } catch (error) {
       console.error("Logout error:", error);
       toast({ variant: "destructive", title: "Logout Failed", description: "Could not log you out. Please try again." });
+    } finally {
+       // setIsNavigationLoading(false); // Not strictly needed if navigating away
     }
   };
 
-  if (isCheckingAuth) {
+  // Show splash screen if checking initial auth OR if navigating between pages
+  if (isCheckingAuth || isNavigationLoading) {
     return <SplashScreenDisplay />;
   }
-
+  
   if (!currentUser && !pathname.startsWith('/onboarding')) {
-    return <SplashScreenDisplay />;
+    return <SplashScreenDisplay />; // Fallback, should be caught by onAuthStateChanged
   }
 
   if (!currentUser && pathname.startsWith('/onboarding')) {
-      return <>{children}</>;
+      // This allows onboarding pages to render even if currentUser state update is slightly delayed
+      // but onAuthStateChanged should ideally redirect to /login if no user is eventually found.
+      return <>{children}</>; 
   }
-
+  
   if (!currentUser) {
-      return <SplashScreenDisplay />;
+      return <SplashScreenDisplay />; // Should be caught by onAuthStateChanged
   }
 
 
@@ -294,6 +325,7 @@ export default function AppLayout({
         <div className="h-screen flex flex-col overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0 h-12">
             <div className="relative flex h-full items-center px-4">
+              {/* Removed SidebarTrigger from here */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
                   <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} data-ai-hint="typography wordmark" priority />
@@ -314,5 +346,14 @@ export default function AppLayout({
         </div>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+
+export default function AuthenticatedAppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <LoadingProvider>
+      <AppLayoutContent>{children}</AppLayoutContent>
+    </LoadingProvider>
   );
 }
