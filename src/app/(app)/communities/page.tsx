@@ -35,7 +35,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -148,6 +148,8 @@ type ChatMessage = {
   replyToMessageId?: string;
   replyToSenderName?: string;
   replyToTextSnippet?: string;
+  isForwarded?: boolean;
+  forwardedFromSenderName?: string;
 };
 
 /**
@@ -181,6 +183,8 @@ type ChatMessage = {
  *          - `replyToMessageId`: string (optional, ID of the message being replied to)
  *          - `replyToSenderName`: string (optional, name of the original sender)
  *          - `replyToTextSnippet`: string (optional, a short snippet of the original message text)
+ *          - `isForwarded`: boolean (optional)
+ *          - `forwardedFromSenderName`: string (optional, name of the original sender of the forwarded message)
  *    - Firestore Security Rules: Crucial for access control.
  *      - Users can only write messages to channels they are members of.
  *      - Restrict reading messages to members.
@@ -227,6 +231,7 @@ type ChatMessage = {
  * 11. Forward Message (Frontend - Basic UI & hardcoded forward to first text channel implemented):
  *     - Opens a dialog to show the message to forward.
  *     - "Forwards" by creating a new message from the current user to the first text channel of the current community.
+ *     - Includes `isForwarded` and `forwardedFromSenderName` fields in Firestore.
  *
  * 12. UI/UX Enhancements:
  *     - Loading states for file uploads and GIF fetching.
@@ -411,6 +416,8 @@ export default function CommunitiesPage() {
             replyToMessageId: data.replyToMessageId || undefined,
             replyToSenderName: data.replyToSenderName || undefined,
             replyToTextSnippet: data.replyToTextSnippet || undefined,
+            isForwarded: data.isForwarded || false,
+            forwardedFromSenderName: data.forwardedFromSenderName || undefined,
           } as ChatMessage;
         });
         setMessages(fetchedMessages);
@@ -487,6 +494,16 @@ export default function CommunitiesPage() {
       type: 'text' as const,
       isPinned: false,
       reactions: {},
+      // Ensure all optional fields are at least undefined or null if not set
+      fileUrl: undefined,
+      fileName: undefined,
+      fileType: undefined,
+      gifUrl: undefined,
+      gifId: undefined,
+      gifTinyUrl: undefined,
+      gifContentDescription: undefined,
+      isForwarded: false,
+      forwardedFromSenderName: undefined,
     };
 
     if (replyingToMessage) {
@@ -494,7 +511,7 @@ export default function CommunitiesPage() {
         messageData.replyToSenderName = replyingToMessage.senderName;
         let snippet = replyingToMessage.text || '';
         if (replyingToMessage.type === 'image') snippet = 'Image';
-        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName}`;
+        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
         else if (replyingToMessage.type === 'gif') snippet = 'GIF';
         else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
         messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
@@ -539,6 +556,13 @@ export default function CommunitiesPage() {
       fileType: fileType, 
       isPinned: false,
       reactions: {},
+      text: undefined,
+      gifUrl: undefined,
+      gifId: undefined,
+      gifTinyUrl: undefined,
+      gifContentDescription: undefined,
+      isForwarded: false,
+      forwardedFromSenderName: undefined,
     };
 
      if (replyingToMessage) {
@@ -546,7 +570,7 @@ export default function CommunitiesPage() {
         messageData.replyToSenderName = replyingToMessage.senderName;
         let snippet = replyingToMessage.text || '';
         if (replyingToMessage.type === 'image') snippet = 'Image';
-        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName}`;
+        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
         else if (replyingToMessage.type === 'gif') snippet = 'GIF';
         else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
         messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
@@ -591,7 +615,7 @@ export default function CommunitiesPage() {
       const data = await response.json();
       const secureUrl = data.secure_url;
       const originalFilename = data.original_filename || file.name;
-      const fileTypeFromCloudinary = data.resource_type === 'video' && data.format === 'webm' ? 'audio/webm' : (data.format ? `${data.resource_type}/${data.format}` : file.type);
+      const fileTypeFromCloudinary = isVoiceMessage ? file.type : (data.resource_type === 'video' && data.format === 'webm' ? 'audio/webm' : (data.format ? `${data.resource_type}/${data.format}` : file.type));
 
 
       if (secureUrl) {
@@ -658,13 +682,19 @@ export default function CommunitiesPage() {
       gifContentDescription: gif.content_description,
       isPinned: false,
       reactions: {},
+      text: undefined,
+      fileUrl: undefined,
+      fileName: undefined,
+      fileType: undefined,
+      isForwarded: false,
+      forwardedFromSenderName: undefined,
     };
      if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
         let snippet = replyingToMessage.text || '';
         if (replyingToMessage.type === 'image') snippet = 'Image';
-        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName}`;
+        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
         else if (replyingToMessage.type === 'gif') snippet = 'GIF';
         else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
         messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
@@ -817,7 +847,7 @@ export default function CommunitiesPage() {
         type: forwardingMessage.type,
         isPinned: false,
         reactions: {},
-        text: forwardingMessage.text,
+        text: forwardingMessage.text, // Original text
         fileUrl: forwardingMessage.fileUrl,
         fileName: forwardingMessage.fileName,
         fileType: forwardingMessage.fileType,
@@ -825,6 +855,11 @@ export default function CommunitiesPage() {
         gifId: forwardingMessage.gifId,
         gifTinyUrl: forwardingMessage.gifTinyUrl,
         gifContentDescription: forwardingMessage.gifContentDescription,
+        isForwarded: true,
+        forwardedFromSenderName: forwardingMessage.senderName,
+        replyToMessageId: undefined, // Forwarded messages don't carry over reply context
+        replyToSenderName: undefined,
+        replyToTextSnippet: undefined,
     };
     
     try {
@@ -846,6 +881,8 @@ export default function CommunitiesPage() {
     if (!previousMessage) return true;
     if (currentMessage.senderId !== previousMessage.senderId) return true;
     if (currentMessage.timestamp.getTime() - previousMessage.timestamp.getTime() > TIMESTAMP_GROUPING_THRESHOLD_MS) return true;
+    if (currentMessage.replyToMessageId !== previousMessage.replyToMessageId) return true; // Show header if reply context changes
+    if (currentMessage.isForwarded !== previousMessage.isForwarded) return true; // Show header if forwarding state changes
     return false;
   };
 
@@ -996,7 +1033,7 @@ export default function CommunitiesPage() {
     <div className="flex h-full overflow-hidden bg-background">
       {/* Column 1: Community Server List */}
       <div className="h-full w-20 bg-muted/20 border-r border-border/30 overflow-hidden">
-        <div className="h-full"> 
+        <ScrollArea className="h-full"> 
           <div className="p-2 space-y-3">
             {placeholderCommunities.map((community) => (
               <button
@@ -1012,7 +1049,7 @@ export default function CommunitiesPage() {
               </button>
             ))}
           </div>
-        </div>
+        </ScrollArea>
       </div>
 
       {/* Column 2: Channel List */}
@@ -1169,9 +1206,18 @@ export default function CommunitiesPage() {
                         )}
                         {msg.replyToMessageId && (
                             <div className="mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max">
-                                Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>: 
-                                <span className="italic ml-1 truncate">"{msg.replyToTextSnippet}"</span>
+                                <div className="flex items-center">
+                                  <CornerUpRight className="h-3 w-3 mr-1.5 text-primary/70" />
+                                  <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>: 
+                                  <span className="italic ml-1 truncate">"{msg.replyToTextSnippet}"</span></span>
+                                </div>
                             </div>
+                        )}
+                        {msg.isForwarded && (
+                          <div className="text-xs text-muted-foreground italic mb-0.5 flex items-center">
+                            <Share2 className="h-3 w-3 mr-1.5 text-muted-foreground/80" />
+                            Forwarded {msg.forwardedFromSenderName && `from ${msg.forwardedFromSenderName}`}
+                          </div>
                         )}
                         {msg.type === 'text' && msg.text && (
                            <p
@@ -1313,7 +1359,7 @@ export default function CommunitiesPage() {
                             <em className="ml-1 text-muted-foreground truncate">
                                 "{replyingToMessage.text?.substring(0,50) || 
                                  (replyingToMessage.type === 'image' && "Image") ||
-                                 (replyingToMessage.type === 'file' && `File: ${replyingToMessage.fileName}`) ||
+                                 (replyingToMessage.type === 'file' && `File: ${replyingToMessage.fileName || 'attachment'}`) ||
                                  (replyingToMessage.type === 'gif' && "GIF") ||
                                  (replyingToMessage.type === 'voice_message' && "Voice Message") || "..."}"
                                 {(replyingToMessage.text && replyingToMessage.text.length > 50) || 
@@ -1649,6 +1695,7 @@ export default function CommunitiesPage() {
                     placeholder="Search channels or users..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
+                    disabled // Re-disable until search is functional
                 />
                 {/* Placeholder for recipient list */}
             </div>
@@ -1663,3 +1710,4 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+
