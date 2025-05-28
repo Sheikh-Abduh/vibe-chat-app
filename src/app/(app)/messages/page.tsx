@@ -214,27 +214,27 @@ export default function MessagesPage() {
           const data = docSnap.data();
           return {
             id: docSnap.id,
-            text: data.text,
+            text: data.text || undefined,
             senderId: data.senderId,
             senderName: data.senderName,
-            senderAvatarUrl: data.senderAvatarUrl,
+            senderAvatarUrl: data.senderAvatarUrl || null,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
             type: data.type || 'text',
-            fileUrl: data.fileUrl,
-            fileName: data.fileName,
-            fileType: data.fileType,
-            gifUrl: data.gifUrl,
-            gifId: data.gifId,
-            gifTinyUrl: data.gifTinyUrl,
-            gifContentDescription: data.gifContentDescription,
+            fileUrl: data.fileUrl || undefined,
+            fileName: data.fileName || undefined,
+            fileType: data.fileType || undefined,
+            gifUrl: data.gifUrl || undefined,
+            gifId: data.gifId || undefined,
+            gifTinyUrl: data.gifTinyUrl || undefined,
+            gifContentDescription: data.gifContentDescription || undefined,
             isPinned: data.isPinned || false,
             reactions: data.reactions || {},
-            replyToMessageId: data.replyToMessageId,
-            replyToSenderName: data.replyToSenderName,
-            replyToSenderId: data.replyToSenderId,
-            replyToTextSnippet: data.replyToTextSnippet,
+            replyToMessageId: data.replyToMessageId || undefined,
+            replyToSenderName: data.replyToSenderName || undefined,
+            replyToSenderId: data.replyToSenderId || undefined,
+            replyToTextSnippet: data.replyToTextSnippet || undefined,
             isForwarded: data.isForwarded || false,
-            forwardedFromSenderName: data.forwardedFromSenderName,
+            forwardedFromSenderName: data.forwardedFromSenderName || undefined,
             mentionedUserIds: data.mentionedUserIds || [],
           } as ChatMessage;
         });
@@ -283,6 +283,7 @@ export default function MessagesPage() {
         const convoSnap = await getDoc(convoDocRef);
         if (!convoSnap.exists()) {
             let participants = [currentUser.uid, otherUserId].sort();
+             // Ensure 'participants' always has two UIDs, even for self-chat
              if (currentUser.uid === otherUserId && participants.length === 1 && participants[0] === currentUser.uid) { 
                  participants.push(currentUser.uid); 
              }
@@ -314,25 +315,26 @@ export default function MessagesPage() {
     if (!conversationReady) return;
 
     const messageText = newMessage.trim();
+    // Basic mention parsing - in a real app, resolve usernames to UIDs
     const mentionMatches = messageText.match(/@[\w.-]+/g) || [];
-    const mentionedUserIds = mentionMatches; 
+    const mentionedUserIds = mentionMatches; // Placeholder: these should be UIDs
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(),
       type: 'text' as const,
       text: messageText,
+      reactions: {},
+      isPinned: false,
       ...(mentionedUserIds.length > 0 && { mentionedUserIds }),
       ...(replyingToMessage && {
         replyToMessageId: replyingToMessage.id,
         replyToSenderName: replyingToMessage.senderName,
         replyToSenderId: replyingToMessage.senderId,
-        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''),
       }),
-      reactions: {},
-      isPinned: false,
     };
 
     try {
@@ -345,6 +347,9 @@ export default function MessagesPage() {
         lastMessageTimestamp: serverTimestamp(),
         [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
+        // Ensure other user's details are also present or updated if this is the first interaction setting them
+        [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"),
+        [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || (otherUserId === currentUser.uid ? currentUser.photoURL : null),
       });
 
       setNewMessage("");
@@ -372,7 +377,7 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; fileUrl: string; fileName: string; fileType: string; } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -381,14 +386,14 @@ export default function MessagesPage() {
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType,
+      reactions: {},
+      isPinned: false,
       ...(replyingToMessage && {
         replyToMessageId: replyingToMessage.id,
         replyToSenderName: replyingToMessage.senderName,
         replyToSenderId: replyingToMessage.senderId,
-        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''),
       }),
-      reactions: {},
-      isPinned: false,
     };
 
     try {
@@ -401,6 +406,8 @@ export default function MessagesPage() {
             lastMessageTimestamp: serverTimestamp(),
             [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
             [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
+            [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"),
+            [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || (otherUserId === currentUser.uid ? currentUser.photoURL : null),
         });
       setReplyingToMessage(null);
       toast({ title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Sent!` });
@@ -460,7 +467,7 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -470,14 +477,14 @@ export default function MessagesPage() {
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
+      reactions: {},
+      isPinned: false,
       ...(replyingToMessage && {
         replyToMessageId: replyingToMessage.id,
         replyToSenderName: replyingToMessage.senderName,
         replyToSenderId: replyingToMessage.senderId,
-        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''),
       }),
-      reactions: {},
-      isPinned: false,
     };
 
     try {
@@ -489,6 +496,8 @@ export default function MessagesPage() {
             lastMessageTimestamp: serverTimestamp(),
             [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
             [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
+            [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"),
+            [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || (otherUserId === currentUser.uid ? currentUser.photoURL : null),
         });
       setShowGifPicker(false); setGifSearchTerm(""); setGifs([]);
       setReplyingToMessage(null);
@@ -608,7 +617,7 @@ export default function MessagesPage() {
         return;
     }
 
-    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; isForwarded: boolean; forwardedFromSenderName: string; } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -616,16 +625,17 @@ export default function MessagesPage() {
       type: forwardingMessage.type,
       isForwarded: true,
       forwardedFromSenderName: forwardingMessage.senderName,
-      text: forwardingMessage.text,
-      fileUrl: forwardingMessage.fileUrl,
-      fileName: forwardingMessage.fileName,
-      fileType: forwardingMessage.fileType,
-      gifUrl: forwardingMessage.gifUrl,
-      gifId: forwardingMessage.gifId,
-      gifTinyUrl: forwardingMessage.gifTinyUrl,
-      gifContentDescription: forwardingMessage.gifContentDescription,
       reactions: {},
       isPinned: false,
+      // Only include optional fields if they have a value from the original message
+      ...(forwardingMessage.text && { text: forwardingMessage.text }),
+      ...(forwardingMessage.fileUrl && { fileUrl: forwardingMessage.fileUrl }),
+      ...(forwardingMessage.fileName && { fileName: forwardingMessage.fileName }),
+      ...(forwardingMessage.fileType && { fileType: forwardingMessage.fileType }),
+      ...(forwardingMessage.gifUrl && { gifUrl: forwardingMessage.gifUrl }),
+      ...(forwardingMessage.gifId && { gifId: forwardingMessage.gifId }),
+      ...(forwardingMessage.gifTinyUrl && { gifTinyUrl: forwardingMessage.gifTinyUrl }),
+      ...(forwardingMessage.gifContentDescription && { gifContentDescription: forwardingMessage.gifContentDescription }),
     };
   
     try {
@@ -662,6 +672,7 @@ export default function MessagesPage() {
     }
     setLoadingGifs(true);
     try {
+      // SECURITY: Tenor API key is exposed client-side. Proxy through backend for production.
       const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to fetch trending GIFs');
       const data = await response.json(); setGifs(data.results || []);
@@ -674,6 +685,7 @@ export default function MessagesPage() {
     if (!TENOR_API_KEY.startsWith("AIza")) { setLoadingGifs(false); return; }
     setLoadingGifs(true);
     try {
+      // SECURITY: Tenor API key is exposed client-side. Proxy through backend for production.
       const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to search GIFs');
       const data = await response.json(); setGifs(data.results || []);
@@ -756,13 +768,13 @@ export default function MessagesPage() {
   };
   
   const handleStartVoiceCall = async () => {
-    if (!otherUserId || currentUser?.uid === otherUserId || isStartingCall) return; // Don't allow calling self
+    if (!otherUserId || (currentUser && currentUser.uid === otherUserId) || isStartingCall) return; // Don't allow calling self
     setIsStartingCall(true);
     const permissionGranted = await requestMicPermission();
     if (permissionGranted) {
       toast({
         title: "Starting Voice Call...",
-        description: `Attempting to call ${otherUserName || 'User'}. Backend for call connection not implemented.`,
+        description: `Attempting to call ${otherUserName || 'User'}. Third-party service (e.g., Agora, Twilio) integration needed.`,
       });
       // Here you would typically initiate connection to your WebRTC/signaling server
     }
@@ -920,7 +932,7 @@ export default function MessagesPage() {
                                 >
                                     {isStartingCall ? <Loader2 className="h-5 w-5 animate-spin"/> : <Phone className="h-5 w-5"/>}
                                 </Button>
-                                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Start Video Call (Coming Soon)" onClick={() => toast({title: "Coming Soon!", description: "Video call feature will be implemented."})}>
+                                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Start Video Call (Coming Soon)" onClick={() => toast({title: "Coming Soon!", description: "Video call requires a third-party service (e.g. Agora, Twilio)."})}>
                                     <VideoIcon className="h-5 w-5"/>
                                 </Button>
                             </>
@@ -1016,10 +1028,10 @@ export default function MessagesPage() {
                                 </div>
                             </div>
                         )}
-                        {msg.isForwarded && (
+                        {msg.isForwarded && msg.forwardedFromSenderName && (
                           <div className={cn("text-xs text-muted-foreground italic mb-0.5 flex items-center", isCurrentUserMsg ? "justify-end" : "justify-start")}>
                             <Share2 className="h-3 w-3 mr-1.5 text-muted-foreground/80" />
-                            Forwarded {msg.forwardedFromSenderName && `from ${msg.forwardedFromSenderName}`}
+                            Forwarded from {msg.forwardedFromSenderName}
                           </div>
                         )}
                          <div className={cn("mt-0.5 p-2 rounded-lg inline-block", 
@@ -1034,8 +1046,8 @@ export default function MessagesPage() {
                                <div className="relative max-w-[300px] mt-1 group/gif">
                                     <Image src={msg.gifUrl} alt={msg.gifContentDescription || "GIF"} width={0} height={0} style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem' }} unoptimized priority={false} data-ai-hint="animated gif" />
                                     {currentUser && msg.gifId && (
-                                        <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleFavoriteGifFromChat(msg)} title={isGifFavorited(msg.gifId) ? "Unfavorite" : "Favorite"}>
-                                            <Star className={cn("h-4 w-4", isGifFavorited(msg.gifId) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
+                                        <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleFavoriteGifFromChat(msg)} title={isGifFavorited(msg.gifId || "") ? "Unfavorite" : "Favorite"}>
+                                            <Star className={cn("h-4 w-4", isGifFavorited(msg.gifId || "") ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
                                         </Button>
                                     )}
                                </div>
@@ -1324,9 +1336,10 @@ export default function MessagesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users..." 
+                    placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
+                    disabled // Keep disabled until search functionality is implemented
                 />
             </div>
             <DialogFooter>

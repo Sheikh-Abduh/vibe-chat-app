@@ -400,27 +400,28 @@ export default function CommunitiesPage() {
           const data = docSnap.data();
           return {
             id: docSnap.id,
-            text: data.text,
+            // Ensure all optional fields are present, defaulting to undefined if not in Firestore
+            text: data.text || undefined,
             senderId: data.senderId,
             senderName: data.senderName,
-            senderAvatarUrl: data.senderAvatarUrl,
+            senderAvatarUrl: data.senderAvatarUrl || null,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
             type: data.type || 'text', 
-            fileUrl: data.fileUrl,
-            fileName: data.fileName,
-            fileType: data.fileType,
-            gifUrl: data.gifUrl,
-            gifId: data.gifId,
-            gifTinyUrl: data.gifTinyUrl,
-            gifContentDescription: data.gifContentDescription,
+            fileUrl: data.fileUrl || undefined,
+            fileName: data.fileName || undefined,
+            fileType: data.fileType || undefined,
+            gifUrl: data.gifUrl || undefined,
+            gifId: data.gifId || undefined,
+            gifTinyUrl: data.gifTinyUrl || undefined,
+            gifContentDescription: data.gifContentDescription || undefined,
             isPinned: data.isPinned || false,
             reactions: data.reactions || {},
-            replyToMessageId: data.replyToMessageId,
-            replyToSenderName: data.replyToSenderName,
-            replyToSenderId: data.replyToSenderId,
-            replyToTextSnippet: data.replyToTextSnippet,
+            replyToMessageId: data.replyToMessageId || undefined,
+            replyToSenderName: data.replyToSenderName || undefined,
+            replyToSenderId: data.replyToSenderId || undefined,
+            replyToTextSnippet: data.replyToTextSnippet || undefined,
             isForwarded: data.isForwarded || false,
-            forwardedFromSenderName: data.forwardedFromSenderName,
+            forwardedFromSenderName: data.forwardedFromSenderName || undefined,
             mentionedUserIds: data.mentionedUserIds || [],
           } as ChatMessage;
         });
@@ -486,26 +487,28 @@ export default function CommunitiesPage() {
     }
 
     const messageText = newMessage.trim();
+    
+    // Basic mention parsing - in a real app, resolve usernames to UIDs
     const mentionMatches = messageText.match(/@[\w.-]+/g) || [];
-    const mentionedUserIds = mentionMatches; 
+    const mentionedUserIds = mentionMatches; // Placeholder: these should be UIDs
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: 'text' as const,
       text: messageText,
-      // Omit optional fields if not present
+      reactions: {},
+      isPinned: false,
+      // Only include optional fields if they have a value
       ...(mentionedUserIds.length > 0 && { mentionedUserIds }),
       ...(replyingToMessage && {
         replyToMessageId: replyingToMessage.id,
         replyToSenderName: replyingToMessage.senderName,
         replyToSenderId: replyingToMessage.senderId,
-        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''),
       }),
-      reactions: {},
-      isPinned: false,
     };
     
     try {
@@ -537,7 +540,7 @@ export default function CommunitiesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; fileUrl: string; fileName: string; fileType: string; } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -546,14 +549,14 @@ export default function CommunitiesPage() {
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType, 
-       ...(replyingToMessage && {
+      reactions: {},
+      isPinned: false,
+      ...(replyingToMessage && {
         replyToMessageId: replyingToMessage.id,
         replyToSenderName: replyingToMessage.senderName,
         replyToSenderId: replyingToMessage.senderId,
-        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''),
       }),
-      reactions: {},
-      isPinned: false,
     };
 
     try {
@@ -650,7 +653,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string;} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -660,14 +663,14 @@ export default function CommunitiesPage() {
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
+      reactions: {},
+      isPinned: false,
       ...(replyingToMessage && {
         replyToMessageId: replyingToMessage.id,
         replyToSenderName: replyingToMessage.senderName,
         replyToSenderId: replyingToMessage.senderId,
-        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''),
       }),
-      reactions: {},
-      isPinned: false,
     };
 
     try {
@@ -699,7 +702,7 @@ export default function CommunitiesPage() {
             gif: { url: message.gifUrl || '', dims: [] as number[], preview: '', duration: 0, size:0 }
         },
         content_description: message.gifContentDescription,
-        created: 0,
+        created: 0, // These fields are not crucial for favoriting, can be default values
         hasaudio: false,
         itemurl: '',
         shares: 0,
@@ -820,7 +823,7 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; isForwarded: boolean; forwardedFromSenderName: string; } = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || null,
@@ -828,16 +831,17 @@ export default function CommunitiesPage() {
         type: forwardingMessage.type,
         isForwarded: true,
         forwardedFromSenderName: forwardingMessage.senderName,
-        text: forwardingMessage.text,
-        fileUrl: forwardingMessage.fileUrl,
-        fileName: forwardingMessage.fileName,
-        fileType: forwardingMessage.fileType,
-        gifUrl: forwardingMessage.gifUrl,
-        gifId: forwardingMessage.gifId,
-        gifTinyUrl: forwardingMessage.gifTinyUrl,
-        gifContentDescription: forwardingMessage.gifContentDescription,
         reactions: {},
         isPinned: false,
+        // Only include optional fields if they have a value from the original message
+        ...(forwardingMessage.text && { text: forwardingMessage.text }),
+        ...(forwardingMessage.fileUrl && { fileUrl: forwardingMessage.fileUrl }),
+        ...(forwardingMessage.fileName && { fileName: forwardingMessage.fileName }),
+        ...(forwardingMessage.fileType && { fileType: forwardingMessage.fileType }),
+        ...(forwardingMessage.gifUrl && { gifUrl: forwardingMessage.gifUrl }),
+        ...(forwardingMessage.gifId && { gifId: forwardingMessage.gifId }),
+        ...(forwardingMessage.gifTinyUrl && { gifTinyUrl: forwardingMessage.gifTinyUrl }),
+        ...(forwardingMessage.gifContentDescription && { gifContentDescription: forwardingMessage.gifContentDescription }),
     };
     
     try {
@@ -872,6 +876,7 @@ export default function CommunitiesPage() {
     }
     setLoadingGifs(true);
     try {
+      // SECURITY: Tenor API key is exposed client-side. Proxy through backend for production.
       const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to fetch trending GIFs');
       const data = await response.json();
@@ -897,6 +902,7 @@ export default function CommunitiesPage() {
     }
     setLoadingGifs(true);
     try {
+      // SECURITY: Tenor API key is exposed client-side. Proxy through backend for production.
       const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to fetch GIFs');
       const data = await response.json();
@@ -1016,7 +1022,7 @@ export default function CommunitiesPage() {
     if (permissionGranted) {
       toast({
         title: "Microphone Connected",
-        description: "Voice chat backend integration is needed to connect to others.",
+        description: "Third-party service (e.g., Agora, Twilio) integration needed for voice chat.",
       });
       // Here you would typically initiate connection to your WebRTC/signaling server
     } else {
@@ -1232,7 +1238,7 @@ export default function CommunitiesPage() {
                             {isJoiningVoice ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Mic className="mr-2 h-4 w-4"/>}
                             {isJoiningVoice ? "Connecting..." : "Join Voice Channel"}
                         </Button>
-                         <p className="text-xs text-muted-foreground mt-2">Note: Full voice chat requires backend integration.</p>
+                         <p className="text-xs text-muted-foreground mt-2">Note: Full voice chat requires a third-party service (e.g. Agora, Twilio).</p>
                     </div>
                 )}
                  {selectedChannel.type === 'video' && (
@@ -1242,7 +1248,7 @@ export default function CommunitiesPage() {
                         <p>Video features are coming soon!</p>
                         <p className="text-sm mt-1">You would join the video call and see other participants here.</p>
                          <Button 
-                            onClick={() => toast({title: "Coming Soon!", description: "Video call functionality will be implemented."})} 
+                            onClick={() => toast({title: "Coming Soon!", description: "Video call requires a third-party service (e.g. Agora, Twilio)."})} 
                             className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
                         >
                             <Video className="mr-2 h-4 w-4"/>
@@ -1305,10 +1311,10 @@ export default function CommunitiesPage() {
                                 </div>
                             </div>
                         )}
-                        {msg.isForwarded && (
+                        {msg.isForwarded && msg.forwardedFromSenderName && (
                           <div className="text-xs text-muted-foreground italic mb-0.5 flex items-center">
                             <Share2 className="h-3 w-3 mr-1.5 text-muted-foreground/80" />
-                            Forwarded {msg.forwardedFromSenderName && `from ${msg.forwardedFromSenderName}`}
+                            Forwarded from {msg.forwardedFromSenderName}
                           </div>
                         )}
                         {msg.type === 'text' && msg.text && (
@@ -1335,9 +1341,9 @@ export default function CommunitiesPage() {
                                         size="icon"
                                         className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover/gif:opacity-100 transition-opacity"
                                         onClick={() => handleFavoriteGifFromChat(msg)}
-                                        title={isGifFavorited(msg.gifId) ? "Unfavorite" : "Favorite"}
+                                        title={isGifFavorited(msg.gifId || "") ? "Unfavorite" : "Favorite"}
                                     >
-                                        <Star className={cn("h-4 w-4", isGifFavorited(msg.gifId) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
+                                        <Star className={cn("h-4 w-4", isGifFavorited(msg.gifId || "") ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
                                     </Button>
                                 )}
                            </div>
@@ -1803,9 +1809,10 @@ export default function CommunitiesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users..." 
+                    placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
+                    disabled // Keep disabled until search functionality is implemented
                 />
             </div>
             <DialogFooter>
