@@ -10,21 +10,8 @@ import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
 import type { TenorGif as TenorGifType } from '@/types/tenor'; 
 
-import EmojiPicker, { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
-
-
-// Cloudinary configuration (API Key is safe for client-side with unsigned uploads)
-const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
-const CLOUDINARY_API_KEY = '775545995624823';
-const CLOUDINARY_UPLOAD_PRESET = 'vibe_app';
-const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
-const ALLOWED_FILE_TYPES = [
-  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-  'application/pdf',
-  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .doc, .docx
-  'text/plain',
-  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', // Added mpeg for mp3
-];
+import { Picker as EmojiPicker, type EmojiClickData, type EmojiStyle, type Theme as EmojiTheme } from 'emoji-picker-react';
+import data from '@emoji-mart/data'
 
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -147,116 +134,95 @@ type ChatMessage = {
   reactions?: Record<string, string[]>; // Emoji as key, array of user UIDs as value
   replyToMessageId?: string;
   replyToSenderName?: string;
-  replyToSenderId?: string; // Added for notification generation
+  replyToSenderId?: string; 
   replyToTextSnippet?: string;
   isForwarded?: boolean;
   forwardedFromSenderName?: string;
-  mentionedUserIds?: string[]; // For potential backend processing of mentions
+  mentionedUserIds?: string[]; 
 };
 
 /**
  * =============================================================================
- * HOW TO IMPLEMENT CHAT FUNCTIONALITY (Detailed Guide)
+ * CHAT FUNCTIONALITY GUIDE (Communities & Direct Messages)
  * =============================================================================
- * This section provides a high-level overview for building out the full chat features.
+ * This app uses Firebase Firestore for real-time chat.
  *
- * 1. Backend Setup (Firebase Firestore - Partially Implemented for text messages):
+ * 1. Backend Setup (Firebase Firestore):
  *    - Database Schema:
- *      - `/communities/{communityId}`
- *      - `/communities/{communityId}/channels/{channelId}`
- *      - `/communities/{communityId}/members/{memberUserId}`
- *      - `/communities/{communityId}/channels/{channelId}/messages/{messageId}`:
- *        Each message document includes:
- *          - `text`: string (for text messages)
+ *      - `/communities/{communityId}/channels/{channelId}/messages/{messageId}`
+ *      - `/direct_messages/{conversationId}/messages/{messageId}` (conversationId is sorted UIDs: uid1_uid2)
+ *        Each message document typically includes:
  *          - `senderId`: string (Firebase User ID)
  *          - `senderName`: string
- *          - `senderAvatarUrl`: string | null
- *          - `timestamp`: Firebase Server Timestamp (for ordering)
+ *          - `senderAvatarUrl`: string | null (optional)
+ *          - `timestamp`: Firebase Server Timestamp
  *          - `type`: 'text' | 'image' | 'file' | 'gif' | 'voice_message'
- *          - `fileUrl`: string (URL for image, file, voice message from Cloudinary)
+ *          - `text`: string (for text messages)
+ *          - `fileUrl`: string (URL for image, file, voice recording - e.g., from Cloudinary)
  *          - `fileName`: string (for file uploads)
- *          - `fileType`: string (MIME type, e.g., 'audio/webm' for voice messages)
- *          - `gifUrl`: string (URL from Tenor for GIFs)
- *          - `gifId`: string (original ID from Tenor, for favoriting)
- *          - `gifTinyUrl`: string (tiny GIF URL from Tenor, for favoriting)
- *          - `gifContentDescription`: string (description from Tenor, for favoriting)
+ *          - `fileType`: string (MIME type)
+ *          - `gifUrl`, `gifId`, `gifTinyUrl`, `gifContentDescription`: strings (for GIFs from Tenor)
  *          - `isPinned`: boolean (optional)
- *          - `reactions`: object (e.g., {"👍": ["uid1", "uid2"], "❤️": ["uid1"]})
- *          - `replyToMessageId`: string (optional, ID of the message being replied to)
- *          - `replyToSenderName`: string (optional, name of the original sender)
- *          - `replyToSenderId`: string (optional, UID of the original sender)
- *          - `replyToTextSnippet`: string (optional, a short snippet of the original message text)
- *          - `isForwarded`: boolean (optional)
- *          - `forwardedFromSenderName`: string (optional, name of the original sender of the forwarded message)
- *          - `mentionedUserIds`: string[] (optional, array of UIDs for users mentioned - for backend notification processing)
- *    - Firestore Security Rules: Crucial for access control.
- *      - Users can only write messages to channels they are members of.
- *      - Restrict reading messages to members.
- *      - Community/channel management restrictions.
- *      - Deleting messages restricted to sender or moderators.
- *      - Updating `isPinned` and `reactions` might have specific role-based logic.
- *      - See the "Updated Firestore Security Rules" section in the assistant's previous response.
+ *          - `reactions`: object (e.g., {"👍": ["uid1", "uid2"]})
+ *          - `replyToMessageId`, `replyToSenderName`, `replyToSenderId`, `replyToTextSnippet`: strings (for replies)
+ *          - `isForwarded`, `forwardedFromSenderName`: (for forwarded messages)
+ *          - `mentionedUserIds`: string[] (array of UIDs for @mentions - for backend notification processing)
+ *    - Firestore Security Rules: Crucial for access control. (See firestore.rules.md for detailed examples).
+ *      - Restrict message reads/writes to authenticated users who are members of the community/channel or participants in a DM.
+ *      - Restrict delete/pin to message senders or moderators.
  *
- * 2. Real-time Message Listening (Frontend - Firebase SDK - Implemented for text):
- *    - `onSnapshot` listener for channel messages is active.
+ * 2. Real-time Message Listening (Frontend - Firebase SDK):
+ *    - `onSnapshot` listener is used on the relevant messages subcollection, ordered by `timestamp`.
+ *    - Updates the local `messages` state when new messages arrive or existing ones change.
  *
- * 3. Sending Text Messages (Frontend - Implemented with Firestore):
- *    - Saves to Firestore. Now includes reply context if applicable.
- *    - Includes basic Markdown formatting for bold, italic, strikethrough, underline, superscript, subscript.
- *    - Parses for @mentions and stores them in `mentionedUserIds`.
+ * 3. Sending Messages (Frontend - Firestore SDK):
+ *    - `addDoc` creates new message documents in Firestore.
+ *    - `serverTimestamp()` is used for consistent message ordering.
+ *    - Reply context (`replyTo...` fields) is included if applicable.
+ *    - Mentioned user UIDs are stored in `mentionedUserIds` (requires frontend resolution of @username to UID).
  *
- * 4. File/Image Upload (Frontend - Implemented with Cloudinary):
- *    - Uploads to Cloudinary, then saves message details (URL, filename, fileType) to Firestore.
- *    - Includes 20MB file size limit and basic type validation.
+ * 4. File/Image Upload (Frontend - Cloudinary):
+ *    - Client-side validation (size, type).
+ *    - Uploads directly to Cloudinary using an unsigned preset (API key is safe for this).
+ *    - On success, Cloudinary returns a `secure_url`.
+ *    - A message of type 'image' or 'file' is created in Firestore with the `fileUrl` and `fileName`.
  *
- * 5. GIF Send (Frontend - Implemented with direct Tenor API for prototype):
- *    - **SECURITY WARNING: DO NOT EXPOSE YOUR TENOR API KEY IN CLIENT-SIDE CODE.**
- *      Proxy Tenor API requests through a Firebase Cloud Function in production.
- *    - Fetches GIFs, saves GIF details (including id, tinyUrl, contentDescription) to Firestore.
- *    - Implemented GIF favoriting using localStorage.
+ * 5. GIF Send (Frontend - Tenor API):
+ *    - **SECURITY WARNING: DO NOT EXPOSE YOUR TENOR API KEY IN CLIENT-SIDE CODE FOR PRODUCTION.**
+ *      The current implementation uses the key directly for prototyping. For production, proxy Tenor API requests
+ *      through a Firebase Cloud Function.
+ *    - Fetches GIFs (trending/search) from Tenor.
+ *    - A message of type 'gif' is created in Firestore with GIF URLs and metadata.
+ *    - GIF favoriting uses `localStorage` (client-side only).
  *
- * 6. Emoji Send (Frontend - Implemented with emoji-picker-react):
- *    - Uses `emoji-picker-react` Picker component to append emojis to the text input and for reactions.
+ * 6. Emoji Send (Frontend - `emoji-picker-react`):
+ *    - Uses `EmojiPicker` component. Selected emoji is appended to the text input.
  *
- * 7. Voice Message Send (Frontend - Implemented with MediaRecorder & Cloudinary Upload):
- *    - Captures audio. Uploads the audio Blob to Cloudinary and saves the public URL and fileType to Firestore.
- *    - Messages of type 'voice_message' are rendered with an HTML5 <audio> player.
+ * 7. Voice Message Send (Frontend - MediaRecorder & Cloudinary Upload):
+ *    - `navigator.mediaDevices.getUserMedia` requests microphone access.
+ *    - `MediaRecorder` captures audio (e.g., as a WebM blob).
+ *    - The audio blob is uploaded to Cloudinary (as a 'video' resource type often handles audio well).
+ *    - A message of type 'voice_message' is created in Firestore with the Cloudinary `fileUrl` and `fileType`.
+ *    - Rendered using HTML5 `<audio>` player.
  *
- * 8. Delete & Pin Message Features (Frontend - Implemented):
- *    - Interacts with Firestore to delete or update `isPinned` status.
+ * 8. Message Features (Frontend - Firestore updates):
+ *    - Delete: Marks message for deletion or actually deletes the document (requires correct Firestore rules).
+ *    - Pin: Updates the `isPinned` boolean field on the message document.
+ *    - Reactions: Updates the `reactions` map on the message document (e.g., using Firestore transactions or arrayUnion/Remove).
  *
- * 9. Message Reactions (Frontend - Implemented with emoji-picker-react picker):
- *    - Users can add/remove reactions. Stored in the `reactions` field of the message in Firestore.
+ * 9. UI/UX Enhancements:
+ *    - Loading states for uploads, GIF fetching.
+ *    - Error handling with toasts.
+ *    - Timestamp grouping (showing full header only for new senders or after a time gap).
+ *    - Pinned messages toggle view.
+ *    - Reply context displayed above replied messages.
+ *    - Forwarded message indicator.
+ *    - Basic @mention styling and rudimentary suggestions.
+ *    - Client-side filtering for message search.
  *
- * 10. Reply to Message (Frontend - UI and data model implemented):
- *     - UI indicator for message being replied to.
- *     - Saves reply context (`replyToMessageId`, `replyToSenderName`, `replyToSenderId`, `replyToTextSnippet`) to Firestore.
- *     - Renders replied-to message snippet above the reply.
- *
- * 11. Forward Message (Frontend - Basic UI & hardcoded forward to first text channel implemented):
- *     - Opens a dialog to show the message to forward.
- *     - "Forwards" by creating a new message from the current user to the first text channel of the current community.
- *     - Includes `isForwarded` and `forwardedFromSenderName` fields in Firestore.
- * 
- * 12. @Mentions (Frontend - Basic visual styling & rudimentary suggestions implemented):
- *     - Typing "@" in chat input triggers a popover with members of the current channel.
- *     - Selecting a member inserts "@username" into input.
- *     - Messages containing "@username" patterns are styled.
- *     - `mentionedUserIds` (array of strings, e.g. ["@username1", "@username2"]) is saved to Firestore for backend processing.
- *       (A real system would resolve these to UIDs before saving).
- *
- * 13. Client-Side Message Search (Frontend - Basic filtering of loaded messages implemented):
- *     - Search icon in chat header toggles a search input.
- *     - Filters currently displayed messages; does not search full history in Firestore.
- *
- * 14. UI/UX Enhancements:
- *     - Loading states for file uploads and GIF fetching.
- *     - Error handling with toasts.
- *     - Timestamp grouping for messages from the same sender within a short interval.
- *     - Pinned messages toggle.
- *
- * 15. Voice & Video Channels (Advanced - WebRTC):
- *     - Requires a WebRTC service (e.g., Agora, Twilio Video) or a library with Firebase.
+ * 10. Voice & Video Channels (Advanced - Not fully implemented in this prototype):
+ *     - Requires a WebRTC service (e.g., Agora, Twilio Video, Daily.co) or a custom WebRTC implementation with a signaling server.
+ *     - Firebase Cloud Functions might be used for generating access tokens for third-party WebRTC services.
  * =============================================================================
  */
 
@@ -269,6 +235,19 @@ interface TenorGif extends TenorGifType {} // Use the imported type
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
 const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // THIS IS A SECURITY RISK FOR PRODUCTION
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
+
+const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
+const CLOUDINARY_API_KEY = '775545995624823';
+const CLOUDINARY_UPLOAD_PRESET = 'vibe_app';
+const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
+const ALLOWED_FILE_TYPES = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .doc, .docx
+  'text/plain',
+  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', 
+];
+
 
 const formatChatMessage = (text: string): string => {
   if (!text) return '';
@@ -291,9 +270,6 @@ const formatChatMessage = (text: string): string => {
   // @Mentions: @username (basic styling)
   formattedText = formattedText.replace(/@([\w.-]+)/g, '<span class="bg-accent/20 text-accent font-medium px-1 rounded">@$1</span>');
   
-  // IMPORTANT: In a production app, use a proper Markdown library and sanitizer (e.g., DOMPurify + marked)
-  // to prevent XSS vulnerabilities if the text can come from untrusted sources or if more complex Markdown is needed.
-  // This basic regex approach is for simple styling only.
   return formattedText;
 };
 
@@ -346,6 +322,7 @@ export default function CommunitiesPage() {
 
   const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
   const mentionSuggestionsRef = useRef<HTMLDivElement>(null);
+  const [isJoiningVoice, setIsJoiningVoice] = useState(false);
 
 
   useEffect(() => {
@@ -463,6 +440,7 @@ export default function CommunitiesPage() {
                 senderName: 'System',
                 timestamp: new Date(),
                 type: 'text',
+                reactions: {},
             }]);
         }
       });
@@ -470,14 +448,7 @@ export default function CommunitiesPage() {
       return () => unsubscribeFirestore();
 
     } else if (selectedChannel && (selectedChannel.type === 'voice' || selectedChannel.type === 'video')) {
-        setMessages([{
-            id: 'channel-info-' + selectedChannel.id,
-            text: `This is a ${selectedChannel.type} channel. Interactive voice/video features coming soon!`,
-            senderId: 'system',
-            senderName: 'System',
-            timestamp: new Date(),
-            type: 'text',
-        }]);
+        setMessages([]); // Clear previous text messages
     } else {
       setMessages([]);
     }
@@ -516,33 +487,30 @@ export default function CommunitiesPage() {
 
     const messageText = newMessage.trim();
     const mentionMatches = messageText.match(/@[\w.-]+/g) || [];
-    const mentionedUserIds = mentionMatches; // Storing raw @username strings for now.
+    const mentionedUserIds = mentionMatches; 
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text'; } = {
-      text: messageText,
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: 'text' as const,
-      mentionedUserIds: mentionedUserIds.length > 0 ? mentionedUserIds : undefined,
+      text: messageText,
+      // Omit optional fields if not present
+      ...(mentionedUserIds.length > 0 && { mentionedUserIds }),
+      ...(replyingToMessage && {
+        replyToMessageId: replyingToMessage.id,
+        replyToSenderName: replyingToMessage.senderName,
+        replyToSenderId: replyingToMessage.senderId,
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+      }),
+      reactions: {},
+      isPinned: false,
     };
-    
-    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
-    if(replyingToMessage) {
-        messageData.replyToMessageId = replyingToMessage.id;
-        messageData.replyToSenderName = replyingToMessage.senderName;
-        messageData.replyToSenderId = replyingToMessage.senderId;
-        let snippet = replyingToMessage.text || '';
-        if (replyingToMessage.type === 'image') snippet = 'Image';
-        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
-        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
-        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
-        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
-    }
     
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-      await addDoc(messagesRef, messageData as ChatMessage); 
+      await addDoc(messagesRef, messageData); 
       setNewMessage("");
       setReplyingToMessage(null);
       setShowMentionSuggestions(false);
@@ -569,32 +537,28 @@ export default function CommunitiesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType, 
+       ...(replyingToMessage && {
+        replyToMessageId: replyingToMessage.id,
+        replyToSenderName: replyingToMessage.senderName,
+        replyToSenderId: replyingToMessage.senderId,
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+      }),
+      reactions: {},
+      isPinned: false,
     };
-
-    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
-    if(replyingToMessage) {
-        messageData.replyToMessageId = replyingToMessage.id;
-        messageData.replyToSenderName = replyingToMessage.senderName;
-        messageData.replyToSenderId = replyingToMessage.senderId;
-        let snippet = replyingToMessage.text || '';
-        if (replyingToMessage.type === 'image') snippet = 'Image';
-        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
-        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
-        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
-        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
-    }
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-      await addDoc(messagesRef, messageData as ChatMessage);
+      await addDoc(messagesRef, messageData);
       setReplyingToMessage(null);
       toast({ title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Sent!`, description: `${fileName} has been sent.` });
     } catch (error) {
@@ -686,33 +650,29 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Partial<ChatMessage> = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
+      ...(replyingToMessage && {
+        replyToMessageId: replyingToMessage.id,
+        replyToSenderName: replyingToMessage.senderName,
+        replyToSenderId: replyingToMessage.senderId,
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+      }),
+      reactions: {},
+      isPinned: false,
     };
-
-    if(currentUser.photoURL) messageData.senderAvatarUrl = currentUser.photoURL;
-    if(replyingToMessage) {
-        messageData.replyToMessageId = replyingToMessage.id;
-        messageData.replyToSenderName = replyingToMessage.senderName;
-        messageData.replyToSenderId = replyingToMessage.senderId;
-        let snippet = replyingToMessage.text || '';
-        if (replyingToMessage.type === 'image') snippet = 'Image';
-        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
-        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
-        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
-        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
-    }
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-      await addDoc(messagesRef, messageData as ChatMessage);
+      await addDoc(messagesRef, messageData);
       setShowGifPicker(false);
       setGifSearchTerm("");
       setGifs([]);
@@ -735,10 +695,21 @@ export default function CommunitiesPage() {
     const gifToFavorite: TenorGifType = {
         id: message.gifId,
         media_formats: {
-            tinygif: { url: message.gifTinyUrl, dims: [] }, 
-            gif: { url: message.gifUrl || '', dims: []}
+            tinygif: { url: message.gifTinyUrl, dims: [] as number[], preview: '', duration: 0, size:0 }, 
+            gif: { url: message.gifUrl || '', dims: [] as number[], preview: '', duration: 0, size:0 }
         },
-        content_description: message.gifContentDescription
+        content_description: message.gifContentDescription,
+        created: 0,
+        hasaudio: false,
+        itemurl: '',
+        shares: 0,
+        source_id: '',
+        tags: [],
+        url: '',
+        composite: null,
+        hascaption: false,
+        title: '',
+        flags: [],
     };
     handleToggleFavoriteGif(gifToFavorite);
   };
@@ -849,28 +820,29 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const forwardedMessageData: Partial<ChatMessage> = {
+    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+        senderAvatarUrl: currentUser.photoURL || null,
         timestamp: serverTimestamp(),
         type: forwardingMessage.type,
         isForwarded: true,
         forwardedFromSenderName: forwardingMessage.senderName,
+        text: forwardingMessage.text,
+        fileUrl: forwardingMessage.fileUrl,
+        fileName: forwardingMessage.fileName,
+        fileType: forwardingMessage.fileType,
+        gifUrl: forwardingMessage.gifUrl,
+        gifId: forwardingMessage.gifId,
+        gifTinyUrl: forwardingMessage.gifTinyUrl,
+        gifContentDescription: forwardingMessage.gifContentDescription,
+        reactions: {},
+        isPinned: false,
     };
     
-    if(currentUser.photoURL) forwardedMessageData.senderAvatarUrl = currentUser.photoURL;
-    if (forwardingMessage.text) forwardedMessageData.text = forwardingMessage.text;
-    if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
-    if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
-    if (forwardingMessage.fileType) forwardedMessageData.fileType = forwardingMessage.fileType;
-    if (forwardingMessage.gifUrl) forwardedMessageData.gifUrl = forwardingMessage.gifUrl;
-    if (forwardingMessage.gifId) forwardedMessageData.gifId = forwardingMessage.gifId;
-    if (forwardingMessage.gifTinyUrl) forwardedMessageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
-    if (forwardingMessage.gifContentDescription) forwardedMessageData.gifContentDescription = forwardingMessage.gifContentDescription;
-
     try {
         const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${targetChannel.id}/messages`);
-        await addDoc(messagesRef, forwardedMessageData as ChatMessage); 
+        await addDoc(messagesRef, forwardedMessageData); 
         toast({ title: "Message Forwarded", description: `Message forwarded to #${targetChannel.name}.` });
     } catch (error) {
         console.error("Error forwarding message:", error);
@@ -956,14 +928,17 @@ export default function CommunitiesPage() {
   };
 
 
-  const requestMicPermission = async () => {
+  const requestMicPermission = async (): Promise<boolean> => {
     if (hasMicPermission === true) return true; 
-    if (hasMicPermission === false) return false; 
+    if (hasMicPermission === false) {
+        toast({ variant: "destructive", title: "Microphone Access Denied", description: "Please allow microphone access in your browser settings to use this feature." });
+        return false;
+    }
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setHasMicPermission(true);
-        stream.getTracks().forEach(track => track.stop()); 
+        stream.getTracks().forEach(track => track.stop()); // Stop the tracks immediately after permission check
         return true;
     } catch (error) {
         console.error("Error requesting mic permission:", error);
@@ -979,7 +954,17 @@ export default function CommunitiesPage() {
             if (status.state === 'granted') setHasMicPermission(true);
             else if (status.state === 'denied') setHasMicPermission(false);
             // If 'prompt', we'll ask when needed.
+            status.onchange = () => { // Listen for permission changes
+                if (status.state === 'granted') setHasMicPermission(true);
+                else if (status.state === 'denied') setHasMicPermission(false);
+                else setHasMicPermission(null); // Reset if goes back to prompt
+            };
+        }).catch(() => {
+            // Handle cases where permission query might not be supported or fails
+            setHasMicPermission(null); 
         });
+    } else {
+        setHasMicPermission(null); // Fallback if API not available
     }
   }, []);
 
@@ -1022,6 +1007,22 @@ export default function CommunitiesPage() {
             setIsRecording(false);
         }
     }
+  };
+  
+  const handleJoinVoiceChannel = async () => {
+    if (!selectedChannel || selectedChannel.type !== 'voice' || isJoiningVoice) return;
+    setIsJoiningVoice(true);
+    const permissionGranted = await requestMicPermission();
+    if (permissionGranted) {
+      toast({
+        title: "Microphone Connected",
+        description: "Voice chat backend integration is needed to connect to others.",
+      });
+      // Here you would typically initiate connection to your WebRTC/signaling server
+    } else {
+      // Toast for denial is handled by requestMicPermission
+    }
+    setIsJoiningVoice(false);
   };
 
   const handleChatSearchToggle = () => {
@@ -1218,12 +1219,35 @@ export default function CommunitiesPage() {
                      (messages.length === 0 && !currentUser ? "Loading messages..." : "No messages yet. Be the first to say something!"))}
                   </div>
                 )}
-                {selectedChannel.type !== 'text' && (
+                 {selectedChannel.type === 'voice' && (
                     <div className="text-center text-muted-foreground py-4 flex flex-col items-center justify-center h-full">
-                        {selectedChannel.type === 'voice' ? <Mic className="h-16 w-16 mb-4 text-primary/70"/> : <Video className="h-16 w-16 mb-4 text-primary/70"/>}
-                        <p className="text-lg font-medium">This is a {selectedChannel.type} channel.</p>
-                        <p>Voice and video features are coming soon!</p>
-                        <p className="text-sm mt-1">You would join the call and see other participants here.</p>
+                        <Mic className="h-16 w-16 mb-4 text-primary/70"/>
+                        <p className="text-lg font-medium">This is a voice channel.</p>
+                        <p className="text-sm mt-1">Click below to join the voice call.</p>
+                        <Button 
+                            onClick={handleJoinVoiceChannel} 
+                            disabled={isJoiningVoice}
+                            className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
+                        >
+                            {isJoiningVoice ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Mic className="mr-2 h-4 w-4"/>}
+                            {isJoiningVoice ? "Connecting..." : "Join Voice Channel"}
+                        </Button>
+                         <p className="text-xs text-muted-foreground mt-2">Note: Full voice chat requires backend integration.</p>
+                    </div>
+                )}
+                 {selectedChannel.type === 'video' && (
+                    <div className="text-center text-muted-foreground py-4 flex flex-col items-center justify-center h-full">
+                        <Video className="h-16 w-16 mb-4 text-primary/70"/>
+                        <p className="text-lg font-medium">This is a video channel.</p>
+                        <p>Video features are coming soon!</p>
+                        <p className="text-sm mt-1">You would join the video call and see other participants here.</p>
+                         <Button 
+                            onClick={() => toast({title: "Coming Soon!", description: "Video call functionality will be implemented."})} 
+                            className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
+                        >
+                            <Video className="mr-2 h-4 w-4"/>
+                            Join Video Channel (Soon)
+                        </Button>
                     </div>
                 )}
                 {displayedMessages.map((msg, index) => {
@@ -1396,9 +1420,10 @@ export default function CommunitiesPage() {
                                     setReactionPickerOpenForMessageId(null);
                                 }}
                                 theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
-                                emojiStyle={EmojiStyle.NATIVE}
-                                searchPlaceholder="Search emoji... (Full search not yet implemented)"
+                                emojiStyle={"native" as EmojiStyle}
+                                searchPlaceholder="Search emoji..."
                                 previewConfig={{showPreview: false}}
+                                data={data}
                              />
                           </PopoverContent>
                         </Popover>
@@ -1526,9 +1551,10 @@ export default function CommunitiesPage() {
                                 chatInputRef.current?.focus();
                             }}
                             theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
-                            emojiStyle={EmojiStyle.NATIVE}
+                            emojiStyle={"native" as EmojiStyle}
                             searchPlaceholder="Search emoji..."
                             previewConfig={{showPreview: false}}
+                            data={data}
                         />
                     </PopoverContent>
                     </Popover>
@@ -1654,7 +1680,7 @@ export default function CommunitiesPage() {
                 </form>
               </div>
             ) : (
-              <div className="p-3 border-t border-border/40 shrink-0 flex items-center justify-center h-full">
+              <div className="p-3 border-t border-border/40 shrink-0 flex items-center justify-center h-16"> {/* Adjusted height to match text input area */}
                  {/* Placeholder for non-text channels if input area needs specific UI */}
               </div>
             )}
@@ -1764,7 +1790,7 @@ export default function CommunitiesPage() {
             <DialogHeader>
                 <DialogTitle>Forward Message</DialogTitle>
                 <DialogDescription>
-                    Select a channel or user to forward this message to. (Recipient selection coming soon)
+                    Forwarding to the first text channel of this community. (Recipient selection coming soon)
                 </DialogDescription>
             </DialogHeader>
             {forwardingMessage && (
@@ -1773,16 +1799,14 @@ export default function CommunitiesPage() {
                     {forwardingMessage.type === 'text' && forwardingMessage.text && <p className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatChatMessage(forwardingMessage.text) }} />}
                     {forwardingMessage.type === 'image' && forwardingMessage.fileUrl && <Image src={forwardingMessage.fileUrl} alt="Forwarded Image" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" data-ai-hint="forwarded content" />}
                     {forwardingMessage.type === 'gif' && forwardingMessage.gifUrl && <Image src={forwardingMessage.gifUrl} alt="Forwarded GIF" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" unoptimized data-ai-hint="forwarded content"/>}
-                    {/* Add more previews for other types if needed */}
                  </div>
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users (coming soon)..." 
+                    placeholder="Search channels or users..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
                 />
-                {/* Placeholder for recipient list */}
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => {setIsForwardDialogOpen(false); setForwardingMessage(null); setForwardSearchTerm("");}}>Cancel</Button>

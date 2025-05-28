@@ -11,7 +11,8 @@ import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
 import type { TenorGif as TenorGifType } from '@/types/tenor';
 
-import EmojiPicker, { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
+import { Picker as EmojiPicker, type EmojiClickData, type EmojiStyle, type Theme as EmojiTheme } from 'emoji-picker-react';
+import data from '@emoji-mart/data'
 
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -72,11 +73,11 @@ type ChatMessage = {
   reactions?: Record<string, string[]>;
   replyToMessageId?: string;
   replyToSenderName?: string;
-  replyToSenderId?: string; // Added for notification generation
+  replyToSenderId?: string; 
   replyToTextSnippet?: string;
   isForwarded?: boolean;
   forwardedFromSenderName?: string;
-  mentionedUserIds?: string[]; // For potential backend processing of mentions
+  mentionedUserIds?: string[]; 
 };
 
 interface DmConversation {
@@ -153,6 +154,7 @@ export default function MessagesPage() {
   
   const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
   const mentionSuggestionsRef = useRef<HTMLDivElement>(null);
+  const [isStartingCall, setIsStartingCall] = useState(false);
 
 
   useEffect(() => {
@@ -313,34 +315,29 @@ export default function MessagesPage() {
 
     const messageText = newMessage.trim();
     const mentionMatches = messageText.match(/@[\w.-]+/g) || [];
-    // In a real app, resolve these @usernames to UIDs before saving
     const mentionedUserIds = mentionMatches; 
 
-    const messageData: Partial<ChatMessage> = {
-      text: messageText,
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(),
       type: 'text' as const,
-      senderAvatarUrl: currentUser.photoURL || null,
-      mentionedUserIds: mentionedUserIds.length > 0 ? mentionedUserIds : undefined, // Omit if empty
+      text: messageText,
+      ...(mentionedUserIds.length > 0 && { mentionedUserIds }),
+      ...(replyingToMessage && {
+        replyToMessageId: replyingToMessage.id,
+        replyToSenderName: replyingToMessage.senderName,
+        replyToSenderId: replyingToMessage.senderId,
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+      }),
+      reactions: {},
+      isPinned: false,
     };
-
-    if (replyingToMessage) {
-        messageData.replyToMessageId = replyingToMessage.id;
-        messageData.replyToSenderName = replyingToMessage.senderName;
-        messageData.replyToSenderId = replyingToMessage.senderId;
-        let snippet = replyingToMessage.text || '';
-        if (replyingToMessage.type === 'image') snippet = 'Image';
-        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
-        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
-        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
-        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
-    }
 
     try {
       const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
-      await addDoc(messagesColRef, messageData as ChatMessage);
+      await addDoc(messagesColRef, messageData);
       
       const convoDocRef = doc(db, `direct_messages/${conversationId}`);
       await updateDoc(convoDocRef, { 
@@ -375,32 +372,28 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType,
-      senderAvatarUrl: currentUser.photoURL || null,
+      ...(replyingToMessage && {
+        replyToMessageId: replyingToMessage.id,
+        replyToSenderName: replyingToMessage.senderName,
+        replyToSenderId: replyingToMessage.senderId,
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+      }),
+      reactions: {},
+      isPinned: false,
     };
-
-    if (replyingToMessage) {
-        messageData.replyToMessageId = replyingToMessage.id;
-        messageData.replyToSenderName = replyingToMessage.senderName;
-        messageData.replyToSenderId = replyingToMessage.senderId;
-        let snippet = replyingToMessage.text || '';
-        if (replyingToMessage.type === 'image') snippet = 'Image';
-        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
-        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
-        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
-        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
-    }
 
     try {
       const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
-      await addDoc(messagesColRef, messageData as ChatMessage);
+      await addDoc(messagesColRef, messageData);
 
        const convoDocRef = doc(db, `direct_messages/${conversationId}`);
         await updateDoc(convoDocRef, { 
@@ -467,33 +460,29 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Partial<ChatMessage> = {
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
-      senderAvatarUrl: currentUser.photoURL || null,
+      ...(replyingToMessage && {
+        replyToMessageId: replyingToMessage.id,
+        replyToSenderName: replyingToMessage.senderName,
+        replyToSenderId: replyingToMessage.senderId,
+        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + (replyingToMessage.text && replyingToMessage.text.length > 75 ? '...' : ''),
+      }),
+      reactions: {},
+      isPinned: false,
     };
-
-    if (replyingToMessage) {
-        messageData.replyToMessageId = replyingToMessage.id;
-        messageData.replyToSenderName = replyingToMessage.senderName;
-        messageData.replyToSenderId = replyingToMessage.senderId;
-        let snippet = replyingToMessage.text || '';
-        if (replyingToMessage.type === 'image') snippet = 'Image';
-        else if (replyingToMessage.type === 'file') snippet = `File: ${replyingToMessage.fileName || 'attachment'}`;
-        else if (replyingToMessage.type === 'gif') snippet = 'GIF';
-        else if (replyingToMessage.type === 'voice_message') snippet = 'Voice Message';
-        messageData.replyToTextSnippet = snippet.substring(0, 75) + (snippet.length > 75 ? '...' : '');
-    }
 
     try {
       const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
-      await addDoc(messagesColRef, messageData as ChatMessage);
+      await addDoc(messagesColRef, messageData);
         const convoDocRef = doc(db, `direct_messages/${conversationId}`);
         await updateDoc(convoDocRef, { 
             lastMessage: 'Sent a GIF',
@@ -513,8 +502,22 @@ export default function MessagesPage() {
     if (!message.gifId || !message.gifTinyUrl || !message.gifContentDescription) return;
     const gifToFavorite: TenorGif = {
         id: message.gifId,
-        media_formats: { tinygif: { url: message.gifTinyUrl, dims: [] }, gif: { url: message.gifUrl || '', dims: []}},
-        content_description: message.gifContentDescription
+        media_formats: { 
+            tinygif: { url: message.gifTinyUrl, dims: [] as number[], preview: '', duration: 0, size:0 }, 
+            gif: { url: message.gifUrl || '', dims: [] as number[], preview: '', duration: 0, size:0 }
+        },
+        content_description: message.gifContentDescription,
+        created: 0,
+        hasaudio: false,
+        itemurl: '',
+        shares: 0,
+        source_id: '',
+        tags: [],
+        url: '',
+        composite: null,
+        hascaption: false,
+        title: '',
+        flags: [],
     };
     handleToggleFavoriteGif(gifToFavorite);
   };
@@ -605,32 +608,33 @@ export default function MessagesPage() {
         return;
     }
 
-    const forwardedMessageData: Partial<ChatMessage> = {
+    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+      senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(),
       type: forwardingMessage.type,
       isForwarded: true,
       forwardedFromSenderName: forwardingMessage.senderName,
-      senderAvatarUrl: currentUser.photoURL || null,
+      text: forwardingMessage.text,
+      fileUrl: forwardingMessage.fileUrl,
+      fileName: forwardingMessage.fileName,
+      fileType: forwardingMessage.fileType,
+      gifUrl: forwardingMessage.gifUrl,
+      gifId: forwardingMessage.gifId,
+      gifTinyUrl: forwardingMessage.gifTinyUrl,
+      gifContentDescription: forwardingMessage.gifContentDescription,
+      reactions: {},
+      isPinned: false,
     };
-    
-    if (forwardingMessage.text) forwardedMessageData.text = forwardingMessage.text;
-    if (forwardingMessage.fileUrl) forwardedMessageData.fileUrl = forwardingMessage.fileUrl;
-    if (forwardingMessage.fileName) forwardedMessageData.fileName = forwardingMessage.fileName;
-    if (forwardingMessage.fileType) forwardedMessageData.fileType = forwardingMessage.fileType;
-    if (forwardingMessage.gifUrl) forwardedMessageData.gifUrl = forwardingMessage.gifUrl;
-    if (forwardingMessage.gifId) forwardedMessageData.gifId = forwardingMessage.gifId;
-    if (forwardingMessage.gifTinyUrl) forwardedMessageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
-    if (forwardingMessage.gifContentDescription) forwardedMessageData.gifContentDescription = forwardingMessage.gifContentDescription;
   
     try {
       const messagesColRef = collection(db, `direct_messages/${targetConversationId}/messages`);
-      await addDoc(messagesColRef, forwardedMessageData as ChatMessage);
+      await addDoc(messagesColRef, forwardedMessageData);
   
       const convoDocRef = doc(db, `direct_messages/${targetConversationId}`);
       let lastMessageText = "Forwarded message";
-      if (forwardedMessageData.type === 'text' && forwardedMessageData.text) lastMessageText = forwardedMessageData.text; 
+      if (forwardedMessageData.text) lastMessageText = forwardedMessageData.text; 
       else if (forwardedMessageData.type === 'image') lastMessageText = "Forwarded an image";
       else if (forwardedMessageData.type === 'gif') lastMessageText = "Forwarded a GIF";
       else if (forwardedMessageData.type === 'file') lastMessageText = "Forwarded a file";
@@ -687,23 +691,38 @@ export default function MessagesPage() {
     gifSearchTimeoutRef.current = setTimeout(() => searchTenorGifs(term), 500);
   };
 
-  const requestMicPermission = async () => {
-    if (hasMicPermission !== null) return hasMicPermission;
+  const requestMicPermission = async (): Promise<boolean> => {
+    if (hasMicPermission === true) return true; 
+    if (hasMicPermission === false) {
+        toast({ variant: "destructive", title: "Microphone Access Denied", description: "Please allow microphone access in your browser settings to use this feature." });
+        return false;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setHasMicPermission(true); stream.getTracks().forEach(track => track.stop()); return true;
     } catch (error) {
+      console.error("Error requesting mic permission:", error);
       setHasMicPermission(false);
-      toast({ variant: "destructive", title: "Microphone Access Denied" }); return false;
+      toast({ variant: "destructive", title: "Microphone Access Denied", description: "Please allow microphone access in your browser settings." }); return false;
     }
   };
-
+  
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
       navigator.permissions.query({ name: 'microphone' as PermissionName }).then(status => {
         if (status.state === 'granted') setHasMicPermission(true);
         else if (status.state === 'denied') setHasMicPermission(false);
+         status.onchange = () => { // Listen for permission changes
+            if (status.state === 'granted') setHasMicPermission(true);
+            else if (status.state === 'denied') setHasMicPermission(false);
+            else setHasMicPermission(null); // Reset if goes back to prompt
+        };
+      }).catch(() => {
+        setHasMicPermission(null);
       });
+    } else {
+        setHasMicPermission(null);
     }
   }, []);
 
@@ -734,6 +753,21 @@ export default function MessagesPage() {
         toast({ variant: "destructive", title: "Recording Error" }); setIsRecording(false);
       }
     }
+  };
+  
+  const handleStartVoiceCall = async () => {
+    if (!otherUserId || currentUser?.uid === otherUserId || isStartingCall) return; // Don't allow calling self
+    setIsStartingCall(true);
+    const permissionGranted = await requestMicPermission();
+    if (permissionGranted) {
+      toast({
+        title: "Starting Voice Call...",
+        description: `Attempting to call ${otherUserName || 'User'}. Backend for call connection not implemented.`,
+      });
+      // Here you would typically initiate connection to your WebRTC/signaling server
+    }
+    // Toast for denial is handled by requestMicPermission
+    setIsStartingCall(false);
   };
 
   const shouldShowFullMessageHeader = (currentMessage: ChatMessage, previousMessage: ChatMessage | null) => {
@@ -876,8 +910,15 @@ export default function MessagesPage() {
                     <>
                          {otherUserId !== currentUser.uid && (
                             <>
-                                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Start Voice Call (Coming Soon)" onClick={() => toast({title: "Coming Soon!", description: "Voice call feature will be implemented."})}>
-                                    <Phone className="h-5 w-5"/>
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="text-muted-foreground hover:text-foreground" 
+                                    title="Start Voice Call" 
+                                    onClick={handleStartVoiceCall}
+                                    disabled={isStartingCall}
+                                >
+                                    {isStartingCall ? <Loader2 className="h-5 w-5 animate-spin"/> : <Phone className="h-5 w-5"/>}
                                 </Button>
                                 <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Start Video Call (Coming Soon)" onClick={() => toast({title: "Coming Soon!", description: "Video call feature will be implemented."})}>
                                     <VideoIcon className="h-5 w-5"/>
@@ -1061,9 +1102,10 @@ export default function MessagesPage() {
                                     setReactionPickerOpenForMessageId(null); 
                                 }} 
                                 theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
-                                emojiStyle={EmojiStyle.NATIVE}
+                                emojiStyle={"native" as EmojiStyle}
                                 searchPlaceholder="Search emoji..."
                                 previewConfig={{showPreview: false}}
+                                data={data}
                              />
                           </PopoverContent>
                         </Popover>
@@ -1153,9 +1195,10 @@ export default function MessagesPage() {
                                 chatInputRef.current?.focus(); 
                             }} 
                             theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
-                            emojiStyle={EmojiStyle.NATIVE}
+                            emojiStyle={"native" as EmojiStyle}
                             searchPlaceholder="Search emoji..."
                             previewConfig={{showPreview: false}}
+                            data={data}
                         />
                     </PopoverContent>
                     </Popover>
@@ -1268,7 +1311,7 @@ export default function MessagesPage() {
             <DialogHeader>
                 <DialogTitle>Forward Message</DialogTitle>
                 <DialogDescription>
-                    Select a channel or user to forward this message to. (Recipient selection coming soon)
+                    Forwarding to your "Saved Messages". (Recipient selection coming soon)
                 </DialogDescription>
             </DialogHeader>
             {forwardingMessage && (
@@ -1277,16 +1320,14 @@ export default function MessagesPage() {
                     {forwardingMessage.type === 'text' && forwardingMessage.text && <p className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatChatMessage(forwardingMessage.text) }} />}
                     {forwardingMessage.type === 'image' && forwardingMessage.fileUrl && <Image src={forwardingMessage.fileUrl} alt="Forwarded Image" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" data-ai-hint="forwarded content" />}
                     {forwardingMessage.type === 'gif' && forwardingMessage.gifUrl && <Image src={forwardingMessage.gifUrl} alt="Forwarded GIF" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" unoptimized data-ai-hint="forwarded content"/>}
-                    {/* Add more previews for other types if needed */}
                  </div>
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users (coming soon)..." 
+                    placeholder="Search channels or users..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
                 />
-                {/* Placeholder for recipient list */}
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => {setIsForwardDialogOpen(false); setForwardingMessage(null); setForwardSearchTerm("");}}>Cancel</Button>
