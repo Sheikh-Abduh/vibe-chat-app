@@ -10,7 +10,7 @@ import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
 import type { TenorGif as TenorGifType } from '@/types/tenor'; 
 
-import { Picker as EmojiPicker, type EmojiClickData, type EmojiStyle, type Theme as EmojiTheme } from 'emoji-picker-react';
+import EmojiPicker, { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
 import data from '@emoji-mart/data'
 
 
@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import AgoraRTC, { type IAgoraRTCClient, type ILocalAudioTrack, type ILocalVideoTrack, type IRemoteAudioTrack, type IRemoteVideoTrack, type IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 
 
 const placeholderCommunities = [
@@ -131,7 +132,7 @@ type ChatMessage = {
   gifTinyUrl?: string; 
   gifContentDescription?: string; 
   isPinned?: boolean;
-  reactions?: Record<string, string[]>; // Emoji as key, array of user UIDs as value
+  reactions?: Record<string, string[]>; 
   replyToMessageId?: string;
   replyToSenderName?: string;
   replyToSenderId?: string; 
@@ -220,15 +221,21 @@ type ChatMessage = {
  *    - Basic @mention styling and rudimentary suggestions.
  *    - Client-side filtering for message search.
  *
- * 10. Voice & Video Channels (Advanced - Not fully implemented in this prototype):
- *     - Requires a WebRTC service (e.g., Agora, Twilio Video, Daily.co) or a custom WebRTC implementation with a signaling server.
+ * 10. Voice & Video Channels (Advanced - Requires third-party service like Agora/Twilio):
+ *     - **Agora Integration (Structural Placeholders):**
+ *       - SDK: `agora-rtc-sdk-ng` is added to `package.json`.
+ *       - Client Initialization: Placeholder for creating Agora client (`AgoraRTC.createClient`). Requires YOUR_AGORA_APP_ID.
+ *       - Token Generation: Commented out placeholder for fetching a token from YOUR backend. Production Agora apps require token authentication.
+ *       - Channel Join/Leave: Placeholder logic for joining and leaving channels.
+ *       - Stream Publishing/Subscription: Placeholder comments for creating local tracks (audio/video) and handling remote user streams.
+ *       - UI: Placeholder `<video>` elements for local and remote video display.
  *     - Firebase Cloud Functions might be used for generating access tokens for third-party WebRTC services.
  * =============================================================================
  */
 
 const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
 
-interface TenorGif extends TenorGifType {} // Use the imported type
+interface TenorGif extends TenorGifType {} 
 
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
@@ -247,6 +254,9 @@ const ALLOWED_FILE_TYPES = [
   'text/plain',
   'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', 
 ];
+
+// Agora Configuration (Replace with your actual App ID)
+const AGORA_APP_ID = "YOUR_AGORA_APP_ID"; // Replace this with your Agora App ID
 
 
 const formatChatMessage = (text: string): string => {
@@ -324,6 +334,13 @@ export default function CommunitiesPage() {
   const mentionSuggestionsRef = useRef<HTMLDivElement>(null);
   const [isJoiningVoice, setIsJoiningVoice] = useState(false);
 
+  // Agora state variables
+  const agoraClientRef = useRef<IAgoraRTCClient | null>(null);
+  const [localAudioTrack, setLocalAudioTrack] = useState<ILocalAudioTrack | null>(null);
+  const [localVideoTrack, setLocalVideoTrack] = useState<ILocalVideoTrack | null>(null);
+  const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
+  const localVideoPlayerRef = useRef<HTMLDivElement>(null);
+  const remoteVideoPlayerRef = useRef<HTMLDivElement>(null); // For a single remote user, extend for multiple
 
   useEffect(() => {
     if (currentUser) {
@@ -400,32 +417,33 @@ export default function CommunitiesPage() {
           const data = docSnap.data();
           return {
             id: docSnap.id,
-            // Ensure all optional fields are present, defaulting to undefined if not in Firestore
-            text: data.text || undefined,
+            text: data.text,
             senderId: data.senderId,
             senderName: data.senderName,
             senderAvatarUrl: data.senderAvatarUrl || null,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
             type: data.type || 'text', 
-            fileUrl: data.fileUrl || undefined,
-            fileName: data.fileName || undefined,
-            fileType: data.fileType || undefined,
-            gifUrl: data.gifUrl || undefined,
-            gifId: data.gifId || undefined,
-            gifTinyUrl: data.gifTinyUrl || undefined,
-            gifContentDescription: data.gifContentDescription || undefined,
+            fileUrl: data.fileUrl,
+            fileName: data.fileName,
+            fileType: data.fileType,
+            gifUrl: data.gifUrl,
+            gifId: data.gifId,
+            gifTinyUrl: data.gifTinyUrl,
+            gifContentDescription: data.gifContentDescription,
             isPinned: data.isPinned || false,
             reactions: data.reactions || {},
-            replyToMessageId: data.replyToMessageId || undefined,
-            replyToSenderName: data.replyToSenderName || undefined,
-            replyToSenderId: data.replyToSenderId || undefined,
-            replyToTextSnippet: data.replyToTextSnippet || undefined,
+            replyToMessageId: data.replyToMessageId,
+            replyToSenderName: data.replyToSenderName,
+            replyToSenderId: data.replyToSenderId,
+            replyToTextSnippet: data.replyToTextSnippet,
             isForwarded: data.isForwarded || false,
-            forwardedFromSenderName: data.forwardedFromSenderName || undefined,
+            forwardedFromSenderName: data.forwardedFromSenderName,
             mentionedUserIds: data.mentionedUserIds || [],
           } as ChatMessage;
         });
-        setMessages(fetchedMessages);
+        if (fetchedMessages.length > 0 || querySnapshot.metadata.hasPendingWrites === false) {
+             setMessages(fetchedMessages);
+        }
       }, (error) => {
         console.error("Error fetching messages: ", error);
         toast({
@@ -442,7 +460,7 @@ export default function CommunitiesPage() {
                 timestamp: new Date(),
                 type: 'text',
                 reactions: {},
-            }]);
+            } as ChatMessage]);
         }
       });
 
@@ -490,26 +508,26 @@ export default function CommunitiesPage() {
     
     // Basic mention parsing - in a real app, resolve usernames to UIDs
     const mentionMatches = messageText.match(/@[\w.-]+/g) || [];
-    const mentionedUserIds = mentionMatches; // Placeholder: these should be UIDs
+    const parsedMentionedUserIds = mentionMatches.map(match => match.substring(1)); // Store usernames for now; resolve to UIDs for backend
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'text'; text: string; } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
       timestamp: serverTimestamp(), 
       type: 'text' as const,
       text: messageText,
-      reactions: {},
-      isPinned: false,
-      // Only include optional fields if they have a value
-      ...(mentionedUserIds.length > 0 && { mentionedUserIds }),
-      ...(replyingToMessage && {
-        replyToMessageId: replyingToMessage.id,
-        replyToSenderName: replyingToMessage.senderName,
-        replyToSenderId: replyingToMessage.senderId,
-        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''),
-      }),
     };
+
+    if (parsedMentionedUserIds.length > 0) {
+        messageData.mentionedUserIds = parsedMentionedUserIds;
+    }
+    if (replyingToMessage) {
+        messageData.replyToMessageId = replyingToMessage.id;
+        messageData.replyToSenderName = replyingToMessage.senderName;
+        messageData.replyToSenderId = replyingToMessage.senderId;
+        messageData.replyToTextSnippet = (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : '');
+    }
     
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
@@ -540,7 +558,7 @@ export default function CommunitiesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; fileUrl: string; fileName: string; fileType: string; } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string;} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -549,15 +567,14 @@ export default function CommunitiesPage() {
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType, 
-      reactions: {},
-      isPinned: false,
-      ...(replyingToMessage && {
-        replyToMessageId: replyingToMessage.id,
-        replyToSenderName: replyingToMessage.senderName,
-        replyToSenderId: replyingToMessage.senderId,
-        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''),
-      }),
     };
+
+    if (replyingToMessage) {
+        messageData.replyToMessageId = replyingToMessage.id;
+        messageData.replyToSenderName = replyingToMessage.senderName;
+        messageData.replyToSenderId = replyingToMessage.senderId;
+        messageData.replyToTextSnippet = (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : '');
+    }
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
@@ -653,7 +670,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string;} = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string;} = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
@@ -663,15 +680,13 @@ export default function CommunitiesPage() {
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
-      reactions: {},
-      isPinned: false,
-      ...(replyingToMessage && {
-        replyToMessageId: replyingToMessage.id,
-        replyToSenderName: replyingToMessage.senderName,
-        replyToSenderId: replyingToMessage.senderId,
-        replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''),
-      }),
     };
+    if (replyingToMessage) {
+        messageData.replyToMessageId = replyingToMessage.id;
+        messageData.replyToSenderName = replyingToMessage.senderName;
+        messageData.replyToSenderId = replyingToMessage.senderId;
+        messageData.replyToTextSnippet = (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : '');
+    }
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
@@ -702,7 +717,7 @@ export default function CommunitiesPage() {
             gif: { url: message.gifUrl || '', dims: [] as number[], preview: '', duration: 0, size:0 }
         },
         content_description: message.gifContentDescription,
-        created: 0, // These fields are not crucial for favoriting, can be default values
+        created: 0, 
         hasaudio: false,
         itemurl: '',
         shares: 0,
@@ -823,7 +838,7 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const forwardedMessageData: Omit<ChatMessage, 'id' | 'timestamp' | 'senderName' | 'senderAvatarUrl' | 'reactions' | 'isPinned'> & { timestamp: any; senderName: string; senderAvatarUrl: string | null; reactions: Record<string, string[]>; isPinned: boolean; isForwarded: boolean; forwardedFromSenderName: string; } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; isForwarded: boolean; forwardedFromSenderName: string; } = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || null,
@@ -831,22 +846,19 @@ export default function CommunitiesPage() {
         type: forwardingMessage.type,
         isForwarded: true,
         forwardedFromSenderName: forwardingMessage.senderName,
-        reactions: {},
-        isPinned: false,
-        // Only include optional fields if they have a value from the original message
-        ...(forwardingMessage.text && { text: forwardingMessage.text }),
-        ...(forwardingMessage.fileUrl && { fileUrl: forwardingMessage.fileUrl }),
-        ...(forwardingMessage.fileName && { fileName: forwardingMessage.fileName }),
-        ...(forwardingMessage.fileType && { fileType: forwardingMessage.fileType }),
-        ...(forwardingMessage.gifUrl && { gifUrl: forwardingMessage.gifUrl }),
-        ...(forwardingMessage.gifId && { gifId: forwardingMessage.gifId }),
-        ...(forwardingMessage.gifTinyUrl && { gifTinyUrl: forwardingMessage.gifTinyUrl }),
-        ...(forwardingMessage.gifContentDescription && { gifContentDescription: forwardingMessage.gifContentDescription }),
     };
+    if (forwardingMessage.text) messageData.text = forwardingMessage.text;
+    if (forwardingMessage.fileUrl) messageData.fileUrl = forwardingMessage.fileUrl;
+    if (forwardingMessage.fileName) messageData.fileName = forwardingMessage.fileName;
+    if (forwardingMessage.fileType) messageData.fileType = forwardingMessage.fileType;
+    if (forwardingMessage.gifUrl) messageData.gifUrl = forwardingMessage.gifUrl;
+    if (forwardingMessage.gifId) messageData.gifId = forwardingMessage.gifId;
+    if (forwardingMessage.gifTinyUrl) messageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
+    if (forwardingMessage.gifContentDescription) messageData.gifContentDescription = forwardingMessage.gifContentDescription;
     
     try {
         const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${targetChannel.id}/messages`);
-        await addDoc(messagesRef, forwardedMessageData); 
+        await addDoc(messagesRef, messageData); 
         toast({ title: "Message Forwarded", description: `Message forwarded to #${targetChannel.name}.` });
     } catch (error) {
         console.error("Error forwarding message:", error);
@@ -876,7 +888,6 @@ export default function CommunitiesPage() {
     }
     setLoadingGifs(true);
     try {
-      // SECURITY: Tenor API key is exposed client-side. Proxy through backend for production.
       const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to fetch trending GIFs');
       const data = await response.json();
@@ -902,7 +913,6 @@ export default function CommunitiesPage() {
     }
     setLoadingGifs(true);
     try {
-      // SECURITY: Tenor API key is exposed client-side. Proxy through backend for production.
       const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to fetch GIFs');
       const data = await response.json();
@@ -944,7 +954,7 @@ export default function CommunitiesPage() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setHasMicPermission(true);
-        stream.getTracks().forEach(track => track.stop()); // Stop the tracks immediately after permission check
+        stream.getTracks().forEach(track => track.stop()); 
         return true;
     } catch (error) {
         console.error("Error requesting mic permission:", error);
@@ -959,18 +969,16 @@ export default function CommunitiesPage() {
         navigator.permissions.query({ name: 'microphone' as PermissionName }).then(status => {
             if (status.state === 'granted') setHasMicPermission(true);
             else if (status.state === 'denied') setHasMicPermission(false);
-            // If 'prompt', we'll ask when needed.
-            status.onchange = () => { // Listen for permission changes
+            status.onchange = () => { 
                 if (status.state === 'granted') setHasMicPermission(true);
                 else if (status.state === 'denied') setHasMicPermission(false);
-                else setHasMicPermission(null); // Reset if goes back to prompt
+                else setHasMicPermission(null); 
             };
         }).catch(() => {
-            // Handle cases where permission query might not be supported or fails
             setHasMicPermission(null); 
         });
     } else {
-        setHasMicPermission(null); // Fallback if API not available
+        setHasMicPermission(null); 
     }
   }, []);
 
@@ -1002,7 +1010,7 @@ export default function CommunitiesPage() {
                 await uploadFileToCloudinaryAndSend(audioFile, true); 
 
                 stream.getTracks().forEach(track => track.stop()); 
-                setReplyingToMessage(null); // Cancel reply after sending voice message
+                setReplyingToMessage(null); 
             };
 
             mediaRecorderRef.current.start();
@@ -1016,27 +1024,137 @@ export default function CommunitiesPage() {
   };
   
   const handleJoinVoiceChannel = async () => {
-    if (!selectedChannel || selectedChannel.type !== 'voice' || isJoiningVoice) return;
+    if (!selectedChannel || (selectedChannel.type !== 'voice' && selectedChannel.type !== 'video') || isJoiningVoice || !currentUser) return;
     setIsJoiningVoice(true);
-    const permissionGranted = await requestMicPermission();
-    if (permissionGranted) {
-      toast({
-        title: "Microphone Connected",
-        description: "Third-party service (e.g., Agora, Twilio) integration needed for voice chat.",
-      });
-      // Here you would typically initiate connection to your WebRTC/signaling server
-    } else {
-      // Toast for denial is handled by requestMicPermission
+
+    if (AGORA_APP_ID === "YOUR_AGORA_APP_ID") {
+        toast({ variant: "destructive", title: "Agora App ID Missing", description: "Agora App ID is not configured. Voice/video chat disabled."});
+        setIsJoiningVoice(false);
+        return;
     }
+
+    const permissionGranted = await requestMicPermission();
+    if (!permissionGranted) {
+      setIsJoiningVoice(false);
+      return;
+    }
+    if (selectedChannel.type === 'video') {
+        try {
+            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            videoStream.getTracks().forEach(track => track.stop()); // Stop after permission check
+        } catch (error) {
+            toast({ variant: "destructive", title: "Camera Access Denied", description: "Please allow camera access for video channels." });
+            setIsJoiningVoice(false);
+            return;
+        }
+    }
+    
+    toast({
+        title: `Joining ${selectedChannel.type} channel...`,
+        description: `Attempting to join ${selectedChannel.name}. This is a placeholder for Agora integration.`,
+    });
+
+    try {
+        agoraClientRef.current = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        const client = agoraClientRef.current;
+
+        // Event listener for remote users publishing streams
+        client.on("user-published", async (user, mediaType) => {
+            await client.subscribe(user, mediaType);
+            console.log("subscribe success");
+            if (mediaType === "video") {
+                setRemoteUsers(prev => [...prev, user]); // Add user to display their video
+                // Ensure remoteVideoPlayerRef.current is available and play the video
+                // user.videoTrack.play(remoteVideoPlayerRef.current);
+            }
+            if (mediaType === "audio") {
+                user.audioTrack?.play();
+            }
+        });
+
+        client.on("user-unpublished", (user, mediaType) => {
+            console.log("user-unpublished", user, mediaType);
+            if (mediaType === "video") {
+                setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
+            }
+        });
+        
+        client.on("user-left", (user) => {
+           setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
+        });
+
+        // TODO: Replace null with a valid token fetched from your backend token server
+        // For testing without a token server, some Agora projects allow using null as token,
+        // but this is NOT secure for production.
+        const token = null; // fetchTokenFromServer(selectedChannel.id, currentUser.uid);
+        await client.join(AGORA_APP_ID, selectedChannel.id, token, currentUser.uid);
+        
+        const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        setLocalAudioTrack(audioTrack);
+
+        let videoTrack: ILocalVideoTrack | null = null;
+        if (selectedChannel.type === 'video') {
+            videoTrack = await AgoraRTC.createCameraVideoTrack();
+            setLocalVideoTrack(videoTrack);
+            if (localVideoPlayerRef.current) {
+                 videoTrack.play(localVideoPlayerRef.current);
+            }
+        }
+        
+        const tracksToPublish: (ILocalAudioTrack | ILocalVideoTrack)[] = [audioTrack];
+        if (videoTrack) {
+            tracksToPublish.push(videoTrack);
+        }
+        await client.publish(tracksToPublish);
+        
+        toast({ title: "Connected!", description: `Joined ${selectedChannel.name}.`});
+
+    } catch (error) {
+        console.error("Agora connection error:", error);
+        toast({ variant: "destructive", title: "Connection Failed", description: "Could not connect to voice/video channel." });
+        if (localAudioTrack) { localAudioTrack.close(); setLocalAudioTrack(null); }
+        if (localVideoTrack) { localVideoTrack.close(); setLocalVideoTrack(null); }
+        if (agoraClientRef.current) { await agoraClientRef.current.leave(); agoraClientRef.current = null; }
+    }
+
+
     setIsJoiningVoice(false);
   };
+
+  const handleLeaveVoiceChannel = async () => {
+    if (localAudioTrack) {
+        localAudioTrack.stop();
+        localAudioTrack.close();
+        setLocalAudioTrack(null);
+    }
+    if (localVideoTrack) {
+        localVideoTrack.stop();
+        localVideoTrack.close();
+        setLocalVideoTrack(null);
+    }
+    if (agoraClientRef.current) {
+        await agoraClientRef.current.leave();
+        agoraClientRef.current = null;
+        setRemoteUsers([]);
+        toast({ title: "Disconnected", description: "You have left the channel."});
+    }
+    setIsJoiningVoice(false); // Ensure joining state is reset
+  };
+
+  useEffect(() => {
+    // Cleanup Agora connection on component unmount or when channel changes
+    return () => {
+        handleLeaveVoiceChannel();
+    };
+  }, [selectedChannel]); // Re-run if channel changes to leave previous one
+
 
   const handleChatSearchToggle = () => {
     setIsChatSearchOpen(!isChatSearchOpen);
     if (!isChatSearchOpen && chatSearchInputRef.current) {
         setTimeout(() => chatSearchInputRef.current?.focus(), 0);
     } else {
-        setChatSearchTerm(""); // Clear search when closing
+        setChatSearchTerm(""); 
     }
   };
   
@@ -1112,7 +1230,10 @@ export default function CommunitiesPage() {
                   <Button
                     key={channel.id}
                     variant="ghost"
-                    onClick={() => handleSelectChannel(channel)}
+                    onClick={() => {
+                        if (agoraClientRef.current) { handleLeaveVoiceChannel(); } // Leave previous voice channel if connected
+                        handleSelectChannel(channel);
+                    }}
                     className={cn(
                       "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted",
                       selectedChannel?.id === channel.id && 'bg-accent text-accent-foreground'
@@ -1152,7 +1273,7 @@ export default function CommunitiesPage() {
         )}
       </div>
 
-      {/* Column 3: Main Content Area (Chat UI) */}
+      {/* Column 3: Main Content Area (Chat UI / Voice UI) */}
       <div className="h-full flex-1 bg-background flex flex-col overflow-hidden">
         {selectedCommunity && selectedChannel ? (
           <>
@@ -1162,7 +1283,7 @@ export default function CommunitiesPage() {
                 <h3 className="text-lg font-semibold text-foreground">{selectedChannel.name}</h3>
               </div>
               <div className={cn("flex items-center space-x-2", isChatSearchOpen && "w-full")}>
-                {isChatSearchOpen ? (
+                {isChatSearchOpen && selectedChannel.type === 'text' ? (
                     <div className="flex items-center w-full bg-muted rounded-md px-2">
                         <Search className="h-4 w-4 text-muted-foreground mr-2"/>
                         <Input
@@ -1179,15 +1300,17 @@ export default function CommunitiesPage() {
                     </div>
                 ) : (
                     <>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-muted-foreground hover:text-foreground"
-                            onClick={handleChatSearchToggle}
-                            title="Search Messages in Channel"
-                        >
-                            <Search className="h-5 w-5" />
-                        </Button>
+                        {selectedChannel.type === 'text' && (
+                             <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-muted-foreground hover:text-foreground"
+                                onClick={handleChatSearchToggle}
+                                title="Search Messages in Channel"
+                            >
+                                <Search className="h-5 w-5" />
+                            </Button>
+                        )}
                         {selectedChannel.type === 'text' && (
                             <Button
                                 variant="ghost"
@@ -1216,239 +1339,260 @@ export default function CommunitiesPage() {
               </div>
             </div>
 
-            <ScrollArea className="flex-1 min-h-0 bg-card/30"> 
-              <div className="p-4 space-y-0.5">
-                {displayedMessages.length === 0 && selectedChannel.type === 'text' && (
-                   <div className="text-center text-muted-foreground py-4">
-                    {chatSearchTerm.trim() ? "No messages found matching your search." : 
-                     (showPinnedMessages ? "No pinned messages in this channel." :
-                     (messages.length === 0 && !currentUser ? "Loading messages..." : "No messages yet. Be the first to say something!"))}
-                  </div>
-                )}
-                 {selectedChannel.type === 'voice' && (
-                    <div className="text-center text-muted-foreground py-4 flex flex-col items-center justify-center h-full">
-                        <Mic className="h-16 w-16 mb-4 text-primary/70"/>
-                        <p className="text-lg font-medium">This is a voice channel.</p>
-                        <p className="text-sm mt-1">Click below to join the voice call.</p>
-                        <Button 
-                            onClick={handleJoinVoiceChannel} 
-                            disabled={isJoiningVoice}
-                            className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
-                        >
-                            {isJoiningVoice ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Mic className="mr-2 h-4 w-4"/>}
-                            {isJoiningVoice ? "Connecting..." : "Join Voice Channel"}
-                        </Button>
-                         <p className="text-xs text-muted-foreground mt-2">Note: Full voice chat requires a third-party service (e.g. Agora, Twilio).</p>
+            {/* Main content: Text chat or Voice/Video UI */}
+            {selectedChannel.type === 'text' ? (
+              <ScrollArea className="flex-1 min-h-0 bg-card/30"> 
+                <div className="p-4 space-y-0.5">
+                  {displayedMessages.length === 0 && (
+                    <div className="text-center text-muted-foreground py-4">
+                      {chatSearchTerm.trim() ? "No messages found matching your search." : 
+                      (showPinnedMessages ? "No pinned messages in this channel." : 
+                      (messages.length === 0 && !currentUser ? "Loading messages..." : "No messages yet. Be the first to say something!"))}
                     </div>
-                )}
-                 {selectedChannel.type === 'video' && (
-                    <div className="text-center text-muted-foreground py-4 flex flex-col items-center justify-center h-full">
-                        <Video className="h-16 w-16 mb-4 text-primary/70"/>
-                        <p className="text-lg font-medium">This is a video channel.</p>
-                        <p>Video features are coming soon!</p>
-                        <p className="text-sm mt-1">You would join the video call and see other participants here.</p>
-                         <Button 
-                            onClick={() => toast({title: "Coming Soon!", description: "Video call requires a third-party service (e.g. Agora, Twilio)."})} 
-                            className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
-                        >
-                            <Video className="mr-2 h-4 w-4"/>
-                            Join Video Channel (Soon)
-                        </Button>
-                    </div>
-                )}
-                {displayedMessages.map((msg, index) => {
-                  const previousMessage = index > 0 ? displayedMessages[index - 1] : null;
-                  const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
-                  const isMyMessage = currentUser?.uid === msg.senderId;
-                  let hasBeenRepliedTo = false;
-                  if (isMyMessage && currentUser) { 
-                    hasBeenRepliedTo = displayedMessages.some(
-                      (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
-                    );
-                  }
+                  )}
+                  {displayedMessages.map((msg, index) => {
+                    const previousMessage = index > 0 ? displayedMessages[index - 1] : null;
+                    const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
+                    const isMyMessage = currentUser?.uid === msg.senderId;
+                    let hasBeenRepliedTo = false;
+                    if (isMyMessage && currentUser) { 
+                      hasBeenRepliedTo = displayedMessages.some(
+                        (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
+                      );
+                    }
 
-                  return (
-                    <div
-                      key={msg.id}
-                      className={cn(
-                        "flex items-start space-x-3 group relative hover:bg-muted/30 px-2 py-1 rounded-md",
-                      )}
-                    >
-                      {showHeader ? (
-                        <Avatar className="mt-1 h-8 w-8 shrink-0">
-                          <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
-                          <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                      ) : (
-                        <div className="w-8 shrink-0" /> 
-                      )}
-                      <div className="flex-1 min-w-0"> 
-                        {showHeader && (
-                          <div className="flex items-baseline space-x-1.5">
-                            <p className="font-semibold text-sm text-foreground">
-                              {msg.senderName}
-                            </p>
-                            <div className="flex items-baseline text-xs text-muted-foreground">
-                                <p title={msg.timestamp ? format(msg.timestamp, 'PPpp') : undefined}>
-                                {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
-                                </p>
-                                {msg.timestamp && (
-                                <p className="ml-1.5">
-                                    ({format(msg.timestamp, 'p')})
-                                </p>
-                                )}
+                    return (
+                      <div
+                        key={msg.id}
+                        className={cn(
+                          "flex items-start space-x-3 group relative hover:bg-muted/30 px-2 py-1 rounded-md",
+                        )}
+                      >
+                        {showHeader ? (
+                          <Avatar className="mt-1 h-8 w-8 shrink-0">
+                            <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
+                            <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                        ) : (
+                          <div className="w-8 shrink-0" /> 
+                        )}
+                        <div className="flex-1 min-w-0"> 
+                          {showHeader && (
+                            <div className="flex items-baseline space-x-1.5">
+                              <p className="font-semibold text-sm text-foreground">
+                                {msg.senderName}
+                              </p>
+                              <div className="flex items-baseline text-xs text-muted-foreground">
+                                  <p title={msg.timestamp ? format(msg.timestamp, 'PPpp') : undefined}>
+                                  {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
+                                  </p>
+                                  {msg.timestamp && (
+                                  <p className="ml-1.5">
+                                      ({format(msg.timestamp, 'p')})
+                                  </p>
+                                  )}
+                              </div>
+                              {msg.isPinned && <Pin className="h-3 w-3 text-amber-400 ml-1" title="Pinned Message"/>}
+                              {hasBeenRepliedTo && <MessageSquareReply className="h-3 w-3 text-blue-400 ml-1" title="Someone replied to this" />}
                             </div>
-                            {msg.isPinned && <Pin className="h-3 w-3 text-amber-400 ml-1" title="Pinned Message"/>}
-                            {hasBeenRepliedTo && <MessageSquareReply className="h-3 w-3 text-blue-400 ml-1" title="Someone replied to this" />}
-                          </div>
-                        )}
-                        {msg.replyToMessageId && msg.replyToSenderName && msg.replyToTextSnippet && (
-                            <div className="mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max">
-                                <div className="flex items-center">
-                                  <CornerUpRight className="h-3 w-3 mr-1.5 text-primary/70" />
-                                  <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>: 
-                                  <span className="italic ml-1 truncate">"{msg.replyToTextSnippet}"</span></span>
-                                </div>
+                          )}
+                          {msg.replyToMessageId && msg.replyToSenderName && msg.replyToTextSnippet && (
+                              <div className="mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max">
+                                  <div className="flex items-center">
+                                    <CornerUpRight className="h-3 w-3 mr-1.5 text-primary/70" />
+                                    <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>: 
+                                    <span className="italic ml-1 truncate">"{msg.replyToTextSnippet}"</span></span>
+                                  </div>
+                              </div>
+                          )}
+                          {msg.isForwarded && msg.forwardedFromSenderName && (
+                            <div className="text-xs text-muted-foreground italic mb-0.5 flex items-center">
+                              <Share2 className="h-3 w-3 mr-1.5 text-muted-foreground/80" />
+                              Forwarded from {msg.forwardedFromSenderName}
                             </div>
-                        )}
-                        {msg.isForwarded && msg.forwardedFromSenderName && (
-                          <div className="text-xs text-muted-foreground italic mb-0.5 flex items-center">
-                            <Share2 className="h-3 w-3 mr-1.5 text-muted-foreground/80" />
-                            Forwarded from {msg.forwardedFromSenderName}
-                          </div>
-                        )}
-                        {msg.type === 'text' && msg.text && (
-                           <p
-                             className="text-sm text-foreground/90 whitespace-pre-wrap break-words"
-                             dangerouslySetInnerHTML={{ __html: formatChatMessage(msg.text) }}
-                           />
-                        )}
-                        {msg.type === 'gif' && msg.gifUrl && (
-                           <div className="relative max-w-[300px] mt-1 group/gif">
-                                <Image
-                                    src={msg.gifUrl}
-                                    alt={msg.gifContentDescription || "GIF"}
-                                    width={0}
-                                    height={0}
-                                    style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem' }}
-                                    unoptimized
-                                    priority={false}
-                                    data-ai-hint="animated gif"
-                                />
-                                {currentUser && msg.gifId && (
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover/gif:opacity-100 transition-opacity"
-                                        onClick={() => handleFavoriteGifFromChat(msg)}
-                                        title={isGifFavorited(msg.gifId || "") ? "Unfavorite" : "Favorite"}
-                                    >
-                                        <Star className={cn("h-4 w-4", isGifFavorited(msg.gifId || "") ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
-                                    </Button>
-                                )}
-                           </div>
-                        )}
-                        {msg.type === 'voice_message' && msg.fileUrl && (
-                            <audio controls src={msg.fileUrl} className="my-2 w-full max-w-xs h-10 rounded-md shadow-sm bg-muted" data-ai-hint="audio player">
-                                Your browser does not support the audio element.
-                            </audio>
-                        )}
-                        {msg.type === 'image' && msg.fileUrl && (
-                             <Image
-                                src={msg.fileUrl}
-                                alt={msg.fileName || "Uploaded image"}
-                                width={300} 
-                                height={300} 
-                                style={{
-                                  width: 'auto',
-                                  height: 'auto',
-                                  maxWidth: '100%', 
-                                  maxHeight: '300px', 
-                                  objectFit: 'contain', 
-                                  borderRadius: '0.375rem',
-                                  marginTop: '0.25rem',
-                                }}
-                                data-ai-hint="user uploaded image"
+                          )}
+                          {msg.type === 'text' && msg.text && (
+                            <p
+                              className="text-sm text-foreground/90 whitespace-pre-wrap break-words"
+                              dangerouslySetInnerHTML={{ __html: formatChatMessage(msg.text) }}
                             />
-                        )}
-                        {msg.type === 'file' && msg.fileUrl && (
-                            <div className="mt-1 p-2 border rounded-md bg-muted/50 max-w-xs">
-                                <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
-                                    <Paperclip className="h-4 w-4 mr-2 shrink-0" />
-                                    <span className="truncate">{msg.fileName || "Attached File"}</span>
-                                </a>
+                          )}
+                          {msg.type === 'gif' && msg.gifUrl && (
+                            <div className="relative max-w-[300px] mt-1 group/gif">
+                                  <Image
+                                      src={msg.gifUrl}
+                                      alt={msg.gifContentDescription || "GIF"}
+                                      width={0}
+                                      height={0}
+                                      style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem' }}
+                                      unoptimized
+                                      priority={false}
+                                      data-ai-hint="animated gif"
+                                  />
+                                  {currentUser && msg.gifId && (
+                                      <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover/gif:opacity-100 transition-opacity"
+                                          onClick={() => handleFavoriteGifFromChat(msg)}
+                                          title={isGifFavorited(msg.gifId || "") ? "Unfavorite" : "Favorite"}
+                                      >
+                                          <Star className={cn("h-4 w-4", isGifFavorited(msg.gifId || "") ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
+                                      </Button>
+                                  )}
                             </div>
-                        )}
-                        {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                {Object.entries(msg.reactions).map(([emoji, userIds]) => (
-                                    userIds.length > 0 && (
-                                        <Button
-                                            key={emoji}
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleToggleReaction(msg.id, emoji)}
-                                            className={cn(
-                                                "h-auto px-2 py-0.5 text-xs rounded-full bg-muted/50 hover:bg-muted/80 border-border/50",
-                                                currentUser && userIds.includes(currentUser.uid) && "bg-primary/20 border-primary text-primary hover:bg-primary/30"
-                                            )}
-                                            title={userIds.join(', ')} 
-                                        >
-                                            {emoji} <span className="ml-1 text-muted-foreground">{userIds.length}</span>
-                                        </Button>
-                                    )
-                                ))}
-                            </div>
-                        )}
-                      </div>
-                       <div className="absolute top-0 right-2 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50">
-                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" 
-                            onClick={() => {
-                                setForwardingMessage(msg);
-                                setIsForwardDialogOpen(true);
-                                setForwardSearchTerm(""); 
-                            }}>
-                          <Share2 className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Reply" onClick={() => handleReplyClick(msg)}>
-                          <Reply className="h-4 w-4" />
-                        </Button>
-                        <Popover open={reactionPickerOpenForMessageId === msg.id} onOpenChange={(open) => setReactionPickerOpenForMessageId(open ? msg.id : null)}>
-                          <PopoverTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="React to message">
-                              <SmilePlus className="h-4 w-4" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                             <EmojiPicker
-                                onEmojiClick={(emojiData: EmojiClickData) => { 
-                                    handleToggleReaction(msg.id, emojiData.emoji);
-                                    setReactionPickerOpenForMessageId(null);
-                                }}
-                                theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
-                                emojiStyle={"native" as EmojiStyle}
-                                searchPlaceholder="Search emoji..."
-                                previewConfig={{showPreview: false}}
-                                data={data}
-                             />
-                          </PopoverContent>
-                        </Popover>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin Message" : "Pin Message"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
-                          {msg.isPinned ? <PinOff className="h-4 w-4 text-amber-500" /> : <Pin className="h-4 w-4 text-muted-foreground hover:text-foreground" />}
-                        </Button>
-                        {currentUser?.uid === msg.senderId && (
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive/80" title="Delete Message" onClick={() => setDeletingMessageId(msg.id)}>
-                            <Trash2 className="h-4 w-4" />
+                          )}
+                          {msg.type === 'voice_message' && msg.fileUrl && (
+                              <audio controls src={msg.fileUrl} className="my-2 w-full max-w-xs h-10 rounded-md shadow-sm bg-muted" data-ai-hint="audio player">
+                                  Your browser does not support the audio element.
+                              </audio>
+                          )}
+                          {msg.type === 'image' && msg.fileUrl && (
+                              <Image
+                                  src={msg.fileUrl}
+                                  alt={msg.fileName || "Uploaded image"}
+                                  width={300} 
+                                  height={300} 
+                                  style={{
+                                    width: 'auto',
+                                    height: 'auto',
+                                    maxWidth: '100%', 
+                                    maxHeight: '300px', 
+                                    objectFit: 'contain', 
+                                    borderRadius: '0.375rem',
+                                    marginTop: '0.25rem',
+                                  }}
+                                  data-ai-hint="user uploaded image"
+                              />
+                          )}
+                          {msg.type === 'file' && msg.fileUrl && (
+                              <div className="mt-1 p-2 border rounded-md bg-muted/50 max-w-xs">
+                                  <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
+                                      <Paperclip className="h-4 w-4 mr-2 shrink-0" />
+                                      <span className="truncate">{msg.fileName || "Attached File"}</span>
+                                  </a>
+                              </div>
+                          )}
+                          {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                  {Object.entries(msg.reactions).map(([emoji, userIds]) => (
+                                      userIds.length > 0 && (
+                                          <Button
+                                              key={emoji}
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => handleToggleReaction(msg.id, emoji)}
+                                              className={cn(
+                                                  "h-auto px-2 py-0.5 text-xs rounded-full bg-muted/50 hover:bg-muted/80 border-border/50",
+                                                  currentUser && userIds.includes(currentUser.uid) && "bg-primary/20 border-primary text-primary hover:bg-primary/30"
+                                              )}
+                                              title={userIds.join(', ')} 
+                                          >
+                                              {emoji} <span className="ml-1 text-muted-foreground">{userIds.length}</span>
+                                          </Button>
+                                      )
+                                  ))}
+                              </div>
+                          )}
+                        </div>
+                        <div className="absolute top-0 right-2 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50">
+                          <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" 
+                              onClick={() => {
+                                  setForwardingMessage(msg);
+                                  setIsForwardDialogOpen(true);
+                                  setForwardSearchTerm(""); 
+                              }}>
+                            <Share2 className="h-4 w-4" />
                           </Button>
-                        )}
+                          <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Reply" onClick={() => handleReplyClick(msg)}>
+                            <Reply className="h-4 w-4" />
+                          </Button>
+                          <Popover open={reactionPickerOpenForMessageId === msg.id} onOpenChange={(open) => setReactionPickerOpenForMessageId(open ? msg.id : null)}>
+                            <PopoverTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="React to message">
+                                <SmilePlus className="h-4 w-4" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <EmojiPicker
+                                  onEmojiClick={(emojiData: EmojiClickData) => { 
+                                      handleToggleReaction(msg.id, emojiData.emoji);
+                                      setReactionPickerOpenForMessageId(null);
+                                  }}
+                                  theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+                                  emojiStyle={EmojiStyle.NATIVE}
+                                  searchPlaceholder="Search emoji..."
+                                  previewConfig={{showPreview: false}}
+                                  data={data}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin Message" : "Pin Message"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
+                            {msg.isPinned ? <PinOff className="h-4 w-4 text-amber-500" /> : <Pin className="h-4 w-4 text-muted-foreground hover:text-foreground" />}
+                          </Button>
+                          {currentUser?.uid === msg.senderId && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive/80" title="Delete Message" onClick={() => setDeletingMessageId(msg.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+              </ScrollArea>
+            ) : ( /* Voice or Video Channel UI */
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4 bg-card/30">
+                <selectedChannel.icon className="h-16 w-16 mb-4 text-primary/70"/>
+                <p className="text-lg font-medium">This is a {selectedChannel.type} channel.</p>
+                <p className="text-sm mt-1">Voice and video features are in development using Agora.</p>
+                
+                {/* Local Video Player Placeholder */}
+                <div id="local-video-player" ref={localVideoPlayerRef} className="w-full max-w-xs aspect-video bg-black my-2 rounded-md shadow">
+                  {/* Local video will be attached here by Agora SDK */}
+                </div>
 
+                {/* Remote Video Player Placeholder (simple single remote user for now) */}
+                {remoteUsers.length > 0 && (
+                    <div id="remote-video-player" ref={remoteVideoPlayerRef} className="w-full max-w-xs aspect-video bg-black my-2 rounded-md shadow">
+                         {/* Remote video will be attached here */}
+                    </div>
+                )}
+                 {remoteUsers.map(user => (
+                    <div key={user.uid} id={`remote-user-${user.uid}`} className="w-full max-w-xs aspect-video bg-black my-2 rounded-md shadow">
+                        {/* Individual remote user video streams can be attached here */}
+                    </div>
+                ))}
+
+
+                {!agoraClientRef.current ? (
+                    <Button 
+                        onClick={handleJoinVoiceChannel} 
+                        disabled={isJoiningVoice || AGORA_APP_ID === "YOUR_AGORA_APP_ID"}
+                        className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
+                    >
+                        {isJoiningVoice ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <selectedChannel.icon className="mr-2 h-4 w-4"/>}
+                        {isJoiningVoice ? "Connecting..." : `Join ${selectedChannel.type.charAt(0).toUpperCase() + selectedChannel.type.slice(1)} Channel`}
+                    </Button>
+                ) : (
+                    <Button 
+                        onClick={handleLeaveVoiceChannel} 
+                        variant="destructive"
+                        className="mt-4"
+                    >
+                        <X className="mr-2 h-4 w-4"/> Leave Channel
+                    </Button>
+                )}
+                 {AGORA_APP_ID === "YOUR_AGORA_APP_ID" && (
+                     <p className="text-xs text-destructive mt-2">Agora App ID not configured. Voice/Video chat is disabled.</p>
+                 )}
+                <p className="text-xs text-muted-foreground mt-2">Note: Full {selectedChannel.type} chat requires third-party service (Agora) integration.</p>
+              </div>
+            )}
+
+
+            {/* Chat Input Area for Text Channels */}
             {selectedChannel.type === 'text' ? (
               <div className="p-3 border-t border-border/40 shrink-0 relative">
                 {replyingToMessage && (
@@ -1517,7 +1661,7 @@ export default function CommunitiesPage() {
                     <Input
                         ref={chatInputRef}
                         type="text"
-                        placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (use **bold**, @mention, etc.)`}
+                        placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (**bold**, @mention, etc.)`}
                         className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
                         value={newMessage}
                         onChange={handleMentionInputChange}
@@ -1557,7 +1701,7 @@ export default function CommunitiesPage() {
                                 chatInputRef.current?.focus();
                             }}
                             theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
-                            emojiStyle={"native" as EmojiStyle}
+                            emojiStyle={EmojiStyle.NATIVE}
                             searchPlaceholder="Search emoji..."
                             previewConfig={{showPreview: false}}
                             data={data}
@@ -1595,12 +1739,13 @@ export default function CommunitiesPage() {
                                     className="my-2"
                                 />
                                 <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]"> 
+                                    <div className="p-1"> {/* Added inner div for padding */}
                                     {loadingGifs ? (
                                         <div className="flex justify-center items-center h-full">
                                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                                         </div>
                                     ) : gifs.length > 0 ? (
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                         {gifs.map((gif) => (
                                             <div key={gif.id} className="relative group aspect-square">
                                                 <button
@@ -1633,12 +1778,14 @@ export default function CommunitiesPage() {
                                             {gifSearchTerm ? "No GIFs found for your search." : "No trending GIFs found."}
                                         </p>
                                     )}
+                                    </div>
                                 </ScrollArea>
                             </TabsContent>
                             <TabsContent value="favorites">
-                                    <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]"> 
+                                <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]"> 
+                                    <div className="p-1"> {/* Added inner div for padding */}
                                     {favoritedGifs.length > 0 ? (
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-1">
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                         {favoritedGifs.map((gif) => (
                                             <div key={gif.id} className="relative group aspect-square">
                                             <button
@@ -1671,6 +1818,7 @@ export default function CommunitiesPage() {
                                             You haven't favorited any GIFs yet.
                                         </p>
                                     )}
+                                    </div>
                                 </ScrollArea>
                             </TabsContent>
                         </Tabs>
@@ -1686,8 +1834,7 @@ export default function CommunitiesPage() {
                 </form>
               </div>
             ) : (
-              <div className="p-3 border-t border-border/40 shrink-0 flex items-center justify-center h-16"> {/* Adjusted height to match text input area */}
-                 {/* Placeholder for non-text channels if input area needs specific UI */}
+              <div className="p-3 border-t border-border/40 shrink-0 flex items-center justify-center h-16"> 
               </div>
             )}
           </>
@@ -1790,7 +1937,6 @@ export default function CommunitiesPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Forward Message Dialog */}
       <Dialog open={isForwardDialogOpen} onOpenChange={setIsForwardDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
@@ -1812,7 +1958,7 @@ export default function CommunitiesPage() {
                     placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    disabled // Keep disabled until search functionality is implemented
+                    
                 />
             </div>
             <DialogFooter>
