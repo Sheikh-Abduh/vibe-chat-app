@@ -10,8 +10,8 @@ import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
 import type { TenorGif as TenorGifType } from '@/types/tenor'; 
 
-import EmojiPicker, { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
-import data from '@emoji-mart/data'
+import { Picker as EmojiMartPicker } from 'emoji-mart'; // Corrected named import
+import data from '@emoji-mart/data';
 
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import AgoraRTC, { type IAgoraRTCClient, type ILocalAudioTrack, type ILocalVideoTrack, type IRemoteAudioTrack, type IRemoteVideoTrack, type IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
+import AgoraRTC, { type IAgoraRTCClient, type ILocalAudioTrack, type ILocalVideoTrack, type IRemoteAudioTrack, type IRemoteVideoTrack, type IAgoraRTCRemoteUser, type UID } from 'agora-rtc-sdk-ng';
 
 
 const placeholderCommunities = [
@@ -256,7 +256,7 @@ const ALLOWED_FILE_TYPES = [
 ];
 
 // Agora Configuration (Replace with your actual App ID)
-const AGORA_APP_ID = "YOUR_AGORA_APP_ID"; // Replace this with your Agora App ID
+const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48"; 
 
 
 const formatChatMessage = (text: string): string => {
@@ -339,8 +339,9 @@ export default function CommunitiesPage() {
   const [localAudioTrack, setLocalAudioTrack] = useState<ILocalAudioTrack | null>(null);
   const [localVideoTrack, setLocalVideoTrack] = useState<ILocalVideoTrack | null>(null);
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
-  const localVideoPlayerRef = useRef<HTMLDivElement>(null);
-  const remoteVideoPlayerRef = useRef<HTMLDivElement>(null); // For a single remote user, extend for multiple
+  const localVideoPlayerContainerRef = useRef<HTMLDivElement>(null); // Changed to ContainerRef
+  const remoteVideoPlayersContainerRef = useRef<HTMLDivElement>(null); // Changed to ContainerRef for multiple users
+
 
   useEffect(() => {
     if (currentUser) {
@@ -485,6 +486,9 @@ export default function CommunitiesPage() {
   };
 
   const handleSelectChannel = (channel: Channel) => {
+    if (agoraClientRef.current) { // Leave current voice/video call if active
+        handleLeaveVoiceChannel();
+    }
     setSelectedChannel(channel);
     setShowPinnedMessages(false);
     setReplyingToMessage(null);
@@ -507,16 +511,18 @@ export default function CommunitiesPage() {
     const messageText = newMessage.trim();
     
     // Basic mention parsing - in a real app, resolve usernames to UIDs
-    const mentionMatches = messageText.match(/@[\w.-]+/g) || [];
+    const mentionMatches = messageText.match(/@([\w.-]+)/g) || [];
     const parsedMentionedUserIds = mentionMatches.map(match => match.substring(1)); // Store usernames for now; resolve to UIDs for backend
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'text'; text: string; } = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(), 
+      timestamp: serverTimestamp() as any, // Firestore will convert this
       type: 'text' as const,
       text: messageText,
+      reactions: {},
+      isPinned: false,
     };
 
     if (parsedMentionedUserIds.length > 0) {
@@ -558,15 +564,17 @@ export default function CommunitiesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string;} = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(), 
+      timestamp: serverTimestamp() as any,
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType, 
+      reactions: {},
+      isPinned: false,
     };
 
     if (replyingToMessage) {
@@ -670,16 +678,18 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string;} = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(), 
+      timestamp: serverTimestamp() as any, 
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
+      reactions: {},
+      isPinned: false,
     };
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -838,14 +848,16 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; isForwarded: boolean; forwardedFromSenderName: string; } = {
+    const messageData: Partial<ChatMessage> = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || null,
-        timestamp: serverTimestamp(),
+        timestamp: serverTimestamp() as any,
         type: forwardingMessage.type,
         isForwarded: true,
         forwardedFromSenderName: forwardingMessage.senderName,
+        reactions: {},
+        isPinned: false,
     };
     if (forwardingMessage.text) messageData.text = forwardingMessage.text;
     if (forwardingMessage.fileUrl) messageData.fileUrl = forwardingMessage.fileUrl;
@@ -1027,23 +1039,26 @@ export default function CommunitiesPage() {
     if (!selectedChannel || (selectedChannel.type !== 'voice' && selectedChannel.type !== 'video') || isJoiningVoice || !currentUser) return;
     setIsJoiningVoice(true);
 
-    if (AGORA_APP_ID === "YOUR_AGORA_APP_ID") {
+    if (AGORA_APP_ID === "YOUR_AGORA_APP_ID") { // Should be replaced by actual ID
         toast({ variant: "destructive", title: "Agora App ID Missing", description: "Agora App ID is not configured. Voice/video chat disabled."});
         setIsJoiningVoice(false);
         return;
     }
 
-    const permissionGranted = await requestMicPermission();
-    if (!permissionGranted) {
+    const micPermission = await requestMicPermission();
+    if (!micPermission) {
       setIsJoiningVoice(false);
       return;
     }
+
+    let cameraPermission = true;
     if (selectedChannel.type === 'video') {
         try {
             const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
             videoStream.getTracks().forEach(track => track.stop()); // Stop after permission check
         } catch (error) {
             toast({ variant: "destructive", title: "Camera Access Denied", description: "Please allow camera access for video channels." });
+            cameraPermission = false;
             setIsJoiningVoice(false);
             return;
         }
@@ -1051,53 +1066,70 @@ export default function CommunitiesPage() {
     
     toast({
         title: `Joining ${selectedChannel.type} channel...`,
-        description: `Attempting to join ${selectedChannel.name}. This is a placeholder for Agora integration.`,
+        description: `Attempting to join ${selectedChannel.name}.`,
     });
 
     try {
         agoraClientRef.current = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         const client = agoraClientRef.current;
 
-        // Event listener for remote users publishing streams
         client.on("user-published", async (user, mediaType) => {
             await client.subscribe(user, mediaType);
-            console.log("subscribe success");
-            if (mediaType === "video") {
-                setRemoteUsers(prev => [...prev, user]); // Add user to display their video
-                // Ensure remoteVideoPlayerRef.current is available and play the video
-                // user.videoTrack.play(remoteVideoPlayerRef.current);
+            console.log("subscribe success", user, mediaType);
+            setRemoteUsers(prev => [...prev.filter(u => u.uid !== user.uid), user]); 
+
+            if (mediaType === "video" && user.videoTrack) {
+                // Create a new video player for this remote user
+                if (remoteVideoPlayersContainerRef.current) {
+                     const playerContainer = document.createElement('div');
+                     playerContainer.id = `remote-player-${user.uid}`;
+                     playerContainer.className = 'w-full max-w-xs aspect-video bg-black my-2 rounded-md shadow';
+                     remoteVideoPlayersContainerRef.current.appendChild(playerContainer);
+                     user.videoTrack.play(playerContainer);
+                }
             }
-            if (mediaType === "audio") {
-                user.audioTrack?.play();
+            if (mediaType === "audio" && user.audioTrack) {
+                user.audioTrack.play();
             }
         });
 
         client.on("user-unpublished", (user, mediaType) => {
             console.log("user-unpublished", user, mediaType);
-            if (mediaType === "video") {
-                setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
+             if (mediaType === "video") {
+                const playerContainer = document.getElementById(`remote-player-${user.uid}`);
+                if (playerContainer) {
+                    playerContainer.remove();
+                }
             }
+            // Consider updating remoteUsers state if needed, though track removal is key
         });
         
         client.on("user-left", (user) => {
            setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
+           const playerContainer = document.getElementById(`remote-player-${user.uid}`);
+           if (playerContainer) {
+               playerContainer.remove();
+           }
         });
 
-        // TODO: Replace null with a valid token fetched from your backend token server
-        // For testing without a token server, some Agora projects allow using null as token,
-        // but this is NOT secure for production.
-        const token = null; // fetchTokenFromServer(selectedChannel.id, currentUser.uid);
-        await client.join(AGORA_APP_ID, selectedChannel.id, token, currentUser.uid);
+        // IMPORTANT: Token Generation for Production
+        // In a production app, you MUST fetch a token from your backend server.
+        // This token is generated using your Agora App ID and App Certificate.
+        // const token = await fetchTokenFromServer(selectedChannel.id, currentUser.uid);
+        const token = null; // Using null for testing (only if your Agora project allows it)
+
+        const uid: UID = currentUser.uid; // Ensure UID is passed as Agora's UID type if necessary (string or number)
+        await client.join(AGORA_APP_ID, selectedChannel.id, token, uid);
         
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
         setLocalAudioTrack(audioTrack);
 
         let videoTrack: ILocalVideoTrack | null = null;
-        if (selectedChannel.type === 'video') {
+        if (selectedChannel.type === 'video' && cameraPermission) {
             videoTrack = await AgoraRTC.createCameraVideoTrack();
             setLocalVideoTrack(videoTrack);
-            if (localVideoPlayerRef.current) {
-                 videoTrack.play(localVideoPlayerRef.current);
+            if (localVideoPlayerContainerRef.current) {
+                 videoTrack.play(localVideoPlayerContainerRef.current);
             }
         }
         
@@ -1115,10 +1147,11 @@ export default function CommunitiesPage() {
         if (localAudioTrack) { localAudioTrack.close(); setLocalAudioTrack(null); }
         if (localVideoTrack) { localVideoTrack.close(); setLocalVideoTrack(null); }
         if (agoraClientRef.current) { await agoraClientRef.current.leave(); agoraClientRef.current = null; }
+         setRemoteUsers([]); // Clear remote users on failure
+         if(remoteVideoPlayersContainerRef.current) remoteVideoPlayersContainerRef.current.innerHTML = ''; // Clear remote video players
+    } finally {
+      setIsJoiningVoice(false);
     }
-
-
-    setIsJoiningVoice(false);
   };
 
   const handleLeaveVoiceChannel = async () => {
@@ -1134,11 +1167,12 @@ export default function CommunitiesPage() {
     }
     if (agoraClientRef.current) {
         await agoraClientRef.current.leave();
-        agoraClientRef.current = null;
-        setRemoteUsers([]);
+        agoraClientRef.current = null; // Reset client
+        setRemoteUsers([]); // Clear remote users
+        if(remoteVideoPlayersContainerRef.current) remoteVideoPlayersContainerRef.current.innerHTML = ''; // Clear remote video players
         toast({ title: "Disconnected", description: "You have left the channel."});
     }
-    setIsJoiningVoice(false); // Ensure joining state is reset
+    setIsJoiningVoice(false); 
   };
 
   useEffect(() => {
@@ -1146,6 +1180,7 @@ export default function CommunitiesPage() {
     return () => {
         handleLeaveVoiceChannel();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChannel]); // Re-run if channel changes to leave previous one
 
 
@@ -1165,11 +1200,15 @@ export default function CommunitiesPage() {
   const userAvatar = currentUser?.photoURL;
 
   const filteredMessages = messages.filter(msg => {
-    if (!chatSearchTerm.trim()) return true;
-    if (msg.text?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
-    if (msg.fileName?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
-    if (msg.senderName?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
-    if (msg.gifContentDescription?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
+    if (!chatSearchTerm.trim()) return true; // Show all if search is empty
+    const term = chatSearchTerm.toLowerCase();
+    if (msg.text?.toLowerCase().includes(term)) return true;
+    if (msg.fileName?.toLowerCase().includes(term)) return true;
+    if (msg.senderName?.toLowerCase().includes(term)) return true;
+    if (msg.gifContentDescription?.toLowerCase().includes(term)) return true;
+    if (msg.replyToSenderName?.toLowerCase().includes(term)) return true;
+    if (msg.replyToTextSnippet?.toLowerCase().includes(term)) return true;
+    if (msg.forwardedFromSenderName?.toLowerCase().includes(term)) return true;
     return false;
   });
 
@@ -1180,7 +1219,8 @@ export default function CommunitiesPage() {
   const handleMentionInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setNewMessage(value);
-    if (value.endsWith('@') && selectedChannel?.type === 'text') {
+    // Show suggestions if input ends with @ and a word character is not immediately following
+    if (value.match(/@\S*$/) && selectedChannel?.type === 'text') { 
         setShowMentionSuggestions(true);
     } else {
         setShowMentionSuggestions(false);
@@ -1230,10 +1270,7 @@ export default function CommunitiesPage() {
                   <Button
                     key={channel.id}
                     variant="ghost"
-                    onClick={() => {
-                        if (agoraClientRef.current) { handleLeaveVoiceChannel(); } // Leave previous voice channel if connected
-                        handleSelectChannel(channel);
-                    }}
+                    onClick={() => handleSelectChannel(channel)}
                     className={cn(
                       "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted",
                       selectedChannel?.id === channel.id && 'bg-accent text-accent-foreground'
@@ -1513,18 +1550,17 @@ export default function CommunitiesPage() {
                                 <SmilePlus className="h-4 w-4" />
                               </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <EmojiPicker
-                                  onEmojiClick={(emojiData: EmojiClickData) => { 
-                                      handleToggleReaction(msg.id, emojiData.emoji);
-                                      setReactionPickerOpenForMessageId(null);
-                                  }}
-                                  theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
-                                  emojiStyle={EmojiStyle.NATIVE}
-                                  searchPlaceholder="Search emoji..."
-                                  previewConfig={{showPreview: false}}
-                                  data={data}
-                              />
+                            <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
+                                <EmojiMartPicker 
+                                    data={data} 
+                                    onEmojiSelect={(emoji: any) => { 
+                                        handleToggleReaction(msg.id, emoji.native); 
+                                        setReactionPickerOpenForMessageId(null); 
+                                    }} 
+                                    theme={currentThemeMode}
+                                    searchPlaceholder="Search emoji..."
+                                    previewConfig={{showPreview: false}}
+                                />
                             </PopoverContent>
                           </Popover>
                           <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title={msg.isPinned ? "Unpin Message" : "Pin Message"} onClick={() => handleTogglePinMessage(msg.id, !!msg.isPinned)}>
@@ -1546,24 +1582,23 @@ export default function CommunitiesPage() {
               <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4 bg-card/30">
                 <selectedChannel.icon className="h-16 w-16 mb-4 text-primary/70"/>
                 <p className="text-lg font-medium">This is a {selectedChannel.type} channel.</p>
-                <p className="text-sm mt-1">Voice and video features are in development using Agora.</p>
+                <p className="text-sm mt-1">Voice and video features use Agora SDK.</p>
                 
-                {/* Local Video Player Placeholder */}
-                <div id="local-video-player" ref={localVideoPlayerRef} className="w-full max-w-xs aspect-video bg-black my-2 rounded-md shadow">
-                  {/* Local video will be attached here by Agora SDK */}
-                </div>
-
-                {/* Remote Video Player Placeholder (simple single remote user for now) */}
-                {remoteUsers.length > 0 && (
-                    <div id="remote-video-player" ref={remoteVideoPlayerRef} className="w-full max-w-xs aspect-video bg-black my-2 rounded-md shadow">
-                         {/* Remote video will be attached here */}
+                {/* Local Video Player Container */}
+                {localVideoTrack && selectedChannel.type === 'video' && (
+                     <div id="local-video-player-container" ref={localVideoPlayerContainerRef} className="w-full max-w-md aspect-video bg-black my-2 rounded-md shadow">
+                        {/* Local video will be attached here by Agora SDK */}
+                        <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">You</p>
                     </div>
                 )}
-                 {remoteUsers.map(user => (
-                    <div key={user.uid} id={`remote-user-${user.uid}`} className="w-full max-w-xs aspect-video bg-black my-2 rounded-md shadow">
-                        {/* Individual remote user video streams can be attached here */}
-                    </div>
-                ))}
+
+                {/* Remote Video Players Container */}
+                 <div id="remote-video-players-container" ref={remoteVideoPlayersContainerRef} className="w-full grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* Remote video players will be dynamically added here */}
+                </div>
+                {remoteUsers.length > 0 && selectedChannel.type === 'video' && (
+                     <p className="text-xs mt-2">{remoteUsers.length} other participant(s) in the call.</p>
+                )}
 
 
                 {!agoraClientRef.current ? (
@@ -1587,7 +1622,9 @@ export default function CommunitiesPage() {
                  {AGORA_APP_ID === "YOUR_AGORA_APP_ID" && (
                      <p className="text-xs text-destructive mt-2">Agora App ID not configured. Voice/Video chat is disabled.</p>
                  )}
-                <p className="text-xs text-muted-foreground mt-2">Note: Full {selectedChannel.type} chat requires third-party service (Agora) integration.</p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Note: For production, use a token server for Agora authentication.
+                </p>
               </div>
             )}
 
@@ -1615,24 +1652,34 @@ export default function CommunitiesPage() {
                     </div>
                 )}
                 {showMentionSuggestions && (
-                    <div 
-                        ref={mentionSuggestionsRef}
-                        className="absolute bottom-full left-0 mb-1 w-full max-w-sm bg-popover border border-border shadow-lg rounded-md max-h-48 overflow-y-auto z-20"
-                    >
-                        {currentMembers.length > 0 ? (
-                            currentMembers.map(member => (
-                                <button
-                                    key={member.id}
-                                    onClick={() => handleMentionSelect(member.name)}
-                                    className="block w-full text-left px-3 py-1.5 text-sm hover:bg-accent"
-                                >
-                                    {member.name}
-                                </button>
-                            ))
-                        ) : (
-                            <p className="p-2 text-xs text-muted-foreground">No members to mention.</p>
-                        )}
-                    </div>
+                    <Popover open={showMentionSuggestions} onOpenChange={setShowMentionSuggestions} modal={false}>
+                         <PopoverTrigger asChild>
+                            {/* Dummy trigger, actual trigger is typing @ */}
+                            <div ref={mentionSuggestionsRef} className="absolute bottom-full left-0 mb-1 w-full max-w-sm"></div>
+                        </PopoverTrigger>
+                        <PopoverContent 
+                            className="p-1 w-64 max-h-48 overflow-y-auto z-20 shadow-lg rounded-md border bg-popover"
+                            side="top"
+                            align="start"
+                            avoidCollisions={false} // Try to force popover to stay where anchored
+                        >
+                            {currentMembers.filter(member => member.name.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase())).length > 0 ? (
+                                currentMembers
+                                    .filter(member => member.name.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase()))
+                                    .map(member => (
+                                        <button
+                                            key={member.id}
+                                            onClick={() => handleMentionSelect(member.name)}
+                                            className="block w-full text-left px-3 py-1.5 text-sm hover:bg-accent rounded-sm"
+                                        >
+                                            {member.name}
+                                        </button>
+                                ))
+                            ) : (
+                                <p className="p-2 text-xs text-muted-foreground">No members match. Type to search.</p>
+                            )}
+                        </PopoverContent>
+                    </Popover>
                 )}
                 <form onSubmit={handleSendMessage} className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
                     <input
@@ -1693,18 +1740,17 @@ export default function CommunitiesPage() {
                             <Smile className="h-5 w-5" />
                         </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                        <EmojiPicker
-                            onEmojiClick={(emojiData: EmojiClickData) => { 
-                                setNewMessage(prev => prev + emojiData.emoji);
+                    <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
+                        <EmojiMartPicker
+                            data={data}
+                            onEmojiSelect={(emoji: any) => { 
+                                setNewMessage(prev => prev + emoji.native);
                                 setChatEmojiPickerOpen(false);
                                 chatInputRef.current?.focus();
                             }}
-                            theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
-                            emojiStyle={EmojiStyle.NATIVE}
+                            theme={currentThemeMode}
                             searchPlaceholder="Search emoji..."
                             previewConfig={{showPreview: false}}
-                            data={data}
                         />
                     </PopoverContent>
                     </Popover>
@@ -1835,6 +1881,7 @@ export default function CommunitiesPage() {
               </div>
             ) : (
               <div className="p-3 border-t border-border/40 shrink-0 flex items-center justify-center h-16"> 
+                {/* Placeholder for non-text channel input, or could be removed */}
               </div>
             )}
           </>
@@ -1942,7 +1989,7 @@ export default function CommunitiesPage() {
             <DialogHeader>
                 <DialogTitle>Forward Message</DialogTitle>
                 <DialogDescription>
-                    Forwarding to the first text channel of this community. (Recipient selection coming soon)
+                    Select a channel or user to forward this message to. (Recipient selection coming soon)
                 </DialogDescription>
             </DialogHeader>
             {forwardingMessage && (
@@ -1955,7 +2002,7 @@ export default function CommunitiesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users (coming soon)..." 
+                    placeholder="Search channels or users..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
                     

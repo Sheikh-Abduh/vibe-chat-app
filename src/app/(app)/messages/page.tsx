@@ -11,8 +11,8 @@ import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
 import type { TenorGif as TenorGifType } from '@/types/tenor';
 
-import EmojiPicker, { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
-import data from '@emoji-mart/data'
+import { Picker as EmojiMartPicker } from 'emoji-mart'; // Corrected named import
+import data from '@emoji-mart/data';
 
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -28,7 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { Badge } from '@/components/ui/badge';
-import AgoraRTC, { type IAgoraRTCClient, type ILocalAudioTrack, type ILocalVideoTrack, type IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
+import AgoraRTC, { type IAgoraRTCClient, type ILocalAudioTrack, type ILocalVideoTrack, type IAgoraRTCRemoteUser, type UID } from 'agora-rtc-sdk-ng';
 
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -55,7 +55,7 @@ const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // THIS IS A SE
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
 // Agora Configuration (Replace with your actual App ID)
-const AGORA_APP_ID = "YOUR_AGORA_APP_ID"; // Replace this with your Agora App ID
+const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48";
 
 
 type ChatMessage = {
@@ -165,8 +165,8 @@ export default function MessagesPage() {
   const [localAudioTrack, setLocalAudioTrack] = useState<ILocalAudioTrack | null>(null);
   const [localVideoTrack, setLocalVideoTrack] = useState<ILocalVideoTrack | null>(null);
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]); // For DMs, this will likely be one user
-  const localVideoPlayerRef = useRef<HTMLDivElement>(null);
-  const remoteVideoPlayerRef = useRef<HTMLDivElement>(null);
+  const localVideoPlayerContainerRef = useRef<HTMLDivElement>(null);
+  const remoteVideoPlayerContainerRef = useRef<HTMLDivElement>(null);
 
 
   useEffect(() => {
@@ -331,13 +331,15 @@ export default function MessagesPage() {
     const mentionMatches = messageText.match(/@[\w.-]+/g) || [];
     const parsedMentionedUserIds = mentionMatches.map(match => match.substring(1)); 
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'text'; text: string; } = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(),
+      timestamp: serverTimestamp() as any,
       type: 'text' as const,
       text: messageText,
+      reactions: {},
+      isPinned: false,
     };
 
     if (parsedMentionedUserIds.length > 0) {
@@ -389,15 +391,17 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string; } = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(), 
+      timestamp: serverTimestamp() as any, 
       type: messageType,
       fileUrl: fileUrl,
       fileName: fileName,
       fileType: fileType,
+      reactions: {},
+      isPinned: false,
     };
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -477,16 +481,18 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; } = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp(), 
+      timestamp: serverTimestamp() as any, 
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
       gifTinyUrl: gif.media_formats.tinygif.url,
       gifContentDescription: gif.content_description,
+      reactions: {},
+      isPinned: false,
     };
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -625,14 +631,16 @@ export default function MessagesPage() {
         return;
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; senderAvatarUrl: string | null; timestamp: any; type: ChatMessage['type']; isForwarded: boolean; forwardedFromSenderName: string; } = {
+    const messageData: Partial<ChatMessage> = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || null,
-        timestamp: serverTimestamp(),
+        timestamp: serverTimestamp() as any,
         type: forwardingMessage.type,
         isForwarded: true,
         forwardedFromSenderName: forwardingMessage.senderName,
+        reactions: {},
+        isPinned: false,
     };
     if (forwardingMessage.text) messageData.text = forwardingMessage.text;
     if (forwardingMessage.fileUrl) messageData.fileUrl = forwardingMessage.fileUrl;
@@ -770,53 +778,102 @@ export default function MessagesPage() {
     }
   };
   
-  const handleStartVoiceCall = async () => {
-    if (!otherUserId || (currentUser && currentUser.uid === otherUserId) || isStartingCall || AGORA_APP_ID === "YOUR_AGORA_APP_ID" ) {
+ const handleStartCall = async (isVideoCall: boolean) => {
+    if (!otherUserId || (currentUser && currentUser.uid === otherUserId) || isStartingCall || AGORA_APP_ID === "YOUR_AGORA_APP_ID") {
         if (AGORA_APP_ID === "YOUR_AGORA_APP_ID") {
-             toast({ variant: "destructive", title: "Agora App ID Missing", description: "Agora App ID is not configured for DM calls."});
+            toast({ variant: "destructive", title: "Agora App ID Missing", description: "Agora App ID is not configured for DM calls." });
         }
         return;
     }
     setIsStartingCall(true);
-    const permissionGranted = await requestMicPermission();
-    if (permissionGranted) {
-      toast({
-        title: "Starting Voice Call...",
-        description: `Attempting to call ${otherUserName || 'User'}. Requires third-party service (Agora) integration.`,
-      });
-       try {
-            agoraClientRef.current = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-            const client = agoraClientRef.current;
 
-            // Basic event listeners for remote users
-            client.on("user-published", async (user, mediaType) => {
-                await client.subscribe(user, mediaType);
-                if (mediaType === "audio") user.audioTrack?.play();
-                // Add user to a list if you want to display participants, not strictly needed for 1-to-1 audio
-            });
-            client.on("user-unpublished", (user, mediaType) => {});
-            client.on("user-left", (user) => {
-                setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
-            });
-
-            // TODO: Fetch token from your backend
-            const token = null; // This should be a token from your server for production
-            await client.join(AGORA_APP_ID, conversationId!, token, currentUser!.uid);
-
-            const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-            setLocalAudioTrack(audioTrack);
-            await client.publish([audioTrack]);
-            
-            toast({ title: "Voice Call Active", description: `Connected with ${otherUserName || 'User'}.` });
+    const micPermission = await requestMicPermission();
+    if (!micPermission) {
+        setIsStartingCall(false);
+        return;
+    }
+    let cameraPermission = true;
+    if (isVideoCall) {
+        try {
+            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            videoStream.getTracks().forEach(track => track.stop());
         } catch (error) {
-            console.error("Agora DM call error:", error);
-            toast({ variant: "destructive", title: "Call Failed", description: "Could not start voice call." });
-            if (localAudioTrack) { localAudioTrack.close(); setLocalAudioTrack(null); }
-            if (agoraClientRef.current) { await agoraClientRef.current.leave(); agoraClientRef.current = null; }
+            toast({ variant: "destructive", title: "Camera Access Denied", description: "Please allow camera access for video calls." });
+            cameraPermission = false;
+            setIsStartingCall(false);
+            return;
         }
     }
-    setIsStartingCall(false);
-  };
+
+    toast({
+        title: `Starting ${isVideoCall ? 'Video' : 'Voice'} Call...`,
+        description: `Attempting to call ${otherUserName || 'User'}.`,
+    });
+
+    try {
+        agoraClientRef.current = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        const client = agoraClientRef.current;
+
+        client.on("user-published", async (user, mediaType) => {
+            await client.subscribe(user, mediaType);
+            setRemoteUsers(prev => [...prev.filter(u => u.uid !== user.uid), user]);
+             if (mediaType === "video" && user.videoTrack) {
+                if (remoteVideoPlayerContainerRef.current) {
+                     const playerContainer = document.getElementById(`remote-dm-player-${user.uid}`) || document.createElement('div');
+                     playerContainer.id = `remote-dm-player-${user.uid}`;
+                     playerContainer.className = 'w-full h-full bg-black rounded-md shadow'; // Full size for single remote
+                     if(!document.getElementById(playerContainer.id)) remoteVideoPlayerContainerRef.current.appendChild(playerContainer);
+                     user.videoTrack.play(playerContainer);
+                }
+            }
+            if (mediaType === "audio" && user.audioTrack) {
+                user.audioTrack.play();
+            }
+        });
+        client.on("user-unpublished", (user, mediaType) => {
+            if (mediaType === "video") {
+                const playerContainer = document.getElementById(`remote-dm-player-${user.uid}`);
+                if (playerContainer) playerContainer.innerHTML = ''; // Clear content or remove
+            }
+        });
+        client.on("user-left", (user) => {
+            setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
+            const playerContainer = document.getElementById(`remote-dm-player-${user.uid}`);
+            if (playerContainer) playerContainer.remove();
+        });
+
+        // IMPORTANT: Token Generation for Production
+        const token = null; // For testing only. Fetch from your backend in production.
+        const uid: UID = currentUser!.uid; // Use UID type for Agora
+        await client.join(AGORA_APP_ID, conversationId!, token, uid);
+
+        const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        setLocalAudioTrack(audioTrack);
+        let tracksToPublish: (ILocalAudioTrack | ILocalVideoTrack)[] = [audioTrack];
+
+        if (isVideoCall && cameraPermission) {
+            const videoTrack = await AgoraRTC.createCameraVideoTrack();
+            setLocalVideoTrack(videoTrack);
+            tracksToPublish.push(videoTrack);
+            if (localVideoPlayerContainerRef.current) {
+                videoTrack.play(localVideoPlayerContainerRef.current);
+            }
+        }
+        await client.publish(tracksToPublish);
+        toast({ title: `${isVideoCall ? 'Video' : 'Voice'} Call Active`, description: `Connected with ${otherUserName || 'User'}.` });
+    } catch (error) {
+        console.error("Agora DM call error:", error);
+        toast({ variant: "destructive", title: "Call Failed", description: "Could not start call." });
+        if (localAudioTrack) { localAudioTrack.close(); setLocalAudioTrack(null); }
+        if (localVideoTrack) { localVideoTrack.close(); setLocalVideoTrack(null); }
+        if (agoraClientRef.current) { await agoraClientRef.current.leave(); agoraClientRef.current = null; }
+        setRemoteUsers([]);
+         if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = '';
+    } finally {
+        setIsStartingCall(false);
+    }
+};
+
 
   const handleLeaveDmCall = async () => {
     if (localAudioTrack) {
@@ -824,10 +881,17 @@ export default function MessagesPage() {
         localAudioTrack.close();
         setLocalAudioTrack(null);
     }
+     if (localVideoTrack) {
+        localVideoTrack.stop();
+        localVideoTrack.close();
+        setLocalVideoTrack(null);
+    }
     if (agoraClientRef.current) {
         await agoraClientRef.current.leave();
         agoraClientRef.current = null;
-        setRemoteUsers([]); // Clear remote users
+        setRemoteUsers([]); 
+        if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; // Clear local player
+        if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = ''; // Clear remote player
         toast({ title: "Call Ended", description: "You have left the call."});
     }
     setIsStartingCall(false); 
@@ -839,6 +903,7 @@ export default function MessagesPage() {
             handleLeaveDmCall();
         }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]); // Rerun if conversationId changes
 
 
@@ -860,12 +925,16 @@ export default function MessagesPage() {
     }
   };
 
-  const filteredMessages = messages.filter(msg => {
-    if (!chatSearchTerm.trim()) return true;
-    if (msg.text?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
-    if (msg.fileName?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
-    if (msg.senderName?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
-    if (msg.gifContentDescription?.toLowerCase().includes(chatSearchTerm.toLowerCase())) return true;
+ const filteredMessages = messages.filter(msg => {
+    if (!chatSearchTerm.trim()) return true; // Show all if search is empty
+    const term = chatSearchTerm.toLowerCase();
+    if (msg.text?.toLowerCase().includes(term)) return true;
+    if (msg.fileName?.toLowerCase().includes(term)) return true;
+    if (msg.senderName?.toLowerCase().includes(term)) return true;
+    if (msg.gifContentDescription?.toLowerCase().includes(term)) return true;
+    if (msg.replyToSenderName?.toLowerCase().includes(term)) return true;
+    if (msg.replyToTextSnippet?.toLowerCase().includes(term)) return true;
+    if (msg.forwardedFromSenderName?.toLowerCase().includes(term)) return true;
     return false;
   });
   
@@ -876,7 +945,8 @@ export default function MessagesPage() {
   const handleMentionInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setNewMessage(value);
-    if (value.endsWith('@') && otherUserId && currentUser?.uid !== otherUserId) { 
+     // Show suggestions if input ends with @ and a word character is not immediately following
+    if (value.match(/@\S*$/) && otherUserId && currentUser?.uid !== otherUserId) { 
         setShowMentionSuggestions(true);
     } else {
         setShowMentionSuggestions(false);
@@ -991,14 +1061,21 @@ export default function MessagesPage() {
                                     variant="ghost" 
                                     size="icon" 
                                     className="text-muted-foreground hover:text-foreground" 
-                                    title="Start Voice Call" 
-                                    onClick={!agoraClientRef.current ? handleStartVoiceCall : handleLeaveDmCall}
-                                    disabled={isStartingCall || AGORA_APP_ID === "YOUR_AGORA_APP_ID"}
+                                    title={agoraClientRef.current ? "End Call" : "Start Voice Call"} 
+                                    onClick={!agoraClientRef.current ? () => handleStartCall(false) : handleLeaveDmCall}
+                                    disabled={isStartingCall || (AGORA_APP_ID === "YOUR_AGORA_APP_ID" && !agoraClientRef.current) }
                                 >
-                                    {isStartingCall ? <Loader2 className="h-5 w-5 animate-spin"/> : (agoraClientRef.current ? <X className="h-5 w-5 text-destructive"/> : <Phone className="h-5 w-5"/>)}
+                                    {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-5 w-5 animate-spin"/> : (agoraClientRef.current ? <X className="h-5 w-5 text-destructive"/> : <Phone className="h-5 w-5"/>)}
                                 </Button>
-                                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Start Video Call (Coming Soon)" onClick={() => toast({title: "Coming Soon!", description: "Video call requires a third-party service (e.g. Agora, Twilio)."})}>
-                                    <VideoIcon className="h-5 w-5"/>
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="text-muted-foreground hover:text-foreground" 
+                                    title={agoraClientRef.current && localVideoTrack ? "End Video Call" : "Start Video Call"} 
+                                    onClick={!agoraClientRef.current ? () => handleStartCall(true) : handleLeaveDmCall}
+                                    disabled={isStartingCall || (AGORA_APP_ID === "YOUR_AGORA_APP_ID" && !agoraClientRef.current) }
+                                >
+                                     {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-5 w-5 animate-spin"/> : (agoraClientRef.current && localVideoTrack ? <X className="h-5 w-5 text-destructive"/> : <VideoIcon className="h-5 w-5"/>)}
                                 </Button>
                             </>
                         )}
@@ -1036,16 +1113,33 @@ export default function MessagesPage() {
 
             {/* Video Call UI Placeholders - only show if call is active */}
             {agoraClientRef.current && otherUserId !== currentUser.uid && (
-                <div className="p-2 border-b border-border/40 bg-black/50">
-                    <div className="flex gap-2">
-                        <div id="local-dm-video-player" ref={localVideoPlayerRef} className="w-32 h-24 bg-black rounded-md shadow">
+                <div className="p-2 border-b border-border/40 bg-black/50 flex flex-col items-center">
+                     {/* Local Video Player Container */}
+                    {localVideoTrack && (
+                        <div id="local-dm-video-player-container" ref={localVideoPlayerContainerRef} className="w-40 h-30 md:w-48 md:h-36 bg-black rounded-md shadow self-start mb-2 relative">
+                             <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">You</p>
                             {/* Local video will be attached here by Agora SDK for video calls */}
                         </div>
-                        <div id="remote-dm-video-player" ref={remoteVideoPlayerRef} className="flex-1 h-24 bg-black rounded-md shadow">
-                            {/* Remote video will be attached here */}
+                    )}
+                     {/* Remote Video Player Container (single remote user for DMs) */}
+                    {remoteUsers.length > 0 && remoteUsers[0].videoTrack && (
+                        <div id="remote-dm-video-player-container" ref={remoteVideoPlayerContainerRef} className="w-full flex-1 aspect-video bg-black rounded-md shadow relative">
+                             <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">{remoteUsers[0].uid === otherUserId ? otherUserName : `User ${remoteUsers[0].uid}`}</p>
+                            {/* Remote video will be attached here by handleCallUserPublished */}
                         </div>
-                         {/* Could map remoteUsers here if it was group video in DMs */}
-                    </div>
+                    )}
+                    {remoteUsers.length === 0 && localVideoTrack && (
+                        <p className="text-sm text-muted-foreground">Waiting for {otherUserName || 'user'} to join...</p>
+                    )}
+                     {remoteUsers.length > 0 && !remoteUsers[0].videoTrack && localVideoTrack && (
+                        <div className="flex-1 flex items-center justify-center">
+                            <Avatar className="h-24 w-24">
+                                <AvatarImage src={dmPartnerProfile?.photoURL || undefined} alt={otherUserName || ''} />
+                                <AvatarFallback className="text-3xl">{(otherUserName || 'U').substring(0,1)}</AvatarFallback>
+                            </Avatar>
+                        </div>
+                     )}
+
                 </div>
             )}
 
@@ -1187,17 +1281,16 @@ export default function MessagesPage() {
                               <SmilePlus className="h-4 w-4" />
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                             <EmojiPicker 
-                                onEmojiClick={(emojiData: EmojiClickData) => { 
-                                    handleToggleReaction(msg.id, emojiData.emoji); 
+                          <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
+                             <EmojiMartPicker 
+                                data={data}
+                                onEmojiSelect={(emoji: any) => { 
+                                    handleToggleReaction(msg.id, emoji.native); 
                                     setReactionPickerOpenForMessageId(null); 
                                 }} 
-                                theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
-                                emojiStyle={EmojiStyle.NATIVE}
+                                theme={currentThemeMode}
                                 searchPlaceholder="Search emoji..."
                                 previewConfig={{showPreview: false}}
-                                data={data}
                              />
                           </PopoverContent>
                         </Popover>
@@ -1236,23 +1329,31 @@ export default function MessagesPage() {
                         </Button>
                     </div>
                 )}
-                {showMentionSuggestions && (
-                    <div 
-                        ref={mentionSuggestionsRef}
-                        className="absolute bottom-full left-0 mb-1 w-full max-w-sm bg-popover border border-border shadow-lg rounded-md max-h-48 overflow-y-auto z-20"
-                    >
-                        {otherUserId && currentUser?.uid !== otherUserId && dmPartnerProfile?.displayName && (
-                            <button
-                                onClick={() => handleMentionSelect(dmPartnerProfile.displayName!)}
-                                className="block w-full text-left px-3 py-1.5 text-sm hover:bg-accent"
-                            >
-                                {dmPartnerProfile.displayName}
-                            </button>
-                        )}
-                        {(currentUser?.uid === otherUserId || !dmPartnerProfile?.displayName ) && (
-                             <p className="p-2 text-xs text-muted-foreground">Select a user to mention.</p>
-                        )}
-                    </div>
+                 {showMentionSuggestions && (
+                     <Popover open={showMentionSuggestions} onOpenChange={setShowMentionSuggestions} modal={false}>
+                        <PopoverTrigger asChild>
+                            {/* Dummy trigger, actual trigger is typing @ */}
+                            <div ref={mentionSuggestionsRef} className="absolute bottom-full left-0 mb-1 w-full max-w-sm"></div>
+                        </PopoverTrigger>
+                        <PopoverContent 
+                            className="p-1 w-64 max-h-48 overflow-y-auto z-20 shadow-lg rounded-md border bg-popover"
+                            side="top"
+                            align="start"
+                            avoidCollisions={false} 
+                        >
+                            {otherUserId && currentUser?.uid !== otherUserId && dmPartnerProfile?.displayName &&
+                             dmPartnerProfile.displayName.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase()) ? (
+                                <button
+                                    onClick={() => handleMentionSelect(dmPartnerProfile.displayName!)}
+                                    className="block w-full text-left px-3 py-1.5 text-sm hover:bg-accent rounded-sm"
+                                >
+                                    {dmPartnerProfile.displayName}
+                                </button>
+                            ) : (
+                                 <p className="p-2 text-xs text-muted-foreground">No matching user to mention in DM.</p>
+                            )}
+                        </PopoverContent>
+                    </Popover>
                 )}
                 <form onSubmit={handleSendMessage} className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
                     <input type="file" ref={attachmentInputRef} onChange={handleFileSelected} className="hidden" accept={ALLOWED_FILE_TYPES.join(',')} disabled={isUploadingFile || isRecording} />
@@ -1279,18 +1380,17 @@ export default function MessagesPage() {
                             <Smile className="h-5 w-5" />
                         </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                        <EmojiPicker 
-                            onEmojiClick={(emojiData: EmojiClickData) => { 
-                                setNewMessage(prev => prev + emojiData.emoji); 
+                    <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
+                        <EmojiMartPicker 
+                            data={data}
+                            onEmojiSelect={(emoji: any) => { 
+                                setNewMessage(prev => prev + emoji.native); 
                                 setChatEmojiPickerOpen(false); 
                                 chatInputRef.current?.focus(); 
                             }} 
-                            theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
-                            emojiStyle={EmojiStyle.NATIVE}
+                            theme={currentThemeMode}
                             searchPlaceholder="Search emoji..."
                             previewConfig={{showPreview: false}}
-                            data={data}
                         />
                     </PopoverContent>
                     </Popover>
@@ -1406,7 +1506,7 @@ export default function MessagesPage() {
             <DialogHeader>
                 <DialogTitle>Forward Message</DialogTitle>
                 <DialogDescription>
-                    Forwarding to your "Saved Messages". (Recipient selection coming soon)
+                   Select a channel or user to forward this message to. (Recipient selection coming soon)
                 </DialogDescription>
             </DialogHeader>
             {forwardingMessage && (
@@ -1419,7 +1519,7 @@ export default function MessagesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users (coming soon)..." 
+                    placeholder="Search channels or users..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
                     
