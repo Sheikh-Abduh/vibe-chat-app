@@ -69,7 +69,7 @@ const settingsCategories: SettingsCategory[] = [
 
 export default function SettingsPage() {
   return (
-    <div className="h-full overflow-y-auto p-6"> 
+    <div className="h-full overflow-y-auto overflow-x-hidden p-6"> 
       <section>
         <div className="flex items-center mb-8">
           <Settings className="mr-3 h-9 w-9 text-primary" />
@@ -111,3 +111,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

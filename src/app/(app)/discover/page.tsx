@@ -25,7 +25,7 @@ export default function DiscoverPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-4 md:p-6 space-y-8 md:space-y-12">
+    <div className="h-full overflow-y-auto overflow-x-hidden p-4 md:p-6 space-y-8 md:space-y-12">
       <section>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 md:mb-8">
           <div className="flex items-center mb-4 sm:mb-0">
@@ -78,3 +78,4 @@ export default function DiscoverPage() {
     </div>
   );
 }
+

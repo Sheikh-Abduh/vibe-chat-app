@@ -158,7 +158,7 @@ export default function AppearanceSettingsPage() {
   }, [router, applyThemeAndScale]);
 
   useEffect(() => {
-    if (initialValues) { // Only apply if initialValues are set, meaning settings have been loaded
+    if (initialValues) { 
         applyThemeAndScale(selectedMode, selectedPrimaryAccent, selectedSecondaryAccent, selectedUiScale);
     }
   }, [selectedMode, selectedPrimaryAccent, selectedSecondaryAccent, selectedUiScale, applyThemeAndScale, initialValues]);
@@ -193,7 +193,19 @@ export default function AppearanceSettingsPage() {
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        await setDoc(userDocRef, { appSettings: newAppSettings }, { merge: true });
+        // Fetch existing appSettings to merge with
+        const userDocSnap = await getDoc(userDocRef);
+        let existingAppSettings: Partial<UserAppSettings> = {};
+        if (userDocSnap.exists() && userDocSnap.data().appSettings) {
+            existingAppSettings = userDocSnap.data().appSettings;
+        }
+        
+        const updatedAppSettings: UserAppSettings = {
+            ...existingAppSettings, // Preserve existing settings like onboardingComplete
+            ...newAppSettings // Overwrite with new theme settings
+        };
+        
+        await setDoc(userDocRef, { appSettings: updatedAppSettings }, { merge: true });
         
         toast({
           title: "Appearance Settings Saved!",
@@ -239,7 +251,19 @@ export default function AppearanceSettingsPage() {
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        await setDoc(userDocRef, { appSettings: defaultSettings }, { merge: true });
+        // Fetch existing appSettings to merge with
+        const userDocSnap = await getDoc(userDocRef);
+        let existingAppSettings: Partial<UserAppSettings> = {};
+        if (userDocSnap.exists() && userDocSnap.data().appSettings) {
+            existingAppSettings = userDocSnap.data().appSettings;
+        }
+        
+        const updatedAppSettings: UserAppSettings = {
+            ...existingAppSettings, // Preserve existing settings like onboardingComplete
+            ...defaultSettings // Overwrite with new default theme settings
+        };
+
+        await setDoc(userDocRef, { appSettings: updatedAppSettings }, { merge: true });
 
         setSelectedMode(appDefaultTheme.mode);
         setSelectedPrimaryAccent(appDefaultTheme.primary);
@@ -266,7 +290,7 @@ export default function AppearanceSettingsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6"> 
+    <div className="h-full overflow-y-auto overflow-x-hidden p-6"> 
       <div className="flex items-center my-6">
         <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
             <ArrowLeft className="h-5 w-5 text-accent" />
@@ -448,3 +472,4 @@ export default function AppearanceSettingsPage() {
     </div>
   );
 }
+

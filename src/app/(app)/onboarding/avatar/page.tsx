@@ -13,7 +13,7 @@ import { auth, db } from '@/lib/firebase';
 import { updateProfile, onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
+import { ScrollArea } from '@/components/ui/scroll-area'; 
 
 // Cloudinary configuration
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -136,9 +136,11 @@ export default function AvatarUploadPage() {
 
         if (userForProfileUpdate) {
           await updateProfile(userForProfileUpdate, { photoURL: newAvatarUrlFromCloudinary });
-           // Also save to Firestore user document
           const userDocRef = doc(db, "users", userForProfileUpdate.uid);
-          await setDoc(userDocRef, { profileDetails: { photoURL: newAvatarUrlFromCloudinary } }, { merge: true });
+          // Save to profileDetails sub-object in Firestore for consistency with other profile settings
+          await setDoc(userDocRef, { 
+            profileDetails: { photoURL: newAvatarUrlFromCloudinary } 
+          }, { merge: true });
 
           toast({
             title: 'Avatar Uploaded!',
@@ -191,8 +193,8 @@ export default function AvatarUploadPage() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
-      <Card className="flex flex-col w-full max-w-lg max-h-[90vh] bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
+    <div className="flex h-full items-center justify-center overflow-y-auto overflow-x-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
+      <Card className="flex flex-col w-full max-w-lg bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
         <CardHeader className="text-center pt-6 pb-4 shrink-0">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
             Set Your vibe
@@ -201,7 +203,7 @@ export default function AvatarUploadPage() {
             Upload a profile picture to personalize your experience.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 p-0">
+        <CardContent className="flex-1 p-0 overflow-hidden min-h-0">
           <ScrollArea className="h-full">
             <div className="px-6 pt-2 pb-6 flex flex-col items-center space-y-6">
               <Avatar

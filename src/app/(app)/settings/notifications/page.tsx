@@ -9,8 +9,8 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Bell, ArrowLeft, Mail, UserPlus, MessageCircle, Users, Smartphone, MonitorPlay, ListChecks } from 'lucide-react';
-import { auth, db } from '@/lib/firebase'; // Ensure db is imported
-import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
+import { auth, db } from '@/lib/firebase'; 
+import { doc, getDoc, setDoc } from 'firebase/firestore'; 
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { useToast } from '@/hooks/use-toast';
@@ -19,7 +19,7 @@ interface NotificationSetting {
   id: string;
   label: string;
   icon: React.ElementType;
-  storageKeySuffix: string; // Suffix for Firestore field name
+  storageKeySuffix: string; 
 }
 
 const contentNotificationSettings: NotificationSetting[] = [
@@ -36,10 +36,10 @@ const deliveryMethodSettings: NotificationSetting[] = [
   { id: 'notificationCentre', label: 'Notification Centre Updates', icon: ListChecks, storageKeySuffix: 'delivery_notificationCentre_enabled' },
 ];
 
-type NotificationStates = Record<string, boolean>; // Stores setting.id -> boolean
+type NotificationStates = Record<string, boolean>; 
 
 interface UserNotificationSettings {
-  [key: string]: boolean; // e.g., messages_enabled: true
+  [key: string]: boolean; 
 }
 
 export default function NotificationSettingsPage() {
@@ -51,7 +51,6 @@ export default function NotificationSettingsPage() {
 
   const allSettings = [...contentNotificationSettings, ...deliveryMethodSettings];
 
-  // Load settings from Firestore
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -63,11 +62,9 @@ export default function NotificationSettingsPage() {
         if (userDocSnap.exists()) {
           const firestoreSettings = userDocSnap.data().notificationSettings as UserNotificationSettings | undefined;
           allSettings.forEach(setting => {
-            // Default to true if not found in Firestore or specifically true
             initialStates[setting.id] = firestoreSettings?.[setting.storageKeySuffix] !== false; 
           });
         } else {
-          // If no settings doc, default all to true
           allSettings.forEach(setting => {
             initialStates[setting.id] = true;
           });
@@ -79,7 +76,8 @@ export default function NotificationSettingsPage() {
       }
     });
     return () => unsubscribe();
-  }, [router, allSettings]); // allSettings is stable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]); 
 
   const handleToggleChange = async (settingId: string, newCheckedState: boolean, label: string) => {
     if (!currentUser) return;
@@ -91,11 +89,19 @@ export default function NotificationSettingsPage() {
 
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
-      // Save to Firestore under notificationSettings.{storageKeySuffix}
+      const userDocSnap = await getDoc(userDocRef);
+      let existingNotificationSettings = {};
+      if (userDocSnap.exists() && userDocSnap.data().notificationSettings) {
+        existingNotificationSettings = userDocSnap.data().notificationSettings;
+      }
+      
+      const updatedSettings = {
+        ...existingNotificationSettings,
+        [settingDefinition.storageKeySuffix]: newCheckedState
+      };
+
       await setDoc(userDocRef, { 
-        notificationSettings: {
-          [settingDefinition.storageKeySuffix]: newCheckedState 
-        }
+        notificationSettings: updatedSettings
       }, { merge: true });
       
       toast({
@@ -105,7 +111,6 @@ export default function NotificationSettingsPage() {
     } catch (error) {
       console.error("Error saving notification setting to Firestore:", error);
       toast({ variant: "destructive", title: "Save Failed", description: "Could not save notification preference." });
-      // Revert optimistic UI update on error
       setNotificationStates(prev => ({ ...prev, [settingId]: !newCheckedState }));
     }
   };
@@ -115,7 +120,7 @@ export default function NotificationSettingsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto overflow-x-hidden p-6">
       <div className="flex items-center my-6">
         <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
             <ArrowLeft className="h-5 w-5 text-accent" />
@@ -196,3 +201,4 @@ export default function NotificationSettingsPage() {
     </div>
   );
 }
+

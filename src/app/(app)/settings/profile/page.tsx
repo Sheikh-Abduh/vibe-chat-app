@@ -29,9 +29,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { UserCircle, Edit3, Sparkles, Gift, Hash, Heart, MessageSquare, Info, Loader2, PersonStanding, UploadCloud } from 'lucide-react';
-import { auth, db } from '@/lib/firebase'; // Ensure db is imported for Firestore
+import { auth, db } from '@/lib/firebase'; 
 import { onAuthStateChanged, type User, updateProfile } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
+import { doc, getDoc, setDoc } from 'firebase/firestore'; 
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 
 // Cloudinary configuration
@@ -40,7 +40,7 @@ const CLOUDINARY_API_KEY = '775545995624823';
 const CLOUDINARY_UPLOAD_PRESET = 'vibe_app';
 
 const ageRanges = [
-  "Under 18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+",
+  "Under 18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+", "Prefer not to say",
 ];
 const genderOptions = [
   "Male", "Female", "Non-binary", "Prefer not to say", "Other",
@@ -52,6 +52,9 @@ const passionOptions = [
   { value: "reading", label: "Reading" },
   { value: "technology", label: "Technology" },
   { value: "travel", label: "Travel" },
+  { value: "gaming", label: "Gaming" },
+  { value: "sports_fitness", label: "Sports & Fitness" },
+  { value: "food_cooking", label: "Food & Cooking" },
   { value: "other", label: "Other" },
 ];
 
@@ -100,29 +103,23 @@ export default function EditProfilePage() {
         setCurrentUser(user);
         setAvatarPreview(user.photoURL);
         
-        // Load from Firestore first, then fall back to localStorage if needed (for migration)
         const userDocRef = doc(db, "users", user.uid);
         const userDocSnap = await getDoc(userDocRef);
-        let profileData = {};
+        let profileData: Partial<ProfileFormValues> = {};
 
         if (userDocSnap.exists()) {
           profileData = userDocSnap.data().profileDetails || {};
-        } else {
-          // Fallback to localStorage for users who might have data there before Firestore persistence
-          profileData = {
-            aboutMe: localStorage.getItem(`userProfile_aboutMe_${user.uid}`) || "",
-            status: localStorage.getItem(`userProfile_status_${user.uid}`) || "",
-            hobbies: localStorage.getItem(`userInterests_hobbies_${user.uid}`) || "",
-            age: localStorage.getItem(`userInterests_age_${user.uid}`) || "",
-            gender: localStorage.getItem(`userInterests_gender_${user.uid}`) || "",
-            tags: localStorage.getItem(`userInterests_tags_${user.uid}`) || "",
-            passion: localStorage.getItem(`userInterests_passion_${user.uid}`) || "",
-          };
         }
         
         form.reset({
           displayName: user.displayName || "",
-          ...profileData
+          aboutMe: profileData.aboutMe || "",
+          status: profileData.status || "",
+          hobbies: profileData.hobbies || "",
+          age: profileData.age || "",
+          gender: profileData.gender || "",
+          tags: profileData.tags || "",
+          passion: profileData.passion || "",
         });
         setIsCheckingAuth(false);
       } else {
@@ -164,18 +161,12 @@ export default function EditProfilePage() {
       return;
     }
     setIsSubmitting(true);
-    let profileUpdated = false;
-    let authProfileUpdated = false;
+    let anyChangesMade = false;
 
-    // 1. Update Display Name (Username) & Avatar
+    // 1. Update Display Name & Avatar in Firebase Auth
+    let authUpdates: { displayName?: string; photoURL?: string } = {};
     if (data.displayName && data.displayName !== currentUser.displayName) {
-      try {
-        await updateProfile(currentUser, { displayName: data.displayName });
-        authProfileUpdated = true;
-      } catch (error: any) {
-        console.error("Error updating display name:", error);
-        toast({ variant: "destructive", title: "Username Update Failed", description: error.message || "Could not update display name." });
-      }
+      authUpdates.displayName = data.displayName;
     }
 
     if (avatarFile) {
@@ -193,24 +184,32 @@ export default function EditProfilePage() {
         if (!response.ok) throw new Error((await response.json()).error?.message || 'Cloudinary upload failed.');
         const cloudinaryData = await response.json();
         if (cloudinaryData.secure_url) {
-          await updateProfile(currentUser, { photoURL: cloudinaryData.secure_url });
-          authProfileUpdated = true;
+          authUpdates.photoURL = cloudinaryData.secure_url;
         } else throw new Error('Cloudinary did not return a URL.');
       } catch (error: any) {
-        console.error("Error uploading/updating avatar:", error);
-        toast({ variant: "destructive", title: "Avatar Update Failed", description: error.message || "Could not update avatar." });
+        console.error("Error uploading avatar:", error);
+        toast({ variant: "destructive", title: "Avatar Upload Failed", description: error.message || "Could not upload new avatar." });
       } finally {
         setIsUploadingAvatar(false);
       }
     }
     
-    if (authProfileUpdated) {
-        toast({ title: "Firebase Auth Profile Updated!", description: "Username/avatar changes saved." });
-        profileUpdated = true;
+    if (Object.keys(authUpdates).length > 0) {
+      try {
+        await updateProfile(currentUser, authUpdates);
+        if (authUpdates.displayName) toast({ title: "Username Updated!", description: "Your display name has been changed." });
+        if (authUpdates.photoURL) toast({ title: "Avatar Updated!", description: "Your profile picture has been changed." });
+        anyChangesMade = true;
+      } catch (error: any) {
+        console.error("Error updating Firebase Auth profile:", error);
+        toast({ variant: "destructive", title: "Auth Profile Update Failed", description: error.message });
+      }
     }
-
+    
     // 2. Save other details to Firestore
     const profileDetailsToSave = {
+      // Include photoURL from authUpdates if it was set, otherwise keep existing or from Firestore
+      photoURL: authUpdates.photoURL || currentUser.photoURL || (form.getValues().aboutMe === "" ? null : avatarPreview), 
       aboutMe: data.aboutMe || "",
       status: data.status || "",
       hobbies: data.hobbies || "",
@@ -223,25 +222,18 @@ export default function EditProfilePage() {
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
       await setDoc(userDocRef, { profileDetails: profileDetailsToSave }, { merge: true });
-      profileUpdated = true; 
-      // Clear old localStorage items after successful Firestore save
-      Object.keys(profileDetailsToSave).forEach(key => {
-          localStorage.removeItem(`userProfile_${key}_${currentUser.uid}`);
-          localStorage.removeItem(`userInterests_${key}_${currentUser.uid}`);
-      });
-
+      anyChangesMade = true; 
     } catch (error) {
       console.error("Error saving profile details to Firestore:", error);
-      toast({ variant: "destructive", title: "Save Failed", description: "Could not save all profile details." });
+      toast({ variant: "destructive", title: "Profile Details Save Failed", description: "Could not save all profile details to database." });
     }
 
-
-    if (profileUpdated) {
+    if (anyChangesMade) {
         toast({
           title: "Profile Updated!",
           description: "Your changes have been saved successfully.",
         });
-    } else if (!form.formState.isDirty && !authProfileUpdated) {
+    } else if (!form.formState.isDirty && !avatarFile && (!data.displayName || data.displayName === currentUser.displayName)) {
         toast({
             title: "No Changes Detected",
             description: "Your profile details are already up-to-date.",
@@ -249,12 +241,14 @@ export default function EditProfilePage() {
     }
 
     setIsSubmitting(false);
-    if (auth.currentUser) { // Refresh form with potentially new values
+    // Refresh form with potentially new values from auth and Cloudinary
+    if (auth.currentUser) {
       form.reset({
-        ...profileDetailsToSave,
-        displayName: auth.currentUser.displayName || "",
+        ...profileDetailsToSave, // Use the structure we intend to save
+        displayName: auth.currentUser.displayName || "", // ensure displayName is from auth
       });
-      setAvatarPreview(auth.currentUser.photoURL);
+      setAvatarPreview(auth.currentUser.photoURL); // update preview from auth
+      setAvatarFile(null); // Clear the selected file
     }
   };
 
@@ -267,7 +261,7 @@ export default function EditProfilePage() {
  }
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto overflow-x-hidden p-6">
         <div className="flex items-center mb-6">
           <Edit3 className="mr-3 h-8 w-8 text-primary" />
           <h1 className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 4px hsl(var(--primary)/0.6)' }}>
@@ -552,3 +546,4 @@ export default function EditProfilePage() {
   );
 }
     
+

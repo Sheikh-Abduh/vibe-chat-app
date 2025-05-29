@@ -11,7 +11,7 @@ import { auth, db } from '@/lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore'; 
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
+import { ScrollArea } from '@/components/ui/scroll-area'; 
 
 interface UserAppSettings {
   onboardingComplete?: boolean;
@@ -61,17 +61,16 @@ export default function CommunityPreferencePage() {
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
       
-      // Fetch existing appSettings to merge with
       const userDocSnap = await getDoc(userDocRef);
       let existingAppSettings: Partial<UserAppSettings> = {};
       if (userDocSnap.exists() && userDocSnap.data().appSettings) {
         existingAppSettings = userDocSnap.data().appSettings;
       }
       
-      const updatedAppSettings: Partial<UserAppSettings> = {
-        ...existingAppSettings, // Preserve existing settings like theme
+      const updatedAppSettings: UserAppSettings = {
+        ...existingAppSettings,
         communityJoinPreference: preference,
-        onboardingComplete: true, // Mark onboarding as complete here
+        onboardingComplete: true,
       };
 
       await setDoc(userDocRef, { 
@@ -85,15 +84,15 @@ export default function CommunityPreferencePage() {
           : "No problem! You can explore communities at your own pace.",
       });
       
-      // Clear old localStorage flags (if any were used before Firestore persistence)
-      localStorage.removeItem(`onboardingComplete_${currentUser.uid}`); 
-      localStorage.removeItem(`community_join_preference_${currentUser.uid}`);
+      // Clear old localStorage flags if they were used before Firestore persistence
       localStorage.removeItem(`theme_mode_${currentUser.uid}`);
       localStorage.removeItem(`theme_accent_primary_${currentUser.uid}`);
       localStorage.removeItem(`theme_accent_primary_fg_${currentUser.uid}`);
       localStorage.removeItem(`theme_accent_secondary_${currentUser.uid}`);
       localStorage.removeItem(`theme_accent_secondary_fg_${currentUser.uid}`);
       localStorage.removeItem(`ui_scale_${currentUser.uid}`);
+      // Keep onboardingComplete_UID to prevent re-entry if Firestore check is slow
+      // localStorage.removeItem(`onboardingComplete_${currentUser.uid}`); 
 
 
       router.push('/dashboard');
@@ -114,8 +113,8 @@ export default function CommunityPreferencePage() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
-      <Card className="flex flex-col w-full max-w-lg max-h-[90vh] bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
+    <div className="flex h-full items-center justify-center overflow-y-auto overflow-x-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
+      <Card className="flex flex-col w-full max-w-lg bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
         <CardHeader className="text-center pt-6 pb-4 shrink-0">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
             Join the Vibe?
@@ -124,7 +123,7 @@ export default function CommunityPreferencePage() {
             Would you like to automatically join communities that match your interests and passions?
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 p-0">
+        <CardContent className="flex-1 p-0 overflow-hidden min-h-0">
           <ScrollArea className="h-full">
             <div className="px-6 pt-4 pb-2 flex flex-col items-center">
               <Users className="h-20 w-20 text-accent mb-4" />
@@ -163,3 +162,4 @@ export default function CommunityPreferencePage() {
     </div>
   );
 }
+

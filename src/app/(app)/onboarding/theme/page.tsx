@@ -15,7 +15,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { cn } from '@/lib/utils';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import type { UiScale } from '@/components/theme/theme-provider';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
+import { ScrollArea } from '@/components/ui/scroll-area'; 
 
 
 type ThemeMode = 'light' | 'dark';
@@ -186,8 +186,20 @@ export default function ThemeSelectionPage() {
 
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
+      // Fetch existing appSettings to merge with
+      const userDocSnap = await getDoc(userDocRef);
+      let existingAppSettings: Partial<UserAppSettings> = {};
+      if (userDocSnap.exists() && userDocSnap.data().appSettings) {
+        existingAppSettings = userDocSnap.data().appSettings;
+      }
+      
+      const updatedAppSettings: UserAppSettings = {
+        ...existingAppSettings, // Preserve existing settings
+        ...themeSettingsToSave // Overwrite with new theme settings
+      };
+      
       await setDoc(userDocRef, { 
-        appSettings: themeSettingsToSave 
+        appSettings: updatedAppSettings 
       }, { merge: true });
 
 
@@ -234,7 +246,19 @@ export default function ThemeSelectionPage() {
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        await setDoc(userDocRef, { appSettings: defaultSettingsToSave }, { merge: true });
+        // Fetch existing appSettings to merge with
+        const userDocSnap = await getDoc(userDocRef);
+        let existingAppSettings: Partial<UserAppSettings> = {};
+        if (userDocSnap.exists() && userDocSnap.data().appSettings) {
+            existingAppSettings = userDocSnap.data().appSettings;
+        }
+        
+        const updatedAppSettings: UserAppSettings = {
+            ...existingAppSettings, // Preserve existing settings
+            ...defaultSettingsToSave // Overwrite with new default theme settings
+        };
+
+        await setDoc(userDocRef, { appSettings: updatedAppSettings }, { merge: true });
         
         toast({
           title: 'Skipping Theme Customization',
@@ -278,8 +302,8 @@ export default function ThemeSelectionPage() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
-      <Card className="flex flex-col w-full max-w-lg max-h-[90vh] bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
+    <div className="flex h-full items-center justify-center overflow-y-auto overflow-x-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
+      <Card className="flex flex-col w-full max-w-lg bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
         <CardHeader className="text-center pt-6 pb-4 shrink-0">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
             Customize Your vibe
@@ -288,7 +312,7 @@ export default function ThemeSelectionPage() {
             Choose your preferred theme mode and accent color.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 p-0">
+        <CardContent className="flex-1 p-0 overflow-hidden min-h-0">
           <ScrollArea className="h-full">
             <div className="space-y-8 px-6 pt-2 pb-6">
               <div className="space-y-3">
@@ -383,3 +407,4 @@ export default function ThemeSelectionPage() {
     </div>
   );
 }
+

@@ -206,7 +206,7 @@ export default function InterestsPage() {
  }
 
   return (
-    <div className="flex min-h-screen items-start sm:items-center justify-center bg-background p-4 py-8 sm:py-4 selection:bg-primary/30 selection:text-primary-foreground">
+    <div className="flex h-full items-start justify-center overflow-y-auto overflow-x-hidden bg-background p-4 py-8 sm:py-4 selection:bg-primary/30 selection:text-primary-foreground">
       <Card className="flex flex-col w-full max-w-lg bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
         <CardHeader className="text-center pt-6 pb-4 shrink-0">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
@@ -216,7 +216,7 @@ export default function InterestsPage() {
             Tell us a bit more about yourself to personalize your experience. Fields with <span className="text-destructive">*</span> are required.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 p-0 min-h-0"> {/* Added min-h-0 */}
+        <CardContent className="flex-1 p-0 overflow-hidden min-h-0"> 
           <ScrollArea className="h-full">
             <div className="px-6 pt-2 pb-6">
               <Form {...form}>

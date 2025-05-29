@@ -21,9 +21,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Cog, Eye, MessageCircle, ShieldAlert, Trash2, Loader2 } from 'lucide-react';
-import { auth, db } from '@/lib/firebase'; // Ensure db is imported
+import { auth, db } from '@/lib/firebase'; 
 import { onAuthStateChanged, type User, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
+import { doc, getDoc, setDoc } from 'firebase/firestore'; 
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { getFunctions, httpsCallable } from "firebase/functions";
 
@@ -46,7 +46,6 @@ export default function AdvancedSettingsPage() {
   const [dmPreference, setDmPreference] = useState<DmPreference>("anyone");
   const [profileVisibility, setProfileVisibility] = useState<ProfileVisibility>("public");
 
-  // Load settings from Firestore
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -71,10 +70,17 @@ export default function AdvancedSettingsPage() {
     if (!currentUser) return;
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+      let existingAdvancedSettings = {};
+      if (userDocSnap.exists() && userDocSnap.data().advancedSettings) {
+        existingAdvancedSettings = userDocSnap.data().advancedSettings;
+      }
+      const updatedSettings = {
+        ...existingAdvancedSettings,
+        [key]: value
+      };
       await setDoc(userDocRef, {
-        advancedSettings: {
-          [key]: value
-        }
+        advancedSettings: updatedSettings
       }, { merge: true });
       toast({ title: "Setting Updated", description: `${key.replace(/([A-Z])/g, ' $1').trim()} preference saved.` });
     } catch (error) {
@@ -101,12 +107,22 @@ export default function AdvancedSettingsPage() {
     }
     setIsDeleting(true);
     // IMPORTANT: Implement re-authentication for production here!
-    // const reauthSuccess = await reauthenticateUser(); // A function you'd create
-    // if (!reauthSuccess) {
+    // Example:
+    // const password = prompt("Please re-enter your password to confirm account deletion:");
+    // if (!password) {
+    //   toast({ title: "Deletion Cancelled", description: "Password not provided." });
     //   setIsDeleting(false);
-    //   toast({ variant: "destructive", title: "Re-authentication Failed", description: "Please verify your password." });
     //   return;
     // }
+    // try {
+    //   const credential = EmailAuthProvider.credential(currentUser.email!, password);
+    //   await reauthenticateWithCredential(currentUser, credential);
+    // } catch (reauthError) {
+    //   toast({ variant: "destructive", title: "Re-authentication Failed", description: "Incorrect password. Account deletion cancelled." });
+    //   setIsDeleting(false);
+    //   return;
+    // }
+
     try {
       const functionsInstance = getFunctions();
       const deleteUserAccountFn = httpsCallable(functionsInstance, 'deleteUserAccount');
@@ -117,7 +133,6 @@ export default function AdvancedSettingsPage() {
         duration: 5000,
       });
       await signOut(auth);
-      // Consider clearing local data as well, though Firestore persistence aims to make this less critical
       router.push('/login');
     } catch (error: any) {
       console.error("Delete account error:", error);
@@ -126,6 +141,7 @@ export default function AdvancedSettingsPage() {
         title: "Account Deletion Failed",
         description: error.message || "Could not delete your account. Please try again later.",
       });
+    } finally {
       setIsDeleting(false);
     }
   };
@@ -135,7 +151,7 @@ export default function AdvancedSettingsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto overflow-x-hidden p-6">
       <div className="flex items-center my-6">
         <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
           <ArrowLeft className="h-5 w-5 text-accent" />
@@ -217,7 +233,7 @@ export default function AdvancedSettingsPage() {
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This action cannot be undone. This will permanently delete your account and associated data.
-                    For security, you might be asked to re-enter your password.
+                    {/* For security, you might be asked to re-enter your password. */}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -242,3 +258,4 @@ export default function AdvancedSettingsPage() {
     </div>
   );
 }
+
