@@ -12,7 +12,6 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 
-// Define a type for the app settings to be stored in Firestore
 interface UserAppSettings {
   onboardingComplete?: boolean;
   communityJoinPreference?: 'yes' | 'no';
@@ -61,7 +60,6 @@ export default function CommunityPreferencePage() {
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
       
-      // Fetch existing appSettings to merge with, or start with an empty object
       const userDocSnap = await getDoc(userDocRef);
       let existingAppSettings: Partial<UserAppSettings> = {};
       if (userDocSnap.exists() && userDocSnap.data().appSettings) {
@@ -69,7 +67,7 @@ export default function CommunityPreferencePage() {
       }
       
       const updatedAppSettings: UserAppSettings = {
-        ...existingAppSettings, // Preserve existing settings (like theme)
+        ...existingAppSettings, 
         communityJoinPreference: preference,
         onboardingComplete: true,
       };
@@ -85,12 +83,9 @@ export default function CommunityPreferencePage() {
           : "No problem! You can explore communities at your own pace.",
       });
       
-      // Clear old localStorage flags now that it's in Firestore
+      // Clear old localStorage flags that are now in Firestore
       localStorage.removeItem(`onboardingComplete_${currentUser.uid}`); 
       localStorage.removeItem(`community_join_preference_${currentUser.uid}`);
-      // Also clear theme related localStorage if they were set during onboarding theme step
-      // though they should have been migrated to Firestore by ThemeProvider or theme settings page.
-      // For safety, can clear them here if they followed the old pattern.
       localStorage.removeItem(`theme_mode_${currentUser.uid}`);
       localStorage.removeItem(`theme_accent_primary_${currentUser.uid}`);
       localStorage.removeItem(`theme_accent_primary_fg_${currentUser.uid}`);
@@ -103,6 +98,7 @@ export default function CommunityPreferencePage() {
     } catch (error) {
       console.error("Error saving onboarding preference to Firestore:", error);
       toast({ variant: "destructive", title: "Error", description: "Could not save your preference. Please try again." });
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -116,7 +112,7 @@ export default function CommunityPreferencePage() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
+    <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
       <Card className="w-full max-w-lg bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
         <CardHeader className="text-center pt-6 pb-4">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>

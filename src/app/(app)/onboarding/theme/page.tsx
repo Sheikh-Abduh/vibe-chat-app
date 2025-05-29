@@ -22,7 +22,7 @@ type ThemeMode = 'light' | 'dark';
 interface AccentColorOption {
   name: string;
   value: string; 
-  primaryForeground: string; // Renamed from 'foreground' to avoid conflict with theme foreground
+  primaryForeground: string; 
   className: string; 
 }
 
@@ -56,10 +56,20 @@ const defaultLightVars = {
 
 const defaultAppThemeForOnboarding = {
     mode: 'dark' as ThemeMode,
-    primary: accentOptions[0], // Neon Purple
-    secondary: accentOptions[4], // Emerald Green as a default secondary for consistency
+    primary: accentOptions[0], 
+    secondary: accentOptions[4], 
     scale: 'default' as UiScale,
 };
+
+interface UserAppSettings {
+    themeMode?: ThemeMode;
+    themePrimaryAccent?: string;
+    themePrimaryAccentFg?: string;
+    themeSecondaryAccent?: string;
+    themeSecondaryAccentFg?: string;
+    uiScale?: UiScale;
+    onboardingComplete?: boolean; // Add this
+}
 
 
 export default function ThemeSelectionPage() {
@@ -81,13 +91,13 @@ export default function ThemeSelectionPage() {
     if (typeof window !== 'undefined') {
         const rootStyle = getComputedStyle(document.documentElement);
         const bg = rootStyle.getPropertyValue('--background').trim();
-        let currentLightness = 10; // Default to dark if parsing fails
+        let currentLightness = 10; 
         if (bg.includes(' ') && bg.split(' ').length >=3) {
           const lightnessPart = bg.split(' ')[2];
           if (lightnessPart && lightnessPart.includes('%')) {
             currentLightness = parseInt(lightnessPart.replace('%',''));
           }
-        } else if (bg === '0 0% 100%') { // Specific check for pure white
+        } else if (bg === '0 0% 100%') { 
           currentLightness = 100;
         }
         
@@ -117,7 +127,10 @@ export default function ThemeSelectionPage() {
       root.style.setProperty('--primary', accent.value);
       root.style.setProperty('--primary-foreground', accent.primaryForeground);
       root.style.setProperty('--ring', accent.value); 
-      // Note: --accent (secondary) is not changed here during onboarding; it uses a default
+      
+      // Keep secondary accent as default during onboarding theme selection for simplicity
+      root.style.setProperty('--accent', defaultAppThemeForOnboarding.secondary.value);
+      root.style.setProperty('--accent-foreground', defaultAppThemeForOnboarding.secondary.primaryForeground);
     }
   }, []);
 
@@ -136,7 +149,6 @@ export default function ThemeSelectionPage() {
         if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
           router.replace('/dashboard');
         } else {
-          // Only set isCheckingAuth to false if initial theme values have been determined
           if (initialMode && initialAccentValue) { 
             setIsCheckingAuth(false);
           }
@@ -146,9 +158,8 @@ export default function ThemeSelectionPage() {
       }
     });
     return () => unsubscribe();
-  }, [router, initialMode, initialAccentValue]); // Add initialMode & initialAccentValue to deps
+  }, [router, initialMode, initialAccentValue]); 
 
-  // Separate useEffect to handle setting isCheckingAuth to false once initial theme values are ready
   useEffect(() => {
     if (currentUser && initialMode && initialAccentValue) {
         setIsCheckingAuth(false);
@@ -164,18 +175,17 @@ export default function ThemeSelectionPage() {
     }
     setIsSubmitting(true);
 
-    const themeSettingsToSave = {
+    const themeSettingsToSave: Partial<UserAppSettings> = {
       themeMode: selectedMode,
       themePrimaryAccent: selectedAccent.value,
       themePrimaryAccentFg: selectedAccent.primaryForeground,
-      themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value,
+      themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value, 
       themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.primaryForeground,
       uiScale: defaultAppThemeForOnboarding.scale,
     };
 
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
-      // Save to Firestore under appSettings
       await setDoc(userDocRef, { 
         appSettings: themeSettingsToSave 
       }, { merge: true });
@@ -190,6 +200,7 @@ export default function ThemeSelectionPage() {
     } catch (error) {
       console.error("Error saving theme to Firestore:", error);
       toast({ variant: "destructive", title: "Save Failed", description: "Could not save theme preferences." });
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -212,7 +223,7 @@ export default function ThemeSelectionPage() {
          applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
     }
     
-    const defaultSettingsToSave = {
+    const defaultSettingsToSave: Partial<UserAppSettings> = {
         themeMode: defaultAppThemeForOnboarding.mode,
         themePrimaryAccent: defaultAppThemeForOnboarding.primary.value,
         themePrimaryAccentFg: defaultAppThemeForOnboarding.primary.primaryForeground,
@@ -233,7 +244,8 @@ export default function ThemeSelectionPage() {
     } catch (error) {
         console.error("Error saving default theme to Firestore:", error);
         toast({ variant: "destructive", title: "Skip Failed", description: "Could not save default theme preferences." });
-        setIsSubmitting(false);
+    } finally {
+      setIsSubmitting(false);
     }
   };
   
@@ -265,11 +277,11 @@ export default function ThemeSelectionPage() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
+    <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
       <Card className="w-full max-w-lg bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
         <CardHeader className="text-center pt-6 pb-4">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
-            Customize Your Vibe
+            Customize Your vibe
           </CardTitle>
           <CardDescription className="text-muted-foreground pt-1">
             Choose your preferred theme mode and accent color.

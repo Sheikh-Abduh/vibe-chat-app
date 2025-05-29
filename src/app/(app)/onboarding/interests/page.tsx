@@ -27,8 +27,9 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { BookOpen, Gift, Hash, Heart, UserCircle, Palette, Film, Music, Plane, Code, Loader2, PersonStanding } from 'lucide-react';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase'; // Firestore import
 import { onAuthStateChanged, type User } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 
 const interestsSchema = z.object({
@@ -77,11 +78,12 @@ export default function InterestsPage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
-        if (onboardingComplete === 'true') {
+        setCurrentUser(user);
+        const userDocRef = doc(db, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
           router.replace('/dashboard');
         } else {
           setIsCheckingAuth(false);
@@ -104,31 +106,44 @@ export default function InterestsPage() {
     },
   });
 
-  const onSubmit = (data: InterestsFormValues) => {
+  const onSubmit = async (data: InterestsFormValues) => {
     if (!currentUser) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in." });
       router.push('/login');
       return;
     }
     setIsSubmitting(true);
-    console.log("Interests data for user:", currentUser.uid, data);
+    
+    const profileDetailsToSave = {
+        hobbies: data.hobbies,
+        age: data.age,
+        gender: data.gender,
+        tags: data.tags,
+        passion: data.passion,
+    };
 
-    // Save interests to localStorage
-    localStorage.setItem(`userInterests_hobbies_${currentUser.uid}`, data.hobbies);
-    localStorage.setItem(`userInterests_age_${currentUser.uid}`, data.age);
-    localStorage.setItem(`userInterests_gender_${currentUser.uid}`, data.gender);
-    localStorage.setItem(`userInterests_tags_${currentUser.uid}`, data.tags);
-    localStorage.setItem(`userInterests_passion_${currentUser.uid}`, data.passion);
-    
-    toast({
-      title: "Interests Saved!",
-      description: "Let's customize your app's theme.",
-    });
-    
-    setTimeout(() => {
-      router.push('/onboarding/theme'); 
-      setIsSubmitting(false);
-    }, 500);
+    try {
+        const userDocRef = doc(db, "users", currentUser.uid);
+        await setDoc(userDocRef, { profileDetails: profileDetailsToSave }, { merge: true });
+
+        // Clear old localStorage items for these fields
+        Object.keys(profileDetailsToSave).forEach(key => {
+            localStorage.removeItem(`userInterests_${key}_${currentUser.uid}`);
+            localStorage.removeItem(`userProfile_${key}_${currentUser.uid}`); // In case old profile keys existed
+        });
+        
+        toast({
+          title: "Interests Saved!",
+          description: "Let's customize your app's theme.",
+        });
+        
+        router.push('/onboarding/theme'); 
+    } catch (error) {
+        console.error("Error saving interests to Firestore:", error);
+        toast({ variant: "destructive", title: "Save Failed", description: "Could not save interests. Please try again." });
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const handleSkip = () => {
@@ -137,13 +152,8 @@ export default function InterestsPage() {
         router.push('/login');
         return;
     }
-    // Clear any previously stored interests if skipping
-    localStorage.removeItem(`userInterests_hobbies_${currentUser.uid}`);
-    localStorage.removeItem(`userInterests_age_${currentUser.uid}`);
-    localStorage.removeItem(`userInterests_gender_${currentUser.uid}`);
-    localStorage.removeItem(`userInterests_tags_${currentUser.uid}`);
-    localStorage.removeItem(`userInterests_passion_${currentUser.uid}`);
-
+    // No data to clear from Firestore if skipping, as nothing was saved yet.
+    // Old localStorage clearing is handled in onSubmit if user *did* save.
     toast({
       title: 'Skipping Interests',
       description: 'Proceeding to theme selection.',
@@ -161,19 +171,19 @@ export default function InterestsPage() {
 
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
+    <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
       <Card className="w-full max-w-lg bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
         <CardHeader className="text-center pt-6 pb-4">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
             Share Your vibe
           </CardTitle>
           <CardDescription className="text-muted-foreground pt-1">
-            Tell us a bit more about yourself to personalize your experience. Age and Gender are required.
+            Tell us a bit more about yourself to personalize your experience. Fields with <span className="text-destructive">*</span> are required.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6 pt-2">
+        <CardContent className="space-y-4 pt-2"> {/* Reduced space-y from 6 to 4 */}
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4"> {/* Reduced space-y from 6 to 4 */}
               <FormField
                 control={form.control}
                 name="age"
@@ -328,4 +338,3 @@ export default function InterestsPage() {
     </div>
   );
 }
-    

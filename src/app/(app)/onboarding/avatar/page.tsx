@@ -9,16 +9,15 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { UploadCloud, UserCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { updateProfile, onAuthStateChanged, type User } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 
 // Cloudinary configuration (API Key is safe for client-side with unsigned uploads)
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
 const CLOUDINARY_API_KEY = '775545995624823';
-// IMPORTANT: You MUST create an unsigned upload preset in your Cloudinary settings
-// and replace the placeholder below with its name.
-const CLOUDINARY_UPLOAD_PRESET = 'vibe_app'; // e.g., 'firebase_studio_unsigned_upload'
+const CLOUDINARY_UPLOAD_PRESET = 'vibe_app'; 
 
 export default function AvatarUploadPage() {
   const router = useRouter();
@@ -31,11 +30,13 @@ export default function AvatarUploadPage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
-        const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
-        if (onboardingComplete === 'true') {
+        // Check Firestore for onboarding completion
+        const userDocRef = doc(db, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
           router.replace('/dashboard');
         } else {
           setIsCheckingAuth(false);
@@ -83,8 +84,7 @@ export default function AvatarUploadPage() {
   const handleNext = async () => {
     let userForOperation = auth.currentUser;
     if (!userForOperation) {
-        // Attempt to refresh user state if null, might happen if token expired mid-session
-        await auth.currentUser?.reload();
+        await auth.currentUser?.reload(); // Attempt to refresh user state
         userForOperation = auth.currentUser;
     }
     
@@ -107,21 +107,11 @@ export default function AvatarUploadPage() {
       return;
     }
 
-    if (CLOUDINARY_UPLOAD_PRESET === 'YOUR_UNSIGNED_UPLOAD_PRESET_NAME') {
-      toast({
-        variant: 'destructive',
-        title: 'Configuration Needed',
-        description: 'Please update CLOUDINARY_UPLOAD_PRESET in the code with your Cloudinary unsigned upload preset name.',
-        duration: 9000,
-      });
-      return;
-    }
-
     setIsUploading(true);
     const formData = new FormData();
     formData.append('file', avatarFile);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    formData.append('api_key', CLOUDINARY_API_KEY); // API key is fine for unsigned uploads
+    formData.append('api_key', CLOUDINARY_API_KEY); 
 
     try {
       const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
@@ -138,7 +128,7 @@ export default function AvatarUploadPage() {
       const newAvatarUrlFromCloudinary = data.secure_url;
 
       if (newAvatarUrlFromCloudinary) {
-        let userForProfileUpdate = auth.currentUser; // Re-check current user
+        let userForProfileUpdate = auth.currentUser; 
          if (!userForProfileUpdate) {
             await auth.currentUser?.reload();
             userForProfileUpdate = auth.currentUser;
@@ -189,13 +179,11 @@ export default function AvatarUploadPage() {
   }
   
   if (!currentUser) {
-    // This case should ideally be handled by the onAuthStateChanged redirect,
-    // but as a fallback, show splash or redirect.
-    return <SplashScreenDisplay />;
+    return <SplashScreenDisplay />; 
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
+    <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
       <Card className="w-full max-w-md bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
         <CardHeader className="text-center pt-6 pb-4">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
