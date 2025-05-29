@@ -130,18 +130,18 @@ type ChatMessage = {
   fileName?: string;
   fileType?: string;
   gifUrl?: string;
-  gifId?: string;
-  gifTinyUrl?: string;
-  gifContentDescription?: string;
+  gifId?: string; // For favoriting
+  gifTinyUrl?: string; // For favoriting
+  gifContentDescription?: string; // For favoriting & alt text
   isPinned?: boolean;
-  reactions?: Record<string, string[]>;
+  reactions?: Record<string, string[]>; // emoji: [userId1, userId2]
   replyToMessageId?: string;
   replyToSenderName?: string;
   replyToSenderId?: string;
   replyToTextSnippet?: string;
   isForwarded?: boolean;
   forwardedFromSenderName?: string;
-  mentionedUserIds?: string[];
+  mentionedUserIds?: string[]; // For backend notification processing (currently stores @username strings)
 };
 
 /**
@@ -153,85 +153,51 @@ type ChatMessage = {
  * 1. Backend Setup (Firebase Firestore):
  *    - Database Schema:
  *      - `/communities/{communityId}/channels/{channelId}/messages/{messageId}`
- *      - `/direct_messages/{conversationId}/messages/{messageId}` (conversationId is sorted UIDs: uid1_uid2)
- *        Each message document typically includes:
- *          - `senderId`: string (Firebase User ID)
- *          - `senderName`: string
- *          - `senderAvatarUrl`: string | null (optional)
- *          - `timestamp`: Firebase Server Timestamp
- *          - `type`: 'text' | 'image' | 'file' | 'gif' | 'voice_message'
- *          - `text`: string (for text messages)
- *          - `fileUrl`: string (URL for image, file, voice recording - e.g., from Cloudinary)
- *          - `fileName`: string (for file uploads)
- *          - `fileType`: string (MIME type)
- *          - `gifUrl`, `gifId`, `gifTinyUrl`, `gifContentDescription`: strings (for GIFs from Tenor)
- *          - `isPinned`: boolean (optional)
- *          - `reactions`: object (e.g., {"👍": ["uid1", "uid2"]})
- *          - `replyToMessageId`, `replyToSenderName`, `replyToSenderId`, `replyToTextSnippet`: strings (for replies)
- *          - `isForwarded`, `forwardedFromSenderName`: (for forwarded messages)
- *          - `mentionedUserIds`: string[] (array of UIDs for @mentions - for backend notification processing)
- *    - Firestore Security Rules: Crucial for access control. (See firestore.rules.md for detailed examples).
- *      - Restrict message reads/writes to authenticated users who are members of the community/channel or participants in a DM.
- *      - Restrict delete/pin to message senders or moderators.
+ *        Each message document includes fields defined in the `ChatMessage` type.
+ *    - Firestore Security Rules: Crucial for access control. (See firestore.rules.md).
  *
  * 2. Real-time Message Listening (Frontend - Firebase SDK):
- *    - `onSnapshot` listener is used on the relevant messages subcollection, ordered by `timestamp`.
- *    - Updates the local `messages` state when new messages arrive or existing ones change.
+ *    - `onSnapshot` listener on `communities/.../messages` collection, ordered by `timestamp`.
+ *    - Updates local `messages` state.
  *
  * 3. Sending Messages (Frontend - Firestore SDK):
- *    - `addDoc` creates new message documents in Firestore.
- *    - `serverTimestamp()` is used for consistent message ordering.
- *    - Reply context (`replyTo...` fields) is included if applicable.
- *    - Mentioned user UIDs are stored in `mentionedUserIds` (requires frontend resolution of @username to UID).
+ *    - `addDoc` creates new message documents. Uses `serverTimestamp()`.
+ *    - Includes reply context (`replyTo...` fields) and basic mention strings.
  *
  * 4. File/Image Upload (Frontend - Cloudinary):
- *    - Client-side validation (size, type).
- *    - Uploads directly to Cloudinary using an unsigned preset (API key is safe for this).
- *    - On success, Cloudinary returns a `secure_url`.
- *    - A message of type 'image' or 'file' is created in Firestore with the `fileUrl` and `fileName`.
+ *    - Uploads to Cloudinary (unsigned preset).
+ *    - Message of type 'image' or 'file' created in Firestore with Cloudinary `secure_url`.
  *
  * 5. GIF Send (Frontend - Tenor API):
- *    - **SECURITY WARNING: DO NOT EXPOSE YOUR TENOR API KEY IN CLIENT-SIDE CODE FOR PRODUCTION.**
- *      The current implementation uses the key directly for prototyping. For production, proxy Tenor API requests
- *      through a Firebase Cloud Function.
- *    - Fetches GIFs (trending/search) from Tenor.
- *    - A message of type 'gif' is created in Firestore with GIF URLs and metadata.
- *    - GIF favoriting uses `localStorage` (client-side only).
+ *    - **SECURITY WARNING: TENOR API KEY IS CLIENT-SIDE (PROTOTYPE ONLY).** Proxy for production.
+ *    - Fetches GIFs from Tenor. Message type 'gif' with URLs/metadata.
+ *    - GIF favoriting uses `localStorage`.
  *
  * 6. Emoji Send (Frontend - `emoji-picker-react`):
- *    - Uses `EmojiPicker` component. Selected emoji is appended to the text input.
+ *    - `EmojiPicker` component for selecting and appending emojis to text input or for reactions.
  *
  * 7. Voice Message Send (Frontend - MediaRecorder & Cloudinary Upload):
- *    - `navigator.mediaDevices.getUserMedia` requests microphone access.
- *    - `MediaRecorder` captures audio (e.g., as a WebM blob).
- *    - The audio blob is uploaded to Cloudinary (as a 'video' resource type often handles audio well).
- *    - A message of type 'voice_message' is created in Firestore with the Cloudinary `fileUrl` and `fileType`.
- *    - Rendered using HTML5 `<audio>` player.
+ *    - Captures audio, uploads blob to Cloudinary (as 'video' resource type).
+ *    - Message type 'voice_message' with Cloudinary `fileUrl`.
  *
  * 8. Message Features (Frontend - Firestore updates):
- *    - Delete: Marks message for deletion or actually deletes the document (requires correct Firestore rules).
- *    - Pin: Updates the `isPinned` boolean field on the message document.
- *    - Reactions: Updates the `reactions` map on the message document (e.g., using Firestore transactions or arrayUnion/Remove).
+ *    - Delete: Deletes message doc (sender only).
+ *    - Pin: Updates `isPinned` boolean on message doc.
+ *    - Reactions: Updates `reactions` map on message doc using Firestore transaction.
  *
  * 9. UI/UX Enhancements:
- *    - Loading states for uploads, GIF fetching.
- *    - Error handling with toasts.
- *    - Timestamp grouping (showing full header only for new senders or after a time gap).
- *    - Pinned messages toggle view.
- *    - Reply context displayed above replied messages.
- *    - Forwarded message indicator.
- *    - Basic @mention styling and rudimentary suggestions.
- *    - Client-side filtering for message search.
+ *    - Loading states, error toasts, timestamp grouping, pinned messages toggle, reply context, etc.
+ *    - Client-side search (filters currently loaded messages).
+ *    - Rudimentary @mention suggestions (from current community members).
+ *    - Basic Markdown-style text formatting.
  *
- * 10. Voice & Video Channels (Advanced - Requires third-party service like Agora/Twilio):
- *     - **Agora Integration (Structural Placeholders):**
- *       - SDK: `agora-rtc-sdk-ng` is added to `package.json`.
- *       - Client Initialization: Placeholder for creating Agora client (`AgoraRTC.createClient`). Uses AGORA_APP_ID.
- *       - Token Generation: Commented out placeholder for fetching a token from YOUR backend. Production Agora apps require token authentication.
- *       - Channel Join/Leave: Placeholder logic for joining and leaving channels.
- *       - Stream Publishing/Subscription: Placeholder comments for creating local tracks (audio/video) and handling remote user streams.
- *       - UI: Placeholder `<video>` elements for local and remote video display.
- *     - Firebase Cloud Functions might be used for generating access tokens for third-party WebRTC services.
+ * 10. Voice & Video Channels (Agora Integration):
+ *     - SDK: `agora-rtc-sdk-ng`. AGORA_APP_ID is set.
+ *     - Token Generation: **NOT IMPLEMENTED (USING APP ID ONLY FOR TESTING - INSECURE FOR PRODUCTION)**.
+ *       A backend token server is required for production Agora apps.
+ *     - Channel Join/Leave: Logic for joining/leaving Agora channels.
+ *     - Stream Publishing/Subscription: Handles local/remote audio/video tracks.
+ *     - UI: Basic `<video>` elements for displaying streams.
  * =============================================================================
  */
 
@@ -243,7 +209,7 @@ interface TenorGif extends TenorGifType {}
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
 const TENOR_API_KEY = "LIVDSRZULELA"; // Standard Tenor SDK key for testing - limited requests
-const TENOR_CLIENT_KEY = "vibe_app_prototype";
+const TENOR_CLIENT_KEY = "vibe_app_prototype"; // Replace with your actual client key if you have one
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
 const CLOUDINARY_API_KEY = '775545995624823';
@@ -258,18 +224,17 @@ const ALLOWED_FILE_TYPES = [
 ];
 
 // Agora Configuration
-const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48";
+const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48"; // Your Agora App ID
 
-
-const formatChatMessage = (text: string): string => {
+const formatChatMessage = (text?: string): string => {
   if (!text) return '';
   let formattedText = text;
   // Escape HTML to prevent XSS before applying markdown
   formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   // @Mentions: @username (basic styling) - Apply this first
-  formattedText = formattedText.replace(/@([\w.-]+)/g, '<span class="bg-accent/20 text-accent font-medium px-1 rounded">@$1</span>');
-
+  formattedText = formattedText.replace(/@([\w.-]+)/g, '<span class="bg-accent/20 text-accent font-medium px-0.5 rounded-sm">@$1</span>');
+  
   // Bold: **text** or __text__
   formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
   // Italic: *text* or _text_
@@ -347,10 +312,14 @@ export default function CommunitiesPage() {
 
 
   useEffect(() => {
-    if (currentUser) {
-        const modeFromStorage = localStorage.getItem(`theme_mode_${currentUser.uid}`) as 'light' | 'dark' | null;
-        const systemPrefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        setCurrentThemeMode(modeFromStorage || (systemPrefersDark ? 'dark' : 'light'));
+    if (currentUser && typeof window !== 'undefined') {
+        const modeFromStorage = localStorage.getItem(`appSettings_${currentUser.uid}`);
+        if (modeFromStorage) {
+            const settings = JSON.parse(modeFromStorage);
+            setCurrentThemeMode(settings.themeMode || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+        } else {
+             setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        }
     }
   }, [currentUser]);
 
@@ -389,7 +358,7 @@ export default function CommunitiesPage() {
     if (!key) return;
 
     let updatedFavorites;
-    if (favoritedGifs.find(fav => fav.id === gif.id)) {
+    if (favoritedGifs.some(fav => fav.id === gif.id)) { // Use .some for checking existence
       updatedFavorites = favoritedGifs.filter(fav => fav.id !== gif.id);
       toast({ title: "GIF Unfavorited", description: "Removed from your favorites." });
     } else {
@@ -493,7 +462,7 @@ export default function CommunitiesPage() {
     setIsChatSearchOpen(false);
     setChatSearchTerm("");
     if (channel.type === 'text' && chatInputRef.current) {
-        chatInputRef.current.focus();
+        setTimeout(() => chatInputRef.current?.focus(), 0);
     }
   };
 
@@ -516,15 +485,14 @@ export default function CommunitiesPage() {
       mentionedUserDisplayNames.push(match[1]);
     }
     // In a real app, you'd resolve these display names to UIDs.
-    // For this prototype, we'll store the display names.
-    // This would require a backend function or more complex client-side logic for UID lookup.
-    const resolvedMentionedUserIds = mentionedUserDisplayNames; // Placeholder
+    // For this prototype, we'll store the display names which the backend function would need to resolve.
+    const resolvedMentionedUserIds = mentionedUserDisplayNames; 
 
     const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || undefined,
-      timestamp: serverTimestamp(),
+      timestamp: serverTimestamp() as Timestamp,
       type: 'text' as const,
       text: messageText,
       reactions: {},
@@ -575,11 +543,11 @@ export default function CommunitiesPage() {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || undefined,
-        timestamp: serverTimestamp(),
+        timestamp: serverTimestamp() as Timestamp,
         type: messageType,
         fileUrl: fileUrl,
         fileName: fileName,
-        fileType: fileType, // Added this field
+        fileType: fileType,
         reactions: {},
         isPinned: false,
     };
@@ -689,12 +657,12 @@ export default function CommunitiesPage() {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || undefined,
-      timestamp: serverTimestamp(),
+      timestamp: serverTimestamp() as Timestamp,
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
-      gifId: gif.id, // Save GIF ID
-      gifTinyUrl: gif.media_formats.tinygif.url, // Save tiny GIF URL
-      gifContentDescription: gif.content_description, // Save content description
+      gifId: gif.id, 
+      gifTinyUrl: gif.media_formats.tinygif.url, 
+      gifContentDescription: gif.content_description, 
       reactions: {},
       isPinned: false,
     };
@@ -851,7 +819,7 @@ export default function CommunitiesPage() {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || undefined,
-        timestamp: serverTimestamp(),
+        timestamp: serverTimestamp() as Timestamp,
         type: forwardingMessage.type,
         isForwarded: true,
         forwardedFromSenderName: forwardingMessage.senderName,
@@ -1362,7 +1330,7 @@ export default function CommunitiesPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className={cn("text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9", isRightBarOpen && "bg-accent/20 text-accent")}
+                          className={cn("text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9 md:hidden", isRightBarOpen && "bg-accent/20 text-accent")}
                           onClick={() => setIsRightBarOpen(!isRightBarOpen)}
                           title={isRightBarOpen ? "Hide Server Info" : "Show Server Info"}
                         >
@@ -1403,15 +1371,15 @@ export default function CommunitiesPage() {
                           isCurrentUserMsg && "flex-row-reverse space-x-reverse"
                         )}
                       >
-                        {!isCurrentUserMsg && showHeader ? (
+                        {!isCurrentUserMsg && showHeader && (
                           <Avatar className="mt-1 h-8 w-8 shrink-0">
                             <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
                             <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                           </Avatar>
-                        ) : (
-                          !isCurrentUserMsg && !showHeader && null
                         )}
-                        <div className={cn("flex-1 min-w-0", isCurrentUserMsg ? "text-right pr-10 sm:pr-12" : "pl-0", showHeader ? "" : (isCurrentUserMsg ? "" : "pl-0"))}>
+                         {!isCurrentUserMsg && !showHeader && ( <div className="w-8 shrink-0"></div> )}
+
+                        <div className={cn("flex-1 min-w-0", isCurrentUserMsg ? "text-right pr-10 sm:pr-12" : "pl-0", showHeader ? "" : (isCurrentUserMsg ? "" : ""))}>
                           {showHeader && (
                             <div className={cn("flex items-baseline space-x-1.5", isCurrentUserMsg && "flex-row-reverse")}>
                               <p className="font-semibold text-sm text-foreground">
@@ -1530,14 +1498,13 @@ export default function CommunitiesPage() {
                               </div>
                           )}
                         </div>
-                        {isCurrentUserMsg && showHeader ? (
+                        {isCurrentUserMsg && showHeader && (
                            <Avatar className="mt-1 h-8 w-8 shrink-0">
                             <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
                             <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                           </Avatar>
-                        ) : (
-                           isCurrentUserMsg && !showHeader && null
                         )}
+                         {isCurrentUserMsg && !showHeader && ( <div className="w-8 shrink-0"></div> )}
                         <div className={cn("absolute top-1 right-1 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50 z-10")}>
                           <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward"
                               onClick={() => {
@@ -1558,9 +1525,8 @@ export default function CommunitiesPage() {
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0">
                                 <EmojiPicker
-                                    data={data}
-                                    onEmojiSelect={(emojiData: EmojiClickData) => {
-                                        handleToggleReaction(msg.id, emojiData.native);
+                                    onEmojiClick={(emojiData: EmojiClickData) => {
+                                        handleToggleReaction(msg.id, emojiData.emoji);
                                         setReactionPickerOpenForMessageId(null);
                                     }}
                                     theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
@@ -1589,6 +1555,7 @@ export default function CommunitiesPage() {
               <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4 bg-card/30">
                 <selectedChannel.icon className="h-12 w-12 sm:h-16 sm:w-16 mb-4 text-primary/70"/>
                 <p className="text-base sm:text-lg font-medium">This is a {selectedChannel.type} channel.</p>
+                <p className="text-xs sm:text-sm mt-1">Voice and video features use Agora SDK.</p>
 
                 {agoraClientRef.current ? (
                      <div className="mt-4 w-full max-w-md sm:max-w-2xl flex flex-col items-center">
@@ -1619,16 +1586,15 @@ export default function CommunitiesPage() {
                     </div>
                 ) : (
                     <>
-                        <p className="text-xs sm:text-sm mt-1">Voice and video features use Agora SDK.</p>
                         <Button
                             onClick={handleJoinVoiceChannel}
-                            disabled={isJoiningVoice || !AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER"}
+                            disabled={isJoiningVoice || !AGORA_APP_ID}
                             className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
                         >
                             {isJoiningVoice ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <selectedChannel.icon className="mr-2 h-4 w-4"/>}
                             {isJoiningVoice ? "Connecting..." : `Join ${selectedChannel.type.charAt(0).toUpperCase() + selectedChannel.type.slice(1)} Channel`}
                         </Button>
-                         {(!AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") && (
+                         {!AGORA_APP_ID && (
                              <p className="text-xs text-destructive mt-2">Agora App ID not configured. Voice/Video chat is disabled.</p>
                          )}
                     </>
@@ -1686,7 +1652,7 @@ export default function CommunitiesPage() {
                                         </button>
                                 ))
                             ) : (
-                                <p className="p-2 text-xs text-muted-foreground">No members match. Type to search.</p>
+                                <p className="p-2 text-xs text-muted-foreground">No members match. Search not available yet.</p>
                             )}
                         </PopoverContent>
                     </Popover>
@@ -1718,7 +1684,7 @@ export default function CommunitiesPage() {
                     <Input
                         ref={chatInputRef}
                         type="text"
-                        placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (@mention, **bold**)`}
+                        placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (@mention, **bold**, etc.)`}
                         className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-8 sm:h-9 px-2"
                         value={newMessage}
                         onChange={handleMentionInputChange}
@@ -1752,9 +1718,8 @@ export default function CommunitiesPage() {
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
                         <EmojiPicker
-                            data={data}
-                            onEmojiSelect={(emojiData: EmojiClickData) => {
-                                setNewMessage(prev => prev + emojiData.native);
+                            onEmojiClick={(emojiData: EmojiClickData) => {
+                                setNewMessage(prev => prev + emojiData.emoji);
                                 setChatEmojiPickerOpen(false);
                                 chatInputRef.current?.focus();
                             }}
@@ -1905,7 +1870,7 @@ export default function CommunitiesPage() {
 
       {/* Column 4: Right-Hand Info Bar */}
       {isRightBarOpen && selectedCommunity && (
-        <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col overflow-hidden hidden md:flex"> {/* Hidden on small screens, flex on md+ */}
+        <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col overflow-hidden hidden md:flex"> 
             <div className="relative h-24 sm:h-32 w-full shrink-0">
                <Image
                 src={selectedCommunity.bannerUrl}
@@ -2018,7 +1983,6 @@ export default function CommunitiesPage() {
                     placeholder="Search channels or users (coming soon)..."
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    disabled
                 />
             </div>
             <DialogFooter>
