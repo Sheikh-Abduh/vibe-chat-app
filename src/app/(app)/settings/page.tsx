@@ -3,7 +3,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Settings, Palette, UserCircle, Bell, Link2, Cog, ChevronRight, FileText } from "lucide-react"; // Added FileText
+import { Settings, Palette, UserCircle, Bell, Link2, Cog, ChevronRight, FileText } from "lucide-react";
 import Link from "next/link";
 
 interface SettingsCategory {
@@ -53,7 +53,7 @@ const settingsCategories: SettingsCategory[] = [
     id: "formatting-tips",
     title: "Text Formatting",
     description: "Learn how to format your messages with bold, italics, and more.",
-    icon: FileText, // Using FileText icon
+    icon: FileText,
     href: "/settings/formatting-tips",
     actionText: "View Formatting Tips",
   },
@@ -69,7 +69,7 @@ const settingsCategories: SettingsCategory[] = [
 
 export default function SettingsPage() {
   return (
-    <div className="p-6 h-full overflow-y-auto"> 
+    <div className="h-full overflow-y-auto p-6"> 
       <section>
         <div className="flex items-center mb-8">
           <Settings className="mr-3 h-9 w-9 text-primary" />

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,14 +21,20 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Cog, Eye, MessageCircle, ShieldAlert, Trash2, Loader2 } from 'lucide-react';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase'; // Ensure db is imported
 import { onAuthStateChanged, type User, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 
 type DmPreference = "anyone" | "friends" | "none";
 type ProfileVisibility = "public" | "friends" | "private";
+
+interface UserAdvancedSettings {
+  dmPreference?: DmPreference;
+  profileVisibility?: ProfileVisibility;
+}
 
 export default function AdvancedSettingsPage() {
   const router = useRouter();
@@ -40,52 +46,52 @@ export default function AdvancedSettingsPage() {
   const [dmPreference, setDmPreference] = useState<DmPreference>("anyone");
   const [profileVisibility, setProfileVisibility] = useState<ProfileVisibility>("public");
 
-  const getStorageKey = useCallback((suffix: string) => {
-    if (!currentUser) return null;
-    return `advanced_${suffix}_${currentUser.uid}`;
-  }, [currentUser]);
-
+  // Load settings from Firestore
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
+        const userDocRef = doc(db, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
 
-        const savedDmPrefKey = getStorageKey('dm_preference');
-        if (savedDmPrefKey) {
-          const savedDmPref = localStorage.getItem(savedDmPrefKey) as DmPreference | null;
-          if (savedDmPref) setDmPreference(savedDmPref);
+        if (userDocSnap.exists()) {
+          const settings = userDocSnap.data().advancedSettings as UserAdvancedSettings | undefined;
+          if (settings?.dmPreference) setDmPreference(settings.dmPreference);
+          if (settings?.profileVisibility) setProfileVisibility(settings.profileVisibility);
         }
-
-        const savedProfileVisKey = getStorageKey('profile_visibility');
-        if (savedProfileVisKey) {
-          const savedProfileVis = localStorage.getItem(savedProfileVisKey) as ProfileVisibility | null;
-          if (savedProfileVis) setProfileVisibility(savedProfileVis);
-        }
-
         setIsCheckingAuth(false);
       } else {
         router.replace('/login');
       }
     });
     return () => unsubscribe();
-  }, [router, getStorageKey]);
+  }, [router]);
+
+  const saveAdvancedSetting = async (key: keyof UserAdvancedSettings, value: string) => {
+    if (!currentUser) return;
+    try {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      await setDoc(userDocRef, {
+        advancedSettings: {
+          [key]: value
+        }
+      }, { merge: true });
+      toast({ title: "Setting Updated", description: `${key.replace(/([A-Z])/g, ' $1').trim()} preference saved.` });
+    } catch (error) {
+      console.error("Error saving advanced setting:", error);
+      toast({ variant: "destructive", title: "Save Failed", description: "Could not save preference." });
+    }
+  };
+
 
   const handleDmPreferenceChange = (value: DmPreference) => {
     setDmPreference(value);
-    const key = getStorageKey('dm_preference');
-    if (key) {
-      localStorage.setItem(key, value);
-      toast({ title: "DM Preference Updated", description: `DM settings changed to: ${value.charAt(0).toUpperCase() + value.slice(1)}` });
-    }
+    saveAdvancedSetting('dmPreference', value);
   };
 
   const handleProfileVisibilityChange = (value: ProfileVisibility) => {
     setProfileVisibility(value);
-    const key = getStorageKey('profile_visibility');
-    if (key) {
-      localStorage.setItem(key, value);
-      toast({ title: "Profile Visibility Updated", description: `Profile visibility set to: ${value.charAt(0).toUpperCase() + value.slice(1)}` });
-    }
+    saveAdvancedSetting('profileVisibility', value);
   };
 
   const handleDeleteAccount = async () => {
@@ -93,40 +99,26 @@ export default function AdvancedSettingsPage() {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to delete your account." });
       return;
     }
-
     setIsDeleting(true);
-
-    // CRITICAL FOR PRODUCTION: Implement re-authentication here before calling the delete function.
-    // Example: Prompt user for password, then:
-    // import { EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-    // const credential = EmailAuthProvider.credential(currentUser.email, enteredPassword);
-    // await reauthenticateWithCredential(currentUser, credential);
-    // If successful, then proceed with the Cloud Function call.
-
+    // IMPORTANT: Implement re-authentication for production here!
+    // const reauthSuccess = await reauthenticateUser(); // A function you'd create
+    // if (!reauthSuccess) {
+    //   setIsDeleting(false);
+    //   toast({ variant: "destructive", title: "Re-authentication Failed", description: "Please verify your password." });
+    //   return;
+    // }
     try {
       const functionsInstance = getFunctions();
       const deleteUserAccountFn = httpsCallable(functionsInstance, 'deleteUserAccount');
-
-      // The Cloud Function should use context.auth.uid for security,
-      // but passing uid can be useful for logging or specific scenarios if needed.
-      await deleteUserAccountFn(); // No need to pass UID if function uses context.auth.uid
-
+      await deleteUserAccountFn(); 
       toast({
         title: "Account Deletion Successful",
         description: "Your account and associated data have been deleted. You will be logged out.",
         duration: 5000,
       });
-
-      await signOut(auth); // Sign out the user from the client
-
-      // Clear any local storage associated with the user
-      Object.keys(localStorage).forEach(key => {
-        if (currentUser && key.includes(currentUser.uid)) { // Added null check for currentUser
-          localStorage.removeItem(key);
-        }
-      });
-
-      router.push('/login'); // Redirect to login page
+      await signOut(auth);
+      // Consider clearing local data as well, though Firestore persistence aims to make this less critical
+      router.push('/login');
     } catch (error: any) {
       console.error("Delete account error:", error);
       toast({
@@ -136,7 +128,6 @@ export default function AdvancedSettingsPage() {
       });
       setIsDeleting(false);
     }
-    // No need to set isDeleting to false if successful, as user is navigated away.
   };
 
   if (isCheckingAuth || !currentUser) {
@@ -144,7 +135,7 @@ export default function AdvancedSettingsPage() {
   }
 
   return (
-    <div className="p-6 h-full overflow-y-auto"> {/* Added p-6, h-full and overflow-y-auto */}
+    <div className="h-full overflow-y-auto p-6">
       <div className="flex items-center my-6">
         <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
           <ArrowLeft className="h-5 w-5 text-accent" />
@@ -156,7 +147,6 @@ export default function AdvancedSettingsPage() {
       </div>
 
       <div className="space-y-8">
-        {/* Privacy Controls Card */}
         <Card className="w-full bg-card border-border/50 shadow-lg">
           <CardHeader>
             <CardTitle className="text-xl text-foreground flex items-center">
@@ -209,7 +199,6 @@ export default function AdvancedSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Account Actions Card */}
         <Card className="w-full bg-card border-border/50 shadow-lg">
           <CardHeader>
             <CardTitle className="text-xl text-destructive flex items-center">
@@ -253,5 +242,3 @@ export default function AdvancedSettingsPage() {
     </div>
   );
 }
-
-    

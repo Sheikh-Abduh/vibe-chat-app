@@ -1,16 +1,29 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Users, CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import { auth, db } from '@/lib/firebase'; // Ensure db is imported
-import { doc, setDoc, getDoc } from 'firebase/firestore'; // Firestore imports
+import { auth, db } from '@/lib/firebase'; 
+import { doc, setDoc, getDoc } from 'firebase/firestore'; 
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
+
+// Define a type for the app settings to be stored in Firestore
+interface UserAppSettings {
+  onboardingComplete?: boolean;
+  communityJoinPreference?: 'yes' | 'no';
+  themeMode?: 'light' | 'dark';
+  themePrimaryAccent?: string;
+  themePrimaryAccentFg?: string;
+  themeSecondaryAccent?: string;
+  themeSecondaryAccentFg?: string;
+  uiScale?: 'compact' | 'default' | 'comfortable';
+}
+
 
 export default function CommunityPreferencePage() {
   const router = useRouter();
@@ -47,21 +60,23 @@ export default function CommunityPreferencePage() {
 
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
-      // Save preference and mark onboarding as complete in Firestore
+      
+      // Fetch existing appSettings to merge with, or start with an empty object
+      const userDocSnap = await getDoc(userDocRef);
+      let existingAppSettings: Partial<UserAppSettings> = {};
+      if (userDocSnap.exists() && userDocSnap.data().appSettings) {
+        existingAppSettings = userDocSnap.data().appSettings;
+      }
+      
+      const updatedAppSettings: UserAppSettings = {
+        ...existingAppSettings, // Preserve existing settings (like theme)
+        communityJoinPreference: preference,
+        onboardingComplete: true,
+      };
+
       await setDoc(userDocRef, { 
-        appSettings: {
-          communityJoinPreference: preference,
-          onboardingComplete: true,
-          // Persist existing or default theme settings from localStorage to Firestore here
-          // This is a simplified example; ideally, theme settings are already in Firestore by now or defaults are applied
-          themeMode: localStorage.getItem(`theme_mode_${currentUser.uid}`) || 'dark',
-          themePrimaryAccent: localStorage.getItem(`theme_accent_primary_${currentUser.uid}`) || '289 85% 45%',
-          themePrimaryAccentFg: localStorage.getItem(`theme_accent_primary_fg_${currentUser.uid}`) || '0 0% 100%',
-          themeSecondaryAccent: localStorage.getItem(`theme_accent_secondary_${currentUser.uid}`) || '127 100% 43%',
-          themeSecondaryAccentFg: localStorage.getItem(`theme_accent_secondary_fg_${currentUser.uid}`) || '220 3% 10%',
-          uiScale: localStorage.getItem(`ui_scale_${currentUser.uid}`) || 'default',
-        }
-      }, { merge: true }); // merge:true ensures we don't overwrite other user data
+        appSettings: updatedAppSettings
+      }, { merge: true });
 
       toast({
         title: "Onboarding Complete!",
@@ -70,9 +85,19 @@ export default function CommunityPreferencePage() {
           : "No problem! You can explore communities at your own pace.",
       });
       
-      // Clear localStorage flags now that it's in Firestore
+      // Clear old localStorage flags now that it's in Firestore
       localStorage.removeItem(`onboardingComplete_${currentUser.uid}`); 
       localStorage.removeItem(`community_join_preference_${currentUser.uid}`);
+      // Also clear theme related localStorage if they were set during onboarding theme step
+      // though they should have been migrated to Firestore by ThemeProvider or theme settings page.
+      // For safety, can clear them here if they followed the old pattern.
+      localStorage.removeItem(`theme_mode_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_primary_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_primary_fg_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_secondary_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_secondary_fg_${currentUser.uid}`);
+      localStorage.removeItem(`ui_scale_${currentUser.uid}`);
+
 
       router.push('/dashboard');
     } catch (error) {

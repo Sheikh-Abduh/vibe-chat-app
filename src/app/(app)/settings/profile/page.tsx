@@ -29,16 +29,16 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { UserCircle, Edit3, Sparkles, Gift, Hash, Heart, MessageSquare, Info, Loader2, PersonStanding, UploadCloud } from 'lucide-react';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase'; // Ensure db is imported for Firestore
 import { onAuthStateChanged, type User, updateProfile } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 
-// Cloudinary configuration (API Key is safe for client-side with unsigned uploads)
+// Cloudinary configuration
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
 const CLOUDINARY_API_KEY = '775545995624823';
 const CLOUDINARY_UPLOAD_PRESET = 'vibe_app';
 
-// Reusing from onboarding/interests page
 const ageRanges = [
   "Under 18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+",
 ];
@@ -95,21 +95,35 @@ export default function EditProfilePage() {
   });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
-        // Load existing data
+        setAvatarPreview(user.photoURL);
+        
+        // Load from Firestore first, then fall back to localStorage if needed (for migration)
+        const userDocRef = doc(db, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        let profileData = {};
+
+        if (userDocSnap.exists()) {
+          profileData = userDocSnap.data().profileDetails || {};
+        } else {
+          // Fallback to localStorage for users who might have data there before Firestore persistence
+          profileData = {
+            aboutMe: localStorage.getItem(`userProfile_aboutMe_${user.uid}`) || "",
+            status: localStorage.getItem(`userProfile_status_${user.uid}`) || "",
+            hobbies: localStorage.getItem(`userInterests_hobbies_${user.uid}`) || "",
+            age: localStorage.getItem(`userInterests_age_${user.uid}`) || "",
+            gender: localStorage.getItem(`userInterests_gender_${user.uid}`) || "",
+            tags: localStorage.getItem(`userInterests_tags_${user.uid}`) || "",
+            passion: localStorage.getItem(`userInterests_passion_${user.uid}`) || "",
+          };
+        }
+        
         form.reset({
           displayName: user.displayName || "",
-          aboutMe: localStorage.getItem(`userProfile_aboutMe_${user.uid}`) || "",
-          status: localStorage.getItem(`userProfile_status_${user.uid}`) || "",
-          hobbies: localStorage.getItem(`userInterests_hobbies_${user.uid}`) || "",
-          age: localStorage.getItem(`userInterests_age_${user.uid}`) || "",
-          gender: localStorage.getItem(`userInterests_gender_${user.uid}`) || "",
-          tags: localStorage.getItem(`userInterests_tags_${user.uid}`) || "",
-          passion: localStorage.getItem(`userInterests_passion_${user.uid}`) || "",
+          ...profileData
         });
-        setAvatarPreview(user.photoURL);
         setIsCheckingAuth(false);
       } else {
         router.replace('/login');
@@ -121,7 +135,7 @@ export default function EditProfilePage() {
   const handleAvatarFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) { // 2MB limit
+      if (file.size > 2 * 1024 * 1024) { 
         toast({ variant: 'destructive', title: 'Image Too Large', description: 'Please select an image smaller than 2MB.' });
         return;
       }
@@ -151,20 +165,19 @@ export default function EditProfilePage() {
     }
     setIsSubmitting(true);
     let profileUpdated = false;
+    let authProfileUpdated = false;
 
-    // 1. Update Display Name (Username)
+    // 1. Update Display Name (Username) & Avatar
     if (data.displayName && data.displayName !== currentUser.displayName) {
       try {
         await updateProfile(currentUser, { displayName: data.displayName });
-        toast({ title: "Username Updated!", description: "Your display name has been changed." });
-        profileUpdated = true;
+        authProfileUpdated = true;
       } catch (error: any) {
         console.error("Error updating display name:", error);
-        toast({ variant: "destructive", title: "Username Update Failed", description: error.message || "Could not update your display name." });
+        toast({ variant: "destructive", title: "Username Update Failed", description: error.message || "Could not update display name." });
       }
     }
 
-    // 2. Update Avatar
     if (avatarFile) {
       setIsUploadingAvatar(true);
       const formData = new FormData();
@@ -177,49 +190,58 @@ export default function EditProfilePage() {
           method: 'POST',
           body: formData,
         });
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error?.message || 'Cloudinary upload failed.');
-        }
+        if (!response.ok) throw new Error((await response.json()).error?.message || 'Cloudinary upload failed.');
         const cloudinaryData = await response.json();
-        const newAvatarUrlFromCloudinary = cloudinaryData.secure_url;
-
-        if (newAvatarUrlFromCloudinary) {
-          await updateProfile(currentUser, { photoURL: newAvatarUrlFromCloudinary });
-          toast({ title: "Avatar Updated!", description: "Your profile picture has been changed." });
-          profileUpdated = true;
-        } else {
-          throw new Error('Cloudinary did not return a URL.');
-        }
+        if (cloudinaryData.secure_url) {
+          await updateProfile(currentUser, { photoURL: cloudinaryData.secure_url });
+          authProfileUpdated = true;
+        } else throw new Error('Cloudinary did not return a URL.');
       } catch (error: any) {
         console.error("Error uploading/updating avatar:", error);
-        toast({ variant: "destructive", title: "Avatar Update Failed", description: error.message || "Could not update your avatar." });
+        toast({ variant: "destructive", title: "Avatar Update Failed", description: error.message || "Could not update avatar." });
       } finally {
         setIsUploadingAvatar(false);
       }
     }
-
-    // 3. Save other details to localStorage
-    localStorage.setItem(`userProfile_aboutMe_${currentUser.uid}`, data.aboutMe || "");
-    localStorage.setItem(`userProfile_status_${currentUser.uid}`, data.status || "");
-    localStorage.setItem(`userInterests_hobbies_${currentUser.uid}`, data.hobbies || "");
-    localStorage.setItem(`userInterests_age_${currentUser.uid}`, data.age || "");
-    localStorage.setItem(`userInterests_gender_${currentUser.uid}`, data.gender || "");
-    localStorage.setItem(`userInterests_tags_${currentUser.uid}`, data.tags || "");
-    localStorage.setItem(`userInterests_passion_${currentUser.uid}`, data.passion || "");
-
-    // Check if localStorage data actually changed to set profileUpdated flag
-    // This is a simplified check; for robust checking, compare with initial loaded values.
-    if (form.formState.isDirty) { // isDirty is true if any form field changed from its initial loaded value
+    
+    if (authProfileUpdated) {
+        toast({ title: "Firebase Auth Profile Updated!", description: "Username/avatar changes saved." });
         profileUpdated = true;
     }
+
+    // 2. Save other details to Firestore
+    const profileDetailsToSave = {
+      aboutMe: data.aboutMe || "",
+      status: data.status || "",
+      hobbies: data.hobbies || "",
+      age: data.age || "",
+      gender: data.gender || "",
+      tags: data.tags || "",
+      passion: data.passion || "",
+    };
+
+    try {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      await setDoc(userDocRef, { profileDetails: profileDetailsToSave }, { merge: true });
+      profileUpdated = true; 
+      // Clear old localStorage items after successful Firestore save
+      Object.keys(profileDetailsToSave).forEach(key => {
+          localStorage.removeItem(`userProfile_${key}_${currentUser.uid}`);
+          localStorage.removeItem(`userInterests_${key}_${currentUser.uid}`);
+      });
+
+    } catch (error) {
+      console.error("Error saving profile details to Firestore:", error);
+      toast({ variant: "destructive", title: "Save Failed", description: "Could not save all profile details." });
+    }
+
 
     if (profileUpdated) {
         toast({
           title: "Profile Updated!",
           description: "Your changes have been saved successfully.",
         });
-    } else if (!avatarFile && (!data.displayName || data.displayName === currentUser.displayName)) {
+    } else if (!form.formState.isDirty && !authProfileUpdated) {
         toast({
             title: "No Changes Detected",
             description: "Your profile details are already up-to-date.",
@@ -227,16 +249,12 @@ export default function EditProfilePage() {
     }
 
     setIsSubmitting(false);
-    // Refresh form with potentially new currentUser.displayName and photoURL from Firebase
-    // A full page refresh might be needed in some cases for AppLayout to pick up changes immediately without more complex global state.
-    // For a smoother UX, consider a global user state that components can subscribe to.
-    // For now, re-fetching from auth to update the form for next edit.
-    if (auth.currentUser) {
+    if (auth.currentUser) { // Refresh form with potentially new values
       form.reset({
-        ...data, // keep current form text data
+        ...profileDetailsToSave,
         displayName: auth.currentUser.displayName || "",
       });
-      setAvatarPreview(auth.currentUser.photoURL); // update avatar preview
+      setAvatarPreview(auth.currentUser.photoURL);
     }
   };
 
@@ -245,11 +263,11 @@ export default function EditProfilePage() {
   }
 
   if (!currentUser) {
-   return <SplashScreenDisplay />; // Should be caught by useEffect redirect, but as a fallback
+   return <SplashScreenDisplay />;
  }
 
   return (
-    <div className="p-6 h-full overflow-y-auto"> {/* Added p-6, h-full and overflow-y-auto */}
+    <div className="h-full overflow-y-auto p-6">
         <div className="flex items-center mb-6">
           <Edit3 className="mr-3 h-8 w-8 text-primary" />
           <h1 className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 4px hsl(var(--primary)/0.6)' }}>
@@ -270,7 +288,6 @@ export default function EditProfilePage() {
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
 
-              {/* Avatar Section */}
               <FormItem>
                 <FormLabel className="text-muted-foreground flex items-center text-base">
                   <UserCircle className="mr-2 h-5 w-5 text-accent" /> Profile Picture
@@ -506,7 +523,6 @@ export default function EditProfilePage() {
                   </FormItem>
                 )}
               />
-              {/* Placeholder for AI generation buttons - to be added later */}
             </form>
           </Form>
         </CardContent>
@@ -514,7 +530,7 @@ export default function EditProfilePage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => router.push('/settings')} // Changed to go back to main settings
+            onClick={() => router.push('/settings')}
             disabled={isSubmitting || isUploadingAvatar}
             className="w-full sm:w-auto border-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
           >
@@ -535,5 +551,4 @@ export default function EditProfilePage() {
     </div>
   );
 }
-
     

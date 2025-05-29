@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,8 +9,8 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 import { Sun, Moon, Palette, CheckCircle, Loader2, ArrowLeft, RefreshCcw, Ruler } from 'lucide-react';
-import { auth, db } from '@/lib/firebase'; // Ensure db is imported
-import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
+import { auth, db } from '@/lib/firebase'; 
+import { doc, getDoc, setDoc } from 'firebase/firestore'; 
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { cn } from '@/lib/utils';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
@@ -59,12 +59,22 @@ const defaultLightVars = {
   '--border': '0 0% 85%', '--input': '0 0% 92%',
 };
 
-const defaultAppTheme = {
+const appDefaultTheme = {
     mode: 'dark' as ThemeMode,
     primary: accentOptions[0], // Neon Purple
     secondary: accentOptions[6], // Forest Green
     scale: 'default' as UiScale,
 };
+
+interface UserAppSettings {
+  themeMode?: ThemeMode;
+  themePrimaryAccent?: string;
+  themePrimaryAccentFg?: string;
+  themeSecondaryAccent?: string;
+  themeSecondaryAccentFg?: string;
+  uiScale?: UiScale;
+}
+
 
 export default function AppearanceSettingsPage() {
   const router = useRouter();
@@ -73,18 +83,12 @@ export default function AppearanceSettingsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  const [selectedMode, setSelectedMode] = useState<ThemeMode>(defaultAppTheme.mode);
-  const [selectedPrimaryAccent, setSelectedPrimaryAccent] = useState<AccentColorOption>(defaultAppTheme.primary);
-  const [selectedSecondaryAccent, setSelectedSecondaryAccent] = useState<AccentColorOption>(defaultAppTheme.secondary);
-  const [selectedUiScale, setSelectedUiScale] = useState<UiScale>(defaultAppTheme.scale);
+  const [selectedMode, setSelectedMode] = useState<ThemeMode>(appDefaultTheme.mode);
+  const [selectedPrimaryAccent, setSelectedPrimaryAccent] = useState<AccentColorOption>(appDefaultTheme.primary);
+  const [selectedSecondaryAccent, setSelectedSecondaryAccent] = useState<AccentColorOption>(appDefaultTheme.secondary);
+  const [selectedUiScale, setSelectedUiScale] = useState<UiScale>(appDefaultTheme.scale);
 
-
-  const [initialValues, setInitialValues] = useState<{
-    mode: ThemeMode;
-    primary: AccentColorOption;
-    secondary: AccentColorOption;
-    scale: UiScale;
-  } | null>(null);
+  const [initialValues, setInitialValues] = useState<UserAppSettings | null>(null);
 
   const applyThemeAndScale = useCallback((mode: ThemeMode, primary: AccentColorOption, secondary: AccentColorOption, scale: UiScale) => {
     if (typeof window !== 'undefined') {
@@ -112,28 +116,39 @@ export default function AppearanceSettingsPage() {
         const userDocRef = doc(db, "users", user.uid);
         const userDocSnap = await getDoc(userDocRef);
         
-        let currentMode = defaultAppTheme.mode;
-        let currentPrimary = defaultAppTheme.primary;
-        let currentSecondary = defaultAppTheme.secondary;
-        let currentScale = defaultAppTheme.scale;
+        let loadedSettings: UserAppSettings = {
+            themeMode: appDefaultTheme.mode,
+            themePrimaryAccent: appDefaultTheme.primary.value,
+            themePrimaryAccentFg: appDefaultTheme.primary.foreground,
+            themeSecondaryAccent: appDefaultTheme.secondary.value,
+            themeSecondaryAccentFg: appDefaultTheme.secondary.foreground,
+            uiScale: appDefaultTheme.scale,
+        };
 
         if (userDocSnap.exists()) {
-            const settings = userDocSnap.data().appSettings;
-            if (settings) {
-                currentMode = settings.themeMode || defaultAppTheme.mode;
-                currentPrimary = accentOptions.find(opt => opt.value === settings.themePrimaryAccent && opt.foreground === settings.themePrimaryAccentFg) || defaultAppTheme.primary;
-                currentSecondary = accentOptions.find(opt => opt.value === settings.themeSecondaryAccent && opt.foreground === settings.themeSecondaryAccentFg) || defaultAppTheme.secondary;
-                currentScale = settings.uiScale || defaultAppTheme.scale;
+            const firestoreSettings = userDocSnap.data().appSettings as UserAppSettings | undefined;
+            if (firestoreSettings) {
+                loadedSettings = { ...loadedSettings, ...firestoreSettings };
             }
         }
 
-        setSelectedMode(currentMode);
+        const currentPrimary = accentOptions.find(opt => opt.value === loadedSettings.themePrimaryAccent && opt.foreground === loadedSettings.themePrimaryAccentFg) || appDefaultTheme.primary;
+        const currentSecondary = accentOptions.find(opt => opt.value === loadedSettings.themeSecondaryAccent && opt.foreground === loadedSettings.themeSecondaryAccentFg) || appDefaultTheme.secondary;
+        
+        setSelectedMode(loadedSettings.themeMode!);
         setSelectedPrimaryAccent(currentPrimary);
         setSelectedSecondaryAccent(currentSecondary);
-        setSelectedUiScale(currentScale);
-
-        setInitialValues({ mode: currentMode, primary: currentPrimary, secondary: currentSecondary, scale: currentScale });
-        applyThemeAndScale(currentMode, currentPrimary, currentSecondary, currentScale);
+        setSelectedUiScale(loadedSettings.uiScale!);
+        
+        setInitialValues({
+            themeMode: loadedSettings.themeMode!,
+            themePrimaryAccent: currentPrimary.value,
+            themePrimaryAccentFg: currentPrimary.foreground,
+            themeSecondaryAccent: currentSecondary.value,
+            themeSecondaryAccentFg: currentSecondary.foreground,
+            uiScale: loadedSettings.uiScale!,
+        });
+        applyThemeAndScale(loadedSettings.themeMode!, currentPrimary, currentSecondary, loadedSettings.uiScale!);
         setIsCheckingAuth(false);
       } else {
         router.replace('/login');
@@ -143,7 +158,7 @@ export default function AppearanceSettingsPage() {
   }, [router, applyThemeAndScale]);
 
   useEffect(() => {
-    if (initialValues) {
+    if (initialValues) { // Only apply if initialValues are set, meaning settings have been loaded
         applyThemeAndScale(selectedMode, selectedPrimaryAccent, selectedSecondaryAccent, selectedUiScale);
     }
   }, [selectedMode, selectedPrimaryAccent, selectedSecondaryAccent, selectedUiScale, applyThemeAndScale, initialValues]);
@@ -151,8 +166,9 @@ export default function AppearanceSettingsPage() {
   useEffect(() => {
     return () => {
       if (initialValues && !isSubmitting && typeof window !== 'undefined') {
-        // Only revert if not submitting and window is defined (to avoid server-side issues)
-        applyThemeAndScale(initialValues.mode, initialValues.primary, initialValues.secondary, initialValues.scale);
+        const primary = accentOptions.find(opt => opt.value === initialValues.themePrimaryAccent && opt.foreground === initialValues.themePrimaryAccentFg) || appDefaultTheme.primary;
+        const secondary = accentOptions.find(opt => opt.value === initialValues.themeSecondaryAccent && opt.foreground === initialValues.themeSecondaryAccentFg) || appDefaultTheme.secondary;
+        applyThemeAndScale(initialValues.themeMode!, primary, secondary, initialValues.uiScale!);
       }
     };
   }, [initialValues, isSubmitting, applyThemeAndScale]);
@@ -166,7 +182,7 @@ export default function AppearanceSettingsPage() {
     }
     setIsSubmitting(true);
 
-    const newAppSettings = {
+    const newAppSettings: UserAppSettings = {
         themeMode: selectedMode,
         themePrimaryAccent: selectedPrimaryAccent.value,
         themePrimaryAccentFg: selectedPrimaryAccent.foreground,
@@ -177,21 +193,13 @@ export default function AppearanceSettingsPage() {
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        await setDoc(userDocRef, { appSettings: newAppSettings }, { mergeFields: ['appSettings.themeMode', 'appSettings.themePrimaryAccent', 'appSettings.themePrimaryAccentFg', 'appSettings.themeSecondaryAccent', 'appSettings.themeSecondaryAccentFg', 'appSettings.uiScale'] });
-        
-        // Clear old localStorage items if any
-        localStorage.removeItem(`theme_mode_${currentUser.uid}`);
-        localStorage.removeItem(`theme_accent_primary_${currentUser.uid}`);
-        localStorage.removeItem(`theme_accent_primary_fg_${currentUser.uid}`);
-        localStorage.removeItem(`theme_accent_secondary_${currentUser.uid}`);
-        localStorage.removeItem(`theme_accent_secondary_fg_${currentUser.uid}`);
-        localStorage.removeItem(`ui_scale_${currentUser.uid}`);
+        await setDoc(userDocRef, { appSettings: newAppSettings }, { merge: true });
         
         toast({
           title: "Appearance Settings Saved!",
           description: "Your theme preferences have been updated.",
         });
-        setInitialValues(newAppSettings); // Update initial values to current saved state
+        setInitialValues(newAppSettings); 
     } catch (error) {
         console.error("Error saving appearance settings to Firestore:", error);
         toast({ variant: "destructive", title: "Save Failed", description: "Could not save appearance settings." });
@@ -202,11 +210,13 @@ export default function AppearanceSettingsPage() {
 
   const handleCancel = () => {
     if (initialValues) {
-      applyThemeAndScale(initialValues.mode, initialValues.primary, initialValues.secondary, initialValues.scale);
-      setSelectedMode(initialValues.mode);
-      setSelectedPrimaryAccent(initialValues.primary);
-      setSelectedSecondaryAccent(initialValues.secondary);
-      setSelectedUiScale(initialValues.scale);
+      const primary = accentOptions.find(opt => opt.value === initialValues.themePrimaryAccent && opt.foreground === initialValues.themePrimaryAccentFg) || appDefaultTheme.primary;
+      const secondary = accentOptions.find(opt => opt.value === initialValues.themeSecondaryAccent && opt.foreground === initialValues.themeSecondaryAccentFg) || appDefaultTheme.secondary;
+      applyThemeAndScale(initialValues.themeMode!, primary, secondary, initialValues.uiScale!);
+      setSelectedMode(initialValues.themeMode!);
+      setSelectedPrimaryAccent(primary);
+      setSelectedSecondaryAccent(secondary);
+      setSelectedUiScale(initialValues.uiScale!);
     }
     router.push('/settings');
   };
@@ -218,25 +228,25 @@ export default function AppearanceSettingsPage() {
     }
     setIsSubmitting(true); 
 
-    const defaultSettings = {
-        themeMode: defaultAppTheme.mode,
-        themePrimaryAccent: defaultAppTheme.primary.value,
-        themePrimaryAccentFg: defaultAppTheme.primary.foreground,
-        themeSecondaryAccent: defaultAppTheme.secondary.value,
-        themeSecondaryAccentFg: defaultAppTheme.secondary.foreground,
-        uiScale: defaultAppTheme.scale,
+    const defaultSettings: UserAppSettings = {
+        themeMode: appDefaultTheme.mode,
+        themePrimaryAccent: appDefaultTheme.primary.value,
+        themePrimaryAccentFg: appDefaultTheme.primary.foreground,
+        themeSecondaryAccent: appDefaultTheme.secondary.value,
+        themeSecondaryAccentFg: appDefaultTheme.secondary.foreground,
+        uiScale: appDefaultTheme.scale,
     };
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        await setDoc(userDocRef, { appSettings: defaultSettings }, { mergeFields: ['appSettings.themeMode', 'appSettings.themePrimaryAccent', 'appSettings.themePrimaryAccentFg', 'appSettings.themeSecondaryAccent', 'appSettings.themeSecondaryAccentFg', 'appSettings.uiScale'] });
+        await setDoc(userDocRef, { appSettings: defaultSettings }, { merge: true });
 
-        setSelectedMode(defaultAppTheme.mode);
-        setSelectedPrimaryAccent(defaultAppTheme.primary);
-        setSelectedSecondaryAccent(defaultAppTheme.secondary);
-        setSelectedUiScale(defaultAppTheme.scale);
+        setSelectedMode(appDefaultTheme.mode);
+        setSelectedPrimaryAccent(appDefaultTheme.primary);
+        setSelectedSecondaryAccent(appDefaultTheme.secondary);
+        setSelectedUiScale(appDefaultTheme.scale);
 
-        applyThemeAndScale(defaultAppTheme.mode, defaultAppTheme.primary, defaultAppTheme.secondary, defaultAppTheme.scale);
+        applyThemeAndScale(appDefaultTheme.mode, appDefaultTheme.primary, appDefaultTheme.secondary, appDefaultTheme.scale);
         setInitialValues(defaultSettings); 
 
         toast({
@@ -256,7 +266,7 @@ export default function AppearanceSettingsPage() {
   }
 
   return (
-    <div className="p-6 h-full overflow-y-auto"> 
+    <div className="h-full overflow-y-auto p-6"> 
       <div className="flex items-center my-6">
         <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
             <ArrowLeft className="h-5 w-5 text-accent" />

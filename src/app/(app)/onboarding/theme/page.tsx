@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,8 +9,8 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 import { Sun, Moon, Palette, CheckCircle, Loader2, ArrowLeft, RefreshCcw, Ruler } from 'lucide-react';
-import { auth, db } from '@/lib/firebase'; // Ensure db is imported
-import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
+import { auth, db } from '@/lib/firebase'; 
+import { doc, getDoc, setDoc } from 'firebase/firestore'; 
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { cn } from '@/lib/utils';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
@@ -22,7 +22,7 @@ type ThemeMode = 'light' | 'dark';
 interface AccentColorOption {
   name: string;
   value: string; 
-  primaryForeground: string; 
+  primaryForeground: string; // Renamed from 'foreground' to avoid conflict with theme foreground
   className: string; 
 }
 
@@ -81,7 +81,15 @@ export default function ThemeSelectionPage() {
     if (typeof window !== 'undefined') {
         const rootStyle = getComputedStyle(document.documentElement);
         const bg = rootStyle.getPropertyValue('--background').trim();
-        const currentLightness = bg.split(' ').length === 3 ? parseInt(bg.split(' ')[2].replace('%','')) : (bg === '0 0% 100%' ? 100 : 10) ; 
+        let currentLightness = 10; // Default to dark if parsing fails
+        if (bg.includes(' ') && bg.split(' ').length >=3) {
+          const lightnessPart = bg.split(' ')[2];
+          if (lightnessPart && lightnessPart.includes('%')) {
+            currentLightness = parseInt(lightnessPart.replace('%',''));
+          }
+        } else if (bg === '0 0% 100%') { // Specific check for pure white
+          currentLightness = 100;
+        }
         
         const mode = currentLightness < 50 ? 'dark' : 'light';
         setInitialMode(mode);
@@ -92,7 +100,7 @@ export default function ThemeSelectionPage() {
         setInitialAccentValue(primaryColor);
         setInitialAccentFgValue(primaryFgColor);
 
-        const foundAccent = accentOptions.find(opt => opt.value === primaryColor);
+        const foundAccent = accentOptions.find(opt => opt.value === primaryColor && opt.primaryForeground === primaryFgColor);
         setSelectedAccent(foundAccent || defaultAppThemeForOnboarding.primary);
     }
   }, []);
@@ -128,7 +136,8 @@ export default function ThemeSelectionPage() {
         if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
           router.replace('/dashboard');
         } else {
-          if (initialMode && initialAccentValue) {
+          // Only set isCheckingAuth to false if initial theme values have been determined
+          if (initialMode && initialAccentValue) { 
             setIsCheckingAuth(false);
           }
         }
@@ -137,11 +146,12 @@ export default function ThemeSelectionPage() {
       }
     });
     return () => unsubscribe();
-  }, [router, initialMode, initialAccentValue]);
+  }, [router, initialMode, initialAccentValue]); // Add initialMode & initialAccentValue to deps
 
+  // Separate useEffect to handle setting isCheckingAuth to false once initial theme values are ready
   useEffect(() => {
     if (currentUser && initialMode && initialAccentValue) {
-        setIsCheckingAuth(false); // Assume auth is checked if we have user & initial theme values
+        setIsCheckingAuth(false);
     }
   }, [currentUser, initialMode, initialAccentValue]);
 
@@ -158,7 +168,6 @@ export default function ThemeSelectionPage() {
       themeMode: selectedMode,
       themePrimaryAccent: selectedAccent.value,
       themePrimaryAccentFg: selectedAccent.primaryForeground,
-      // Set default secondary accent during onboarding save, consistent with globals.css
       themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value,
       themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.primaryForeground,
       uiScale: defaultAppThemeForOnboarding.scale,
@@ -166,17 +175,10 @@ export default function ThemeSelectionPage() {
 
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
+      // Save to Firestore under appSettings
       await setDoc(userDocRef, { 
         appSettings: themeSettingsToSave 
-      }, { mergeFields: ['appSettings.themeMode', 'appSettings.themePrimaryAccent', 'appSettings.themePrimaryAccentFg', 'appSettings.themeSecondaryAccent', 'appSettings.themeSecondaryAccentFg', 'appSettings.uiScale'] }); // Merge only theme fields
-
-      // Clear old localStorage items if any
-      localStorage.removeItem(`theme_mode_${currentUser.uid}`);
-      localStorage.removeItem(`theme_accent_primary_${currentUser.uid}`);
-      localStorage.removeItem(`theme_accent_primary_fg_${currentUser.uid}`);
-      localStorage.removeItem(`theme_accent_secondary_${currentUser.uid}`);
-      localStorage.removeItem(`theme_accent_secondary_fg_${currentUser.uid}`);
-      localStorage.removeItem(`ui_scale_${currentUser.uid}`);
+      }, { merge: true });
 
 
       toast({
@@ -199,12 +201,17 @@ export default function ThemeSelectionPage() {
       return;
     }
     setIsSubmitting(true);
-    // Revert to initial theme if skipped
     if (initialMode && initialAccentValue && initialAccentFgValue) {
-        applyTheme(initialMode, accentOptions.find(opt => opt.value === initialAccentValue && opt.primaryForeground === initialAccentFgValue) || defaultAppThemeForOnboarding.primary);
+        const initialAccent = accentOptions.find(opt => opt.value === initialAccentValue && opt.primaryForeground === initialAccentFgValue);
+        if (initialAccent) {
+             applyTheme(initialMode, initialAccent);
+        } else {
+             applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
+        }
+    } else {
+         applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
     }
     
-    // Save default theme settings to Firestore if skipping
     const defaultSettingsToSave = {
         themeMode: defaultAppThemeForOnboarding.mode,
         themePrimaryAccent: defaultAppThemeForOnboarding.primary.value,
@@ -216,7 +223,7 @@ export default function ThemeSelectionPage() {
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        await setDoc(userDocRef, { appSettings: defaultSettingsToSave }, { mergeFields: ['appSettings.themeMode', 'appSettings.themePrimaryAccent', 'appSettings.themePrimaryAccentFg', 'appSettings.themeSecondaryAccent', 'appSettings.themeSecondaryAccentFg', 'appSettings.uiScale'] });
+        await setDoc(userDocRef, { appSettings: defaultSettingsToSave }, { merge: true });
         
         toast({
           title: 'Skipping Theme Customization',
@@ -236,7 +243,12 @@ export default function ThemeSelectionPage() {
         const userDocRef = doc(db, "users", currentUser.uid);
         getDoc(userDocRef).then(snap => {
             if (!(snap.exists() && snap.data().appSettings?.onboardingComplete)) {
-                applyTheme(initialMode, accentOptions.find(opt => opt.value === initialAccentValue && opt.primaryForeground === initialAccentFgValue) || defaultAppThemeForOnboarding.primary);
+                const initialAccent = accentOptions.find(opt => opt.value === initialAccentValue && opt.primaryForeground === initialAccentFgValue);
+                 if (initialAccent) {
+                    applyTheme(initialMode, initialAccent);
+                 } else {
+                    applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
+                 }
             }
         });
       }
@@ -244,7 +256,7 @@ export default function ThemeSelectionPage() {
   }, [initialMode, initialAccentValue, initialAccentFgValue, currentUser, isSubmitting, applyTheme]);
 
 
-  if (isCheckingAuth || !initialMode) { // Ensure initialMode is loaded before rendering
+  if (isCheckingAuth || !initialMode) { 
     return <SplashScreenDisplay />;
   }
   

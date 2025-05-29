@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from 'react'; // Added this line
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,7 +29,7 @@ export default function FormattingTipsPage() {
   const router = useRouter();
 
   return (
-    <div className="p-6 h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto p-6">
       <div className="flex items-center my-6">
         <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
           <ArrowLeft className="h-5 w-5 text-accent" />

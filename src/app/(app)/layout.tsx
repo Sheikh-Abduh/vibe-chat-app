@@ -5,8 +5,8 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { onAuthStateChanged, signOut as firebaseSignOut, type User } from 'firebase/auth';
-import { auth, db } from '@/lib/firebase'; // Ensure db is imported
-import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
+import { auth, db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore'; // Firestore imports
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -33,8 +33,7 @@ import {
   SidebarInset,
 } from '@/components/ui/sidebar';
 
-
-interface UserStoredDetails {
+interface UserProfileDetails {
   hobbies?: string;
   age?: string;
   gender?: string;
@@ -52,8 +51,9 @@ interface UserAppSettings {
   themeSecondaryAccent?: string;
   themeSecondaryAccentFg?: string;
   uiScale?: 'compact' | 'default' | 'comfortable';
-  // Add other app settings as needed
+  communityJoinPreference?: 'yes' | 'no';
 }
+
 
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -61,32 +61,27 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [userDetails, setUserDetails] = useState<UserStoredDetails | null>(null);
-  const [userAppSettings, setUserAppSettings] = useState<UserAppSettings | null>(null);
-  
+  const [userProfileDetails, setUserProfileDetails] = useState<UserProfileDetails | null>(null);
+  // UserAppSettings are handled by ThemeProvider and pages that modify them directly via Firestore
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
         
-        // Fetch settings from Firestore
         const userDocRef = doc(db, "users", user.uid);
         const userDocSnap = await getDoc(userDocRef);
 
         let onboardingComplete = false;
-        let fetchedAppSettings: UserAppSettings = {};
-        let fetchedUserDetails: UserStoredDetails = {};
+        let fetchedProfileDetails: UserProfileDetails = {};
 
         if (userDocSnap.exists()) {
           const data = userDocSnap.data();
           onboardingComplete = data.appSettings?.onboardingComplete === true;
-          fetchedAppSettings = data.appSettings || {};
-          fetchedUserDetails = data.profileDetails || {};
+          fetchedProfileDetails = data.profileDetails || {};
         }
         
-        setUserAppSettings(fetchedAppSettings);
-        setUserDetails(fetchedUserDetails);
+        setUserProfileDetails(fetchedProfileDetails);
 
         if (onboardingComplete) {
           setIsCheckingAuth(false);
@@ -109,10 +104,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     try {
       await firebaseSignOut(auth);
       setCurrentUser(null);
-      setUserDetails(null);
-      setUserAppSettings(null); // Clear app settings on logout
-      // Note: We don't clear localStorage here anymore, as settings are in Firestore.
-      // If there were any purely local, non-synced localStorage items, clear them.
+      setUserProfileDetails(null);
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
       router.push('/login'); 
     } catch (error) {
@@ -138,7 +130,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       return <SplashScreenDisplay />; 
   }
 
-  const passionDisplay = userDetails?.passion ? userDetails.passion.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Not set";
+  const passionDisplay = userProfileDetails?.passion ? userProfileDetails.passion.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Not set";
 
   return (
     <SidebarProvider defaultOpen={false}>
@@ -246,49 +238,49 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
               </DropdownMenuLabel>
 
               <div className="space-y-2.5 text-sm text-card-foreground mb-4 text-left">
-                {userDetails?.aboutMe && (
+                {userProfileDetails?.aboutMe && (
                   <div className="flex items-start">
                     <Info className="mr-2.5 h-4 w-4 text-accent shrink-0 mt-0.5" />
                     <div>
                         <span className="text-muted-foreground font-medium">About:</span>
-                        <p className="italic text-card-foreground/90 leading-snug">{userDetails.aboutMe !== "Tell us about yourself..." ? userDetails.aboutMe : <span className="text-muted-foreground">{userDetails.aboutMe}</span>}</p>
+                        <p className="italic text-card-foreground/90 leading-snug">{userProfileDetails.aboutMe !== "Tell us about yourself..." ? userProfileDetails.aboutMe : <span className="text-muted-foreground">{userProfileDetails.aboutMe}</span>}</p>
                     </div>
                   </div>
                 )}
-                 {userDetails?.status && (
+                 {userProfileDetails?.status && (
                   <div className="flex items-start">
                     <MessageSquare className="mr-2.5 h-4 w-4 text-accent shrink-0 mt-0.5" />
                     <div>
                         <span className="text-muted-foreground font-medium">Status:</span>
-                        <p className="italic text-card-foreground/90 leading-snug">{userDetails.status !== "What's on your mind?" ? userDetails.status : <span className="text-muted-foreground">{userDetails.status}</span>}</p>
+                        <p className="italic text-card-foreground/90 leading-snug">{userProfileDetails.status !== "What's on your mind?" ? userProfileDetails.status : <span className="text-muted-foreground">{userProfileDetails.status}</span>}</p>
                     </div>
                   </div>
                 )}
-                {userDetails?.hobbies && userDetails.hobbies !== "Not set" && (
+                {userProfileDetails?.hobbies && userProfileDetails.hobbies !== "Not set" && (
                   <div className="flex items-center">
                     <Sparkles className="mr-2.5 h-4 w-4 text-accent shrink-0" />
-                    <span className="text-muted-foreground font-medium mr-1.5">Hobbies:</span> <span className="text-card-foreground/90">{userDetails.hobbies}</span>
+                    <span className="text-muted-foreground font-medium mr-1.5">Hobbies:</span> <span className="text-card-foreground/90">{userProfileDetails.hobbies}</span>
                   </div>
                 )}
-                {userDetails?.age && userDetails.age !== "Not set" && (
+                {userProfileDetails?.age && userProfileDetails.age !== "Not set" && (
                   <div className="flex items-center">
                      <Gift className="mr-2.5 h-4 w-4 text-accent shrink-0" />
-                    <span className="text-muted-foreground font-medium mr-1.5">Age:</span> <span className="text-card-foreground/90">{userDetails.age}</span>
+                    <span className="text-muted-foreground font-medium mr-1.5">Age:</span> <span className="text-card-foreground/90">{userProfileDetails.age}</span>
                   </div>
                 )}
-                 {userDetails?.gender && userDetails.gender !== "Not set" && (
+                 {userProfileDetails?.gender && userProfileDetails.gender !== "Not set" && (
                   <div className="flex items-center">
                      <PersonStanding className="mr-2.5 h-4 w-4 text-accent shrink-0" />
-                    <span className="text-muted-foreground font-medium mr-1.5">Gender:</span> <span className="text-card-foreground/90">{userDetails.gender}</span>
+                    <span className="text-muted-foreground font-medium mr-1.5">Gender:</span> <span className="text-card-foreground/90">{userProfileDetails.gender}</span>
                   </div>
                 )}
-                {userDetails?.tags && userDetails.tags !== "Not set" && (
+                {userProfileDetails?.tags && userProfileDetails.tags !== "Not set" && (
                   <div className="flex items-center">
                      <Hash className="mr-2.5 h-4 w-4 text-accent shrink-0" />
-                    <span className="text-muted-foreground font-medium mr-1.5">Tags:</span> <span className="text-card-foreground/90">{userDetails.tags}</span>
+                    <span className="text-muted-foreground font-medium mr-1.5">Tags:</span> <span className="text-card-foreground/90">{userProfileDetails.tags}</span>
                   </div>
                 )}
-                {userDetails?.passion && userDetails.passion !== "Not set" && (
+                {userProfileDetails?.passion && userProfileDetails.passion !== "Not set" && (
                   <div className="flex items-center">
                     <Heart className="mr-2.5 h-4 w-4 text-accent shrink-0" />
                     <span className="text-muted-foreground font-medium mr-1.5">Passion:</span> <span className="text-card-foreground/90">{passionDisplay}</span>
@@ -316,6 +308,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         <div className="h-screen flex flex-col overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0 h-12">
             <div className="relative flex h-full items-center px-4">
+              {/* Removed SidebarTrigger from here */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
                   <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} data-ai-hint="typography wordmark" priority />

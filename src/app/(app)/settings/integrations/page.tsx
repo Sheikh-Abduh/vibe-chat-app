@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,7 @@ const potentialIntegrations: PotentialIntegration[] = [
     id: 'discord',
     name: 'Discord',
     description: 'Link your Discord profile or connect community servers for seamless interaction.',
-    icon: Users, // Using Users icon as a placeholder for a generic social/community icon
+    icon: Users, 
   },
   {
     id: 'gaming',
@@ -43,7 +43,7 @@ const potentialIntegrations: PotentialIntegration[] = [
     id: 'image_services',
     name: 'Image Services',
     description: 'Use services like Unsplash or Pexels for profile or community customization.',
-    icon: MonitorPlay, // Using MonitorPlay as a generic media icon
+    icon: MonitorPlay, 
     note: 'API keys are typically free for basic use.',
   },
 ];
@@ -70,7 +70,7 @@ export default function IntegrationsSettingsPage() {
   }
 
   return (
-    <div className="p-6 h-full overflow-y-auto"> {/* Added p-6, h-full and overflow-y-auto */}
+    <div className="h-full overflow-y-auto p-6">
       <div className="flex items-center my-6">
         <Button variant="ghost" size="icon" className="mr-2 hover:bg-accent/10" onClick={() => router.push('/settings')}>
           <ArrowLeft className="h-5 w-5 text-accent" />
@@ -121,5 +121,3 @@ export default function IntegrationsSettingsPage() {
     </div>
   );
 }
-
-    
