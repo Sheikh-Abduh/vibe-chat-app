@@ -11,8 +11,7 @@ import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
 import type { TenorGif as TenorGifType } from '@/types/tenor';
 
-import { Picker as EmojiMartPicker } from 'emoji-mart'; // Corrected named import
-import data from '@emoji-mart/data';
+import EmojiPicker, { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
 
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -40,7 +39,7 @@ const ALLOWED_FILE_TYPES = [
   'application/pdf',
   'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
-  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg',
+  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/aac',
 ];
 
 const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
@@ -54,7 +53,7 @@ interface TenorGif extends TenorGifType {}
 const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // THIS IS A SECURITY RISK FOR PRODUCTION
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
-// Agora Configuration (Replace with your actual App ID)
+// Agora Configuration
 const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48";
 
 
@@ -96,13 +95,22 @@ const formatChatMessage = (text: string): string => {
   if (!text) return '';
   let formattedText = text;
   formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
-  formattedText = formattedText.replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>');
-  formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
-  formattedText = formattedText.replace(/\+\+(.*?)\+\+/g, '<u>$1</u>');
-  formattedText = formattedText.replace(/\^\^(.*?)\^\^/g, '<sup>$1</sup>');
-  formattedText = formattedText.replace(/vv(.*?)vv/g, '<sub>$1</sub>');
+  
+  // @Mentions: @username (basic styling) - Apply this first
   formattedText = formattedText.replace(/@([\w.-]+)/g, '<span class="bg-accent/20 text-accent font-medium px-1 rounded">@$1</span>');
+  
+  // Bold: **text** or __text__
+  formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
+  // Italic: *text* or _text_
+  formattedText = formattedText.replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>');
+  // Strikethrough: ~~text~~
+  formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
+  // Underline: ++text++
+  formattedText = formattedText.replace(/\+\+(.*?)\+\+/g, '<u>$1</u>');
+  // Superscript: ^^text^^
+  formattedText = formattedText.replace(/\^\^(.*?)\^\^/g, '<sup>$1</sup>');
+  // Subscript: vvtextvv
+  formattedText = formattedText.replace(/vv(.*?)vv/g, '<sub>$1</sub>');
   return formattedText;
 };
 
@@ -116,7 +124,7 @@ export default function MessagesPage() {
   const [otherUserId, setOtherUserId] = useState<string | null>(null); 
   const [otherUserName, setOtherUserName] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [dmPartnerProfile, setDmPartnerProfile] = useState<Partial<User> | null>(null);
+  const [dmPartnerProfile, setDmPartnerProfile] = useState<Partial<User> & {bio?: string; mutualInterests?: string[]} | null>(null);
 
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -188,10 +196,13 @@ export default function MessagesPage() {
             displayName: user.displayName || "You",
             photoURL: user.photoURL,
             email: user.email,
+            bio: "This is your personal space to save messages.", // Placeholder bio
+            mutualInterests: ["Notes", "Reminders"] // Placeholder interests
         });
 
-        const mode = localStorage.getItem(`theme_mode_${user.uid}`) as 'light' | 'dark';
-        setCurrentThemeMode(mode || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+        const modeFromStorage = localStorage.getItem(`theme_mode_${user.uid}`) as 'light' | 'dark' | null;
+        const systemPrefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setCurrentThemeMode(modeFromStorage || (systemPrefersDark ? 'dark' : 'light'));
         
         const storedFavorites = localStorage.getItem(`favorited_gifs_${user.uid}`);
         setFavoritedGifs(storedFavorites ? JSON.parse(storedFavorites) : []);
@@ -256,6 +267,14 @@ export default function MessagesPage() {
       }, (error) => {
         console.error("Error fetching DM messages: ", error);
         toast({ variant: "destructive", title: "Error loading messages", description: "Could not load DMs." });
+         setMessages([{
+            id: 'system-error-dm',
+            text: 'Error loading messages. Please check your connection and try again.',
+            senderId: 'system',
+            senderName: 'System',
+            timestamp: new Date(),
+            type: 'text',
+        } as ChatMessage]);
       });
       return () => unsubscribeFirestore();
     } else {
@@ -297,14 +316,20 @@ export default function MessagesPage() {
         const convoSnap = await getDoc(convoDocRef);
         if (!convoSnap.exists()) {
             let participants = [currentUser.uid, otherUserId].sort();
-             if (currentUser.uid === otherUserId && participants.length === 1 && participants[0] === currentUser.uid) { 
-                 participants.push(currentUser.uid); 
-             }
+             // Handle self-chat (Saved Messages) where participants array might only have one distinct UID if not careful
+             if (currentUser.uid === otherUserId) {
+                 participants = [currentUser.uid, currentUser.uid]; // Ensure two entries for self-chat
+             } else if (participants.length === 1 && participants[0] === currentUser.uid && participants[0] === otherUserId) {
+                // This case should be covered by the above, but as a safeguard
+                participants = [currentUser.uid, currentUser.uid];
+            }
+
 
             await setDoc(convoDocRef, {
                 participants: participants,
                 createdAt: serverTimestamp(),
                 lastMessageTimestamp: serverTimestamp(),
+                // Store user info keyed by UID for easier updates/retrieval if display names change
                 [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
                 [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
                 [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"), 
@@ -328,7 +353,7 @@ export default function MessagesPage() {
     if (!conversationReady) return;
 
     const messageText = newMessage.trim();
-    const mentionMatches = messageText.match(/@[\w.-]+/g) || [];
+    const mentionMatches = messageText.match(/@([\w.-]+)/g) || [];
     const parsedMentionedUserIds = mentionMatches.map(match => match.substring(1)); 
 
     const messageData: Partial<ChatMessage> = {
@@ -343,7 +368,7 @@ export default function MessagesPage() {
     };
 
     if (parsedMentionedUserIds.length > 0) {
-        messageData.mentionedUserIds = parsedMentionedUserIds;
+        messageData.mentionedUserIds = parsedMentionedUserIds; // Store usernames, resolve to UIDs later if possible
     }
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -391,24 +416,29 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> = {
-      senderId: currentUser.uid,
-      senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp() as any, 
-      type: messageType,
-      fileUrl: fileUrl,
-      fileName: fileName,
-      fileType: fileType,
-      reactions: {},
-      isPinned: false,
+    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'reactions' | 'isPinned'> & { timestamp: any } = {
+        senderId: currentUser.uid,
+        senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+        senderAvatarUrl: currentUser.photoURL || null,
+        timestamp: serverTimestamp(),
+        type: messageType,
+        fileUrl: fileUrl,
+        fileName: fileName,
+        fileType: fileType,
+        ...(replyingToMessage && {
+            replyToMessageId: replyingToMessage.id,
+            replyToSenderName: replyingToMessage.senderName,
+            replyToSenderId: replyingToMessage.senderId,
+            replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : '')
+        })
     };
-    if (replyingToMessage) {
-        messageData.replyToMessageId = replyingToMessage.id;
-        messageData.replyToSenderName = replyingToMessage.senderName;
-        messageData.replyToSenderId = replyingToMessage.senderId;
-        messageData.replyToTextSnippet = (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : '');
+    if (!replyingToMessage) { // Remove reply fields if not replying
+        delete (messageData as any).replyToMessageId;
+        delete (messageData as any).replyToSenderName;
+        delete (messageData as any).replyToSenderId;
+        delete (messageData as any).replyToTextSnippet;
     }
+
 
     try {
       const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
@@ -438,39 +468,63 @@ export default function MessagesPage() {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
     formData.append('api_key', CLOUDINARY_API_KEY);
-    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto');
+    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); // Cloudinary often handles audio as 'video' type
     try {
       const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${isVoiceMessage ? 'video' : 'auto'}/upload`, {
         method: 'POST',
         body: formData,
       });
-      if (!response.ok) throw new Error((await response.json()).error?.message || 'Cloudinary upload failed.');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Cloudinary upload failed.');
+      }
       const data = await response.json();
+      const secureUrl = data.secure_url;
+      const originalFilename = data.original_filename || file.name;
       const fileTypeFromCloudinary = isVoiceMessage ? file.type : (data.resource_type === 'video' && data.format === 'webm' ? 'audio/webm' : (data.format ? `${data.resource_type}/${data.format}` : file.type));
-      if (data.secure_url) {
-        await sendAttachmentMessageToFirestore(data.secure_url, data.original_filename || file.name, fileTypeFromCloudinary);
-      } else throw new Error('Cloudinary did not return a URL.');
+
+      if (secureUrl) {
+        await sendAttachmentMessageToFirestore(secureUrl, originalFilename, fileTypeFromCloudinary);
+      } else {
+        throw new Error('Cloudinary did not return a URL.');
+      }
     } catch (error: any) {
-      console.error("Upload Failed:", error);
-      toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
+      console.error("Error during Cloudinary upload or message sending:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Upload Failed',
+        description: error.message || 'Could not upload file or send message.',
+      });
     } finally {
       setIsUploadingFile(false);
-      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+      if (attachmentInputRef.current) {
+        attachmentInputRef.current.value = ""; // Reset file input
+      }
     }
   };
   
   const handleFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      toast({ variant: 'destructive', title: 'File Too Large', description: `Max ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB.` });
+      toast({
+        variant: 'destructive',
+        title: 'File Too Large',
+        description: `Please select a file smaller than ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB.`,
+      });
       if (attachmentInputRef.current) attachmentInputRef.current.value = "";
       return;
     }
-    if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/') && !file.type.startsWith('audio/')) {
-      toast({ variant: 'destructive', title: 'Invalid File Type' });
-      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
-      return;
+
+    if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/') && !file.type.startsWith('audio/')) { 
+        toast({
+            variant: 'destructive',
+            title: 'Invalid File Type',
+            description: 'Please select a supported file type (images, audio, PDF, DOC, TXT).',
+        });
+        if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+        return;
     }
     uploadFileToCloudinaryAndSend(file);
   };
@@ -522,34 +576,43 @@ export default function MessagesPage() {
   };
 
   const handleFavoriteGifFromChat = (message: ChatMessage) => {
-    if (!message.gifId || !message.gifTinyUrl || !message.gifContentDescription) return;
+    if (!message.gifId || !message.gifTinyUrl || !message.gifContentDescription) {
+        toast({ variant: "destructive", title: "Cannot Favorite", description: "GIF information missing."});
+        return;
+    }
     const gifToFavorite: TenorGif = {
         id: message.gifId,
         media_formats: { 
             tinygif: { url: message.gifTinyUrl, dims: [] as number[], preview: '', duration: 0, size:0 }, 
             gif: { url: message.gifUrl || '', dims: [] as number[], preview: '', duration: 0, size:0 }
+            // Add other formats if you use them and they are available in `message`
         },
         content_description: message.gifContentDescription,
-        created: 0,
-        hasaudio: false,
-        itemurl: '',
-        shares: 0,
-        source_id: '',
-        tags: [],
-        url: '',
-        composite: null,
-        hascaption: false,
-        title: '',
-        flags: [],
+        // Populate other required fields for TenorGifType if necessary
+        created: 0, // Placeholder
+        hasaudio: false, // Placeholder
+        itemurl: '', // Placeholder
+        shares: 0, // Placeholder
+        source_id: '', // Placeholder
+        tags: [], // Placeholder
+        url: '', // Placeholder
+        composite: null, // Placeholder
+        hascaption: false, // Placeholder
+        title: '', // Placeholder
+        flags: [], // Placeholder
     };
     handleToggleFavoriteGif(gifToFavorite);
   };
 
   const handleDeleteMessage = async () => {
-    if (!deletingMessageId || !conversationId || !currentUser) return;
+    if (!deletingMessageId || !conversationId || !currentUser) {
+        toast({ variant: "destructive", title: "Error", description: "Cannot delete message." });
+        setDeletingMessageId(null);
+        return;
+    }
     const msgDoc = messages.find(m => m.id === deletingMessageId);
     if (msgDoc && msgDoc.senderId !== currentUser.uid) {
-      toast({ variant: "destructive", title: "Error", description: "Cannot delete others' messages." });
+      toast({ variant: "destructive", title: "Error", description: "You can only delete your own messages." });
       setDeletingMessageId(null); return;
     }
     try {
@@ -557,7 +620,7 @@ export default function MessagesPage() {
       toast({ title: "Message Deleted" });
     } catch (error) {
       console.error("Error deleting DM:", error);
-      toast({ variant: "destructive", title: "Error deleting message." });
+      toast({ variant: "destructive", title: "Error", description: "Could not delete the message." });
     } finally {
       setDeletingMessageId(null);
     }
@@ -570,31 +633,49 @@ export default function MessagesPage() {
       toast({ title: `Message ${!currentPinnedStatus ? 'Pinned' : 'Unpinned'}` });
     } catch (error) {
       console.error("Error pinning DM:", error);
-      toast({ variant: "destructive", title: "Error pinning message." });
+      toast({ variant: "destructive", title: "Error", description: "Could not update pin status." });
     }
   };
 
   const handleToggleReaction = async (messageId: string, emoji: string) => {
     if (!currentUser || !conversationId) return;
+
     const messageRef = doc(db, `direct_messages/${conversationId}/messages/${messageId}`);
     try {
       await runTransaction(db, async (transaction) => {
         const messageDocSnap = await transaction.get(messageRef);
-        if (!messageDocSnap.exists()) throw new Error("Message not found");
+        if (!messageDocSnap.exists()) {
+          throw new Error("Message document not found to toggle reaction.");
+        }
         const currentReactions = (messageDocSnap.data().reactions || {}) as Record<string, string[]>;
-        const usersReacted = currentReactions[emoji] || [];
-        const newUsersReacted = usersReacted.includes(currentUser.uid)
-          ? usersReacted.filter(uid => uid !== currentUser.uid)
-          : [...usersReacted, currentUser.uid];
+        const usersReactedWithEmoji = currentReactions[emoji] || [];
+        
+        let newUsersReactedWithEmoji;
+        if (usersReactedWithEmoji.includes(currentUser.uid)) {
+          // User is removing their reaction
+          newUsersReactedWithEmoji = usersReactedWithEmoji.filter(uid => uid !== currentUser.uid);
+        } else {
+          // User is adding their reaction
+          newUsersReactedWithEmoji = [...usersReactedWithEmoji, currentUser.uid];
+        }
+
         const newReactionsData = { ...currentReactions };
-        if (newUsersReacted.length === 0) delete newReactionsData[emoji];
-        else newReactionsData[emoji] = newUsersReacted;
+        if (newUsersReactedWithEmoji.length === 0) {
+          // If no users are left reacting with this emoji, remove the emoji key
+          delete newReactionsData[emoji];
+        } else {
+          newReactionsData[emoji] = newUsersReactedWithEmoji;
+        }
         transaction.update(messageRef, { reactions: newReactionsData });
       });
-      setReactionPickerOpenForMessageId(null);
+    setReactionPickerOpenForMessageId(null); // Close picker after reaction
     } catch (error) {
-      console.error("Error toggling reaction:", error);
-      toast({ variant: "destructive", title: "Reaction Failed" });
+      console.error("Error toggling reaction: ", error);
+      toast({
+        variant: "destructive",
+        title: "Reaction Failed",
+        description: "Could not update reaction.",
+      });
     }
   };
 
@@ -606,20 +687,25 @@ export default function MessagesPage() {
   const handleForwardMessage = async () => {
     if (!forwardingMessage || !currentUser ) {
         toast({ variant: "destructive", title: "Forward Error", description: "Cannot forward message." });
+        setIsForwardDialogOpen(false);
+        setForwardingMessage(null);
         return;
     }
   
+    // For DMs, forward to "Saved Messages"
     const targetConversationId = [currentUser.uid, currentUser.uid].sort().join('_'); 
 
+    // Ensure "Saved Messages" conversation document exists
     const savedMessagesConvoDocRef = doc(db, `direct_messages/${targetConversationId}`);
     try {
         const savedMessagesConvoSnap = await getDoc(savedMessagesConvoDocRef);
         if (!savedMessagesConvoSnap.exists()) {
+            // Create the "Saved Messages" conversation document if it doesn't exist
             await setDoc(savedMessagesConvoDocRef, {
-                participants: [currentUser.uid, currentUser.uid],
+                participants: [currentUser.uid, currentUser.uid], // Both participants are the current user
                 createdAt: serverTimestamp(),
                 lastMessageTimestamp: serverTimestamp(),
-                [`user_${currentUser.uid}_name`]: currentUser.displayName || "You",
+                [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
                 [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
             });
         }
@@ -639,13 +725,15 @@ export default function MessagesPage() {
         type: forwardingMessage.type,
         isForwarded: true,
         forwardedFromSenderName: forwardingMessage.senderName,
-        reactions: {},
-        isPinned: false,
+        reactions: {}, // Reactions are not forwarded
+        isPinned: false, // Pinned status is not forwarded
     };
+
+    // Copy relevant content fields
     if (forwardingMessage.text) messageData.text = forwardingMessage.text;
     if (forwardingMessage.fileUrl) messageData.fileUrl = forwardingMessage.fileUrl;
     if (forwardingMessage.fileName) messageData.fileName = forwardingMessage.fileName;
-    if (forwardingMessage.fileType) messageData.fileType = forwardingMessage.fileType;
+    if (forwardingMessage.fileType) messageData.fileType = forwardingMessage.fileType; // Crucial for files/voice
     if (forwardingMessage.gifUrl) messageData.gifUrl = forwardingMessage.gifUrl;
     if (forwardingMessage.gifId) messageData.gifId = forwardingMessage.gifId;
     if (forwardingMessage.gifTinyUrl) messageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
@@ -655,12 +743,13 @@ export default function MessagesPage() {
       const messagesColRef = collection(db, `direct_messages/${targetConversationId}/messages`);
       await addDoc(messagesColRef, messageData);
   
+      // Update lastMessage for the "Saved Messages" conversation
       const convoDocRef = doc(db, `direct_messages/${targetConversationId}`);
-      let lastMessageText = "Forwarded message";
-      if (messageData.text) lastMessageText = messageData.text; 
+      let lastMessageText = "Forwarded message"; // Default text
+      if (messageData.text) lastMessageText = messageData.text.substring(0, 50) + (messageData.text.length > 50 ? "..." : ""); 
       else if (messageData.type === 'image') lastMessageText = "Forwarded an image";
       else if (messageData.type === 'gif') lastMessageText = "Forwarded a GIF";
-      else if (messageData.type === 'file') lastMessageText = "Forwarded a file";
+      else if (messageData.type === 'file') lastMessageText = `Forwarded a file: ${messageData.fileName || 'attachment'}`;
       else if (messageData.type === 'voice_message') lastMessageText = "Forwarded a voice message";
       
       await updateDoc(convoDocRef, {
@@ -681,26 +770,26 @@ export default function MessagesPage() {
 
   const fetchTrendingGifs = async () => {
     if (!TENOR_API_KEY.startsWith("AIza")) { 
-        toast({ variant: "destructive", title: "Tenor API Key Invalid" }); setLoadingGifs(false); return;
+        toast({ variant: "destructive", title: "Tenor API Key Invalid", description: "Please check configuration."}); setLoadingGifs(false); return;
     }
     setLoadingGifs(true);
     try {
       const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to fetch trending GIFs');
       const data = await response.json(); setGifs(data.results || []);
-    } catch (error) { console.error("Error fetching trending GIFs:", error); setGifs([]); } 
+    } catch (error) { console.error("Error fetching trending GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: "Could not load trending GIFs." });} 
     finally { setLoadingGifs(false); }
   };
 
   const searchTenorGifs = async (term: string) => {
     if (!term.trim()) { fetchTrendingGifs(); return; }
-    if (!TENOR_API_KEY.startsWith("AIza")) { setLoadingGifs(false); return; }
+    if (!TENOR_API_KEY.startsWith("AIza")) { toast({ variant: "destructive", title: "Tenor API Key Invalid", description: "Please check configuration."}); setLoadingGifs(false); return; }
     setLoadingGifs(true);
     try {
       const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to search GIFs');
       const data = await response.json(); setGifs(data.results || []);
-    } catch (error) { console.error("Error searching GIFs:", error); setGifs([]); } 
+    } catch (error) { console.error("Error searching GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: "Could not search GIFs." });} 
     finally { setLoadingGifs(false); }
   };
 
@@ -742,10 +831,11 @@ export default function MessagesPage() {
             else setHasMicPermission(null); 
         };
       }).catch(() => {
-        setHasMicPermission(null);
+        // Permissions API might not be supported or query might fail
+        setHasMicPermission(null); // Treat as undetermined
       });
     } else {
-        setHasMicPermission(null);
+        setHasMicPermission(null); // Fallback if Permissions API is not available
     }
   }, []);
 
@@ -759,36 +849,40 @@ export default function MessagesPage() {
     } else {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' }); // Common format
         audioChunksRef.current = [];
         mediaRecorderRef.current.ondataavailable = (event) => audioChunksRef.current.push(event.data);
         mediaRecorderRef.current.onstop = async () => {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           const audioFile = new File([audioBlob], `voice_message_${Date.now()}.webm`, { type: 'audio/webm' });
           toast({ title: "Voice Message Recorded", description: "Uploading..." });
-          await uploadFileToCloudinaryAndSend(audioFile, true);
-          stream.getTracks().forEach(track => track.stop());
-          setReplyingToMessage(null);
+          await uploadFileToCloudinaryAndSend(audioFile, true); // Pass true for isVoiceMessage
+          stream.getTracks().forEach(track => track.stop()); // Release microphone
+          setReplyingToMessage(null); // Clear reply context after sending
         };
         mediaRecorderRef.current.start(); setIsRecording(true);
       } catch (error) {
         console.error("Recording Error:", error);
-        toast({ variant: "destructive", title: "Recording Error" }); setIsRecording(false);
+        toast({ variant: "destructive", title: "Recording Error", description: "Could not start voice recording." }); setIsRecording(false);
       }
     }
   };
   
  const handleStartCall = async (isVideoCall: boolean) => {
-    if (!otherUserId || (currentUser && currentUser.uid === otherUserId) || isStartingCall || AGORA_APP_ID === "YOUR_AGORA_APP_ID") {
-        if (AGORA_APP_ID === "YOUR_AGORA_APP_ID") {
+    if (!otherUserId || (currentUser && currentUser.uid === otherUserId) || isStartingCall || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" || !AGORA_APP_ID) {
+        if (AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" || !AGORA_APP_ID) {
             toast({ variant: "destructive", title: "Agora App ID Missing", description: "Agora App ID is not configured for DM calls." });
+        } else if (currentUser && currentUser.uid === otherUserId) {
+            toast({ title: "Cannot Call Yourself", description: "This feature is for calling other users." });
         }
+        setIsStartingCall(false);
         return;
     }
     setIsStartingCall(true);
 
     const micPermission = await requestMicPermission();
     if (!micPermission) {
+        toast({ variant: "destructive", title: "Microphone Required", description: "Please allow microphone access to start a call." });
         setIsStartingCall(false);
         return;
     }
@@ -796,12 +890,13 @@ export default function MessagesPage() {
     if (isVideoCall) {
         try {
             const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            videoStream.getTracks().forEach(track => track.stop());
+            videoStream.getTracks().forEach(track => track.stop()); // Stop after permission check
         } catch (error) {
             toast({ variant: "destructive", title: "Camera Access Denied", description: "Please allow camera access for video calls." });
             cameraPermission = false;
-            setIsStartingCall(false);
-            return;
+            // Do not return here if it's a video call attempt but camera fails; proceed with audio-only if mic is fine.
+            // User can choose to enable camera later if they wish.
+            // Or, prompt user if they want to proceed with audio-only. For now, just warn.
         }
     }
 
@@ -816,7 +911,7 @@ export default function MessagesPage() {
 
         client.on("user-published", async (user, mediaType) => {
             await client.subscribe(user, mediaType);
-            setRemoteUsers(prev => [...prev.filter(u => u.uid !== user.uid), user]);
+            setRemoteUsers(prev => [...prev.filter(u => u.uid !== user.uid), user]); // Add or update user
              if (mediaType === "video" && user.videoTrack) {
                 if (remoteVideoPlayerContainerRef.current) {
                      const playerContainer = document.getElementById(`remote-dm-player-${user.uid}`) || document.createElement('div');
@@ -833,7 +928,7 @@ export default function MessagesPage() {
         client.on("user-unpublished", (user, mediaType) => {
             if (mediaType === "video") {
                 const playerContainer = document.getElementById(`remote-dm-player-${user.uid}`);
-                if (playerContainer) playerContainer.innerHTML = ''; // Clear content or remove
+                if (playerContainer) playerContainer.innerHTML = ''; 
             }
         });
         client.on("user-left", (user) => {
@@ -843,15 +938,17 @@ export default function MessagesPage() {
         });
 
         // IMPORTANT: Token Generation for Production
-        const token = null; // For testing only. Fetch from your backend in production.
-        const uid: UID = currentUser!.uid; // Use UID type for Agora
+        // In a production app, you MUST fetch a token from your backend server.
+        const token = null; // Using null for testing (only if your Agora project allows it)
+
+        const uid: UID = currentUser!.uid; 
         await client.join(AGORA_APP_ID, conversationId!, token, uid);
 
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
         setLocalAudioTrack(audioTrack);
         let tracksToPublish: (ILocalAudioTrack | ILocalVideoTrack)[] = [audioTrack];
 
-        if (isVideoCall && cameraPermission) {
+        if (isVideoCall && cameraPermission) { // Only attempt video if permission was granted
             const videoTrack = await AgoraRTC.createCameraVideoTrack();
             setLocalVideoTrack(videoTrack);
             tracksToPublish.push(videoTrack);
@@ -860,15 +957,16 @@ export default function MessagesPage() {
             }
         }
         await client.publish(tracksToPublish);
-        toast({ title: `${isVideoCall ? 'Video' : 'Voice'} Call Active`, description: `Connected with ${otherUserName || 'User'}.` });
+        toast({ title: `${isVideoCall && cameraPermission ? 'Video' : 'Voice'} Call Active`, description: `Connected with ${otherUserName || 'User'}.` });
     } catch (error) {
         console.error("Agora DM call error:", error);
-        toast({ variant: "destructive", title: "Call Failed", description: "Could not start call." });
+        toast({ variant: "destructive", title: "Call Failed", description: "Could not start or connect to the call." });
         if (localAudioTrack) { localAudioTrack.close(); setLocalAudioTrack(null); }
         if (localVideoTrack) { localVideoTrack.close(); setLocalVideoTrack(null); }
         if (agoraClientRef.current) { await agoraClientRef.current.leave(); agoraClientRef.current = null; }
-        setRemoteUsers([]);
-         if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = '';
+        setRemoteUsers([]); // Clear remote users
+         if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = ''; // Clear remote player view
+         if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; // Clear local player view
     } finally {
         setIsStartingCall(false);
     }
@@ -888,13 +986,13 @@ export default function MessagesPage() {
     }
     if (agoraClientRef.current) {
         await agoraClientRef.current.leave();
-        agoraClientRef.current = null;
-        setRemoteUsers([]); 
+        agoraClientRef.current = null; // Reset client
+        setRemoteUsers([]); // Clear remote users
         if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; // Clear local player
         if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = ''; // Clear remote player
         toast({ title: "Call Ended", description: "You have left the call."});
     }
-    setIsStartingCall(false); 
+    setIsStartingCall(false); // Ensure this is reset
   };
    // Effect to leave call when DM partner changes or component unmounts
   useEffect(() => {
@@ -904,7 +1002,7 @@ export default function MessagesPage() {
         }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId]); // Rerun if conversationId changes
+  }, [conversationId]); // Re-run if conversationId changes
 
 
   const shouldShowFullMessageHeader = (currentMessage: ChatMessage, previousMessage: ChatMessage | null) => {
@@ -921,7 +1019,7 @@ export default function MessagesPage() {
     if (!isChatSearchOpen && chatSearchInputRef.current) {
         setTimeout(() => chatSearchInputRef.current?.focus(), 0);
     } else {
-        setChatSearchTerm(""); 
+        setChatSearchTerm(""); // Clear search term when closing
     }
   };
 
@@ -939,7 +1037,7 @@ export default function MessagesPage() {
   });
   
   const displayedMessages = showPinnedMessages
-    ? filteredMessages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+    ? filteredMessages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()) // Ensure pinned messages are sorted by time
     : filteredMessages;
 
   const handleMentionInputChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -992,11 +1090,13 @@ export default function MessagesPage() {
                     setSelectedConversation(savedMessagesConversation);
                     setOtherUserId(savedMessagesConversation.partnerId);
                     setOtherUserName(savedMessagesConversation.name);
-                    setDmPartnerProfile({
+                    setDmPartnerProfile({ // Update DM partner profile for "Saved Messages"
                         uid: currentUser.uid,
                         displayName: currentUser.displayName || "You",
                         photoURL: currentUser.photoURL,
                         email: currentUser.email,
+                        bio: "This is your personal space for notes and saved messages.",
+                        mutualInterests: ["Self-Care", "Productivity"]
                     });
                     setReplyingToMessage(null);
                     setShowPinnedMessages(false);
@@ -1037,14 +1137,14 @@ export default function MessagesPage() {
                 </Avatar>
                 <h3 className="text-lg font-semibold text-foreground">{otherUserName || 'Direct Message'}</h3>
               </div>
-              <div className={cn("flex items-center space-x-2", isChatSearchOpen && "w-full")}>
+              <div className={cn("flex items-center space-x-1 sm:space-x-2", isChatSearchOpen && "w-full sm:max-w-xs")}>
                  {isChatSearchOpen ? (
                     <div className="flex items-center w-full bg-muted rounded-md px-2">
                         <Search className="h-4 w-4 text-muted-foreground mr-2"/>
                         <Input
                             ref={chatSearchInputRef}
                             type="text"
-                            placeholder={`Search in DMs with ${otherUserName || 'User'}...`}
+                            placeholder={`Search DMs...`}
                             className="flex-1 bg-transparent h-8 text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                             value={chatSearchTerm}
                             onChange={(e) => setChatSearchTerm(e.target.value)}
@@ -1063,7 +1163,7 @@ export default function MessagesPage() {
                                     className="text-muted-foreground hover:text-foreground" 
                                     title={agoraClientRef.current ? "End Call" : "Start Voice Call"} 
                                     onClick={!agoraClientRef.current ? () => handleStartCall(false) : handleLeaveDmCall}
-                                    disabled={isStartingCall || (AGORA_APP_ID === "YOUR_AGORA_APP_ID" && !agoraClientRef.current) }
+                                    disabled={isStartingCall || (AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" && !agoraClientRef.current) || !AGORA_APP_ID}
                                 >
                                     {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-5 w-5 animate-spin"/> : (agoraClientRef.current ? <X className="h-5 w-5 text-destructive"/> : <Phone className="h-5 w-5"/>)}
                                 </Button>
@@ -1073,7 +1173,7 @@ export default function MessagesPage() {
                                     className="text-muted-foreground hover:text-foreground" 
                                     title={agoraClientRef.current && localVideoTrack ? "End Video Call" : "Start Video Call"} 
                                     onClick={!agoraClientRef.current ? () => handleStartCall(true) : handleLeaveDmCall}
-                                    disabled={isStartingCall || (AGORA_APP_ID === "YOUR_AGORA_APP_ID" && !agoraClientRef.current) }
+                                    disabled={isStartingCall || (AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" && !agoraClientRef.current) || !AGORA_APP_ID}
                                 >
                                      {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-5 w-5 animate-spin"/> : (agoraClientRef.current && localVideoTrack ? <X className="h-5 w-5 text-destructive"/> : <VideoIcon className="h-5 w-5"/>)}
                                 </Button>
@@ -1114,24 +1214,23 @@ export default function MessagesPage() {
             {/* Video Call UI Placeholders - only show if call is active */}
             {agoraClientRef.current && otherUserId !== currentUser.uid && (
                 <div className="p-2 border-b border-border/40 bg-black/50 flex flex-col items-center">
-                     {/* Local Video Player Container */}
+                    {/* Local Video Player Container */}
                     {localVideoTrack && (
                         <div id="local-dm-video-player-container" ref={localVideoPlayerContainerRef} className="w-40 h-30 md:w-48 md:h-36 bg-black rounded-md shadow self-start mb-2 relative">
                              <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">You</p>
-                            {/* Local video will be attached here by Agora SDK for video calls */}
                         </div>
                     )}
-                     {/* Remote Video Player Container (single remote user for DMs) */}
+                    {/* Remote Video Player Container (single remote user for DMs) */}
                     {remoteUsers.length > 0 && remoteUsers[0].videoTrack && (
                         <div id="remote-dm-video-player-container" ref={remoteVideoPlayerContainerRef} className="w-full flex-1 aspect-video bg-black rounded-md shadow relative">
                              <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">{remoteUsers[0].uid === otherUserId ? otherUserName : `User ${remoteUsers[0].uid}`}</p>
-                            {/* Remote video will be attached here by handleCallUserPublished */}
                         </div>
                     )}
+                    {/* Placeholders for audio-only or waiting states */}
                     {remoteUsers.length === 0 && localVideoTrack && (
                         <p className="text-sm text-muted-foreground">Waiting for {otherUserName || 'user'} to join...</p>
                     )}
-                     {remoteUsers.length > 0 && !remoteUsers[0].videoTrack && localVideoTrack && (
+                     {remoteUsers.length > 0 && !remoteUsers[0].videoTrack && localVideoTrack && ( // If we are in video call but remote has no video
                         <div className="flex-1 flex items-center justify-center">
                             <Avatar className="h-24 w-24">
                                 <AvatarImage src={dmPartnerProfile?.photoURL || undefined} alt={otherUserName || ''} />
@@ -1139,7 +1238,6 @@ export default function MessagesPage() {
                             </Avatar>
                         </div>
                      )}
-
                 </div>
             )}
 
@@ -1148,27 +1246,27 @@ export default function MessagesPage() {
                 {displayedMessages.length === 0 && (
                   <div className="text-center text-muted-foreground py-4">
                     {chatSearchTerm.trim() ? "No DMs found matching your search." : 
-                     (showPinnedMessages ? "No pinned DMs in this conversation." : "No messages yet. Start the conversation!")}
+                     (showPinnedMessages ? "No pinned DMs in this conversation." : 
+                      (messages.length === 0 && !currentUser ? "Loading messages..." : "No messages yet. Start the conversation!"))}
                   </div>
                 )}
                 {displayedMessages.map((msg, index) => {
                   const previousMessage = index > 0 ? displayedMessages[index - 1] : null;
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
                   const isCurrentUserMsg = msg.senderId === currentUser.uid;
-                  let hasBeenRepliedTo = false;
-                  if (isCurrentUserMsg && currentUser) { 
-                    hasBeenRepliedTo = displayedMessages.some(
-                      (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
-                    );
-                  }
-
+                   let hasBeenRepliedTo = false;
+                    if (isCurrentUserMsg && currentUser) { 
+                      hasBeenRepliedTo = displayedMessages.some(
+                        (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
+                      );
+                    }
 
                   return (
                     <div
                       key={msg.id}
                       className={cn(
                         "flex items-start space-x-3 group relative hover:bg-muted/30 px-2 py-1 rounded-md",
-                         isCurrentUserMsg && "justify-end"
+                         isCurrentUserMsg && "flex-row-reverse space-x-reverse" 
                       )}
                     >
                       {!isCurrentUserMsg && showHeader && (
@@ -1181,20 +1279,20 @@ export default function MessagesPage() {
 
                       <div className={cn("flex-1 min-w-0 max-w-[75%]", isCurrentUserMsg && "text-right")}>
                         {showHeader && (
-                          <div className={cn("flex items-baseline space-x-1.5", isCurrentUserMsg && "justify-end")}>
+                          <div className={cn("flex items-baseline space-x-1.5", isCurrentUserMsg && "flex-row-reverse")}>
                             <p className="font-semibold text-sm text-foreground">{isCurrentUserMsg ? "You" : msg.senderName}</p>
                             <div className="flex items-baseline text-xs text-muted-foreground">
                               <p title={msg.timestamp ? format(msg.timestamp, 'PPpp') : undefined}>
                                 {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
                               </p>
-                              {msg.timestamp && <p className="ml-1.5">({format(msg.timestamp, 'p')})</p>}
+                              {msg.timestamp && <p className="ml-1.5 mr-1.5">({format(msg.timestamp, 'p')})</p>}
                             </div>
                             {msg.isPinned && <Pin className="h-3 w-3 text-amber-400 ml-1" title="Pinned Message"/>}
-                            {hasBeenRepliedTo && <MessageSquareReply className="h-3 w-3 text-blue-400 ml-1" title="Someone replied to this" />}
+                             {hasBeenRepliedTo && <MessageSquareReply className="h-3 w-3 text-blue-400 ml-1" title="Someone replied to this" />}
                           </div>
                         )}
                          {msg.replyToMessageId && msg.replyToSenderName && msg.replyToTextSnippet && (
-                            <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max", isCurrentUserMsg ? "ml-auto" : "mr-auto")}>
+                            <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max", isCurrentUserMsg ? "ml-auto text-left" : "mr-auto text-left")}>
                                  <div className="flex items-center">
                                   <CornerUpRight className="h-3 w-3 mr-1.5 text-primary/70" />
                                   <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>: 
@@ -1210,7 +1308,8 @@ export default function MessagesPage() {
                         )}
                          <div className={cn("mt-0.5 p-2 rounded-lg inline-block", 
                             isCurrentUserMsg ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
-                            showHeader ? "mt-0.5" : "mt-0"
+                            showHeader ? "mt-0.5" : "mt-0",
+                            isCurrentUserMsg ? "text-left" : "text-left" // Ensure text inside bubble is left-aligned
                         )}>
                             {msg.type === 'text' && msg.text && (
                                 <p className="text-sm whitespace-pre-wrap break-words"
@@ -1220,7 +1319,7 @@ export default function MessagesPage() {
                                <div className="relative max-w-[300px] mt-1 group/gif">
                                     <Image src={msg.gifUrl} alt={msg.gifContentDescription || "GIF"} width={0} height={0} style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem' }} unoptimized priority={false} data-ai-hint="animated gif" />
                                     {currentUser && msg.gifId && (
-                                        <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleFavoriteGifFromChat(msg)} title={isGifFavorited(msg.gifId || "") ? "Unfavorite" : "Favorite"}>
+                                        <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover/gif:opacity-100 transition-opacity" onClick={() => handleFavoriteGifFromChat(msg)} title={isGifFavorited(msg.gifId || "") ? "Unfavorite" : "Favorite"}>
                                             <Star className={cn("h-4 w-4", isGifFavorited(msg.gifId || "") ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
                                         </Button>
                                     )}
@@ -1256,12 +1355,12 @@ export default function MessagesPage() {
                         )}
                       </div>
                       {isCurrentUserMsg && showHeader && (
-                        <Avatar className="mt-1 h-8 w-8 shrink-0 ml-3">
+                        <Avatar className="mt-1 h-8 w-8 shrink-0">
                           <AvatarImage src={msg.senderAvatarUrl || undefined} data-ai-hint="person default" />
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       )}
-                      {isCurrentUserMsg && !showHeader && <div className="w-8 shrink-0 ml-3" />}
+                      {isCurrentUserMsg && !showHeader && <div className="w-8 shrink-0" />}
 
                        <div className={cn("absolute top-0 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50", isCurrentUserMsg ? "left-2" : "right-2")}>
                         <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" 
@@ -1281,14 +1380,14 @@ export default function MessagesPage() {
                               <SmilePlus className="h-4 w-4" />
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
-                             <EmojiMartPicker 
-                                data={data}
-                                onEmojiSelect={(emoji: any) => { 
-                                    handleToggleReaction(msg.id, emoji.native); 
+                          <PopoverContent className="w-auto p-0">
+                             <EmojiPicker 
+                                onEmojiClick={(emojiData: EmojiClickData) => { 
+                                    handleToggleReaction(msg.id, emojiData.emoji); 
                                     setReactionPickerOpenForMessageId(null); 
                                 }} 
-                                theme={currentThemeMode}
+                                theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+                                emojiStyle={EmojiStyle.NATIVE}
                                 searchPlaceholder="Search emoji..."
                                 previewConfig={{showPreview: false}}
                              />
@@ -1356,39 +1455,39 @@ export default function MessagesPage() {
                     </Popover>
                 )}
                 <form onSubmit={handleSendMessage} className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
-                    <input type="file" ref={attachmentInputRef} onChange={handleFileSelected} className="hidden" accept={ALLOWED_FILE_TYPES.join(',')} disabled={isUploadingFile || isRecording} />
+                    <input type="file" ref={attachmentInputRef} onChange={handleFileSelected} className="hidden" accept={ALLOWED_FILE_TYPES.join(',')} disabled={isUploadingFile || isRecording || agoraClientRef.current !==null} />
                     {isUploadingFile ? <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" /> : (
-                    <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Attach File" onClick={() => attachmentInputRef.current?.click()} disabled={isUploadingFile || isRecording}>
+                    <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Attach File" onClick={() => attachmentInputRef.current?.click()} disabled={isUploadingFile || isRecording || agoraClientRef.current !==null}>
                         <Paperclip className="h-5 w-5" />
                     </Button>
                     )}
-                    <Input ref={chatInputRef} type="text" placeholder={isRecording ? "Recording..." : `Message ${otherUserName || 'User'}... (@mention, **bold**)`}
+                    <Input ref={chatInputRef} type="text" placeholder={isRecording ? "Recording..." : (agoraClientRef.current !== null ? "In a call..." :`Message ${otherUserName || 'User'}... (@mention, **bold**)`)}
                         className="flex-1 bg-transparent text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
                         value={newMessage} onChange={handleMentionInputChange}
-                        onKeyPress={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isRecording && !isUploadingFile) handleSendMessage(e); }}
-                        disabled={isRecording || isUploadingFile}
+                        onKeyPress={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isRecording && !isUploadingFile && agoraClientRef.current === null) handleSendMessage(e); }}
+                        disabled={isRecording || isUploadingFile || agoraClientRef.current !==null}
                     />
                     <Button type="button" variant={isRecording ? "destructive" : "ghost"} size="icon"
                         className={cn("shrink-0", isRecording ? "text-destructive-foreground hover:bg-destructive/90" : "text-muted-foreground hover:text-foreground")}
-                        title={isRecording ? "Stop Recording" : "Send Voice Message"} onClick={handleToggleRecording} disabled={hasMicPermission === false || isUploadingFile}>
+                        title={isRecording ? "Stop Recording" : "Send Voice Message"} onClick={handleToggleRecording} disabled={hasMicPermission === false || isUploadingFile || agoraClientRef.current !==null}>
                         {isRecording ? <StopCircle className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
                     </Button>
                     {hasMicPermission === false && <AlertTriangle className="h-5 w-5 text-destructive" title="Mic permission denied"/>}
                     <Popover open={chatEmojiPickerOpen} onOpenChange={setChatEmojiPickerOpen}>
                     <PopoverTrigger asChild>
-                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Emoji" disabled={isRecording || isUploadingFile}>
+                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Emoji" disabled={isRecording || isUploadingFile || agoraClientRef.current !==null}>
                             <Smile className="h-5 w-5" />
                         </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 border-none shadow-none bg-transparent">
-                        <EmojiMartPicker 
-                            data={data}
-                            onEmojiSelect={(emoji: any) => { 
-                                setNewMessage(prev => prev + emoji.native); 
+                    <PopoverContent className="w-auto p-0">
+                        <EmojiPicker 
+                            onEmojiClick={(emojiData: EmojiClickData) => { 
+                                setNewMessage(prev => prev + emojiData.emoji); 
                                 setChatEmojiPickerOpen(false); 
                                 chatInputRef.current?.focus(); 
                             }} 
-                            theme={currentThemeMode}
+                            theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+                            emojiStyle={EmojiStyle.NATIVE}
                             searchPlaceholder="Search emoji..."
                             previewConfig={{showPreview: false}}
                         />
@@ -1396,7 +1495,7 @@ export default function MessagesPage() {
                     </Popover>
                     <Dialog open={showGifPicker} onOpenChange={setShowGifPicker}>
                     <DialogTrigger asChild>
-                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="GIF" disabled={isRecording || isUploadingFile}>
+                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="GIF" disabled={isRecording || isUploadingFile || agoraClientRef.current !==null}>
                             <Film className="h-5 w-5" />
                         </Button>
                     </DialogTrigger>
@@ -1434,7 +1533,7 @@ export default function MessagesPage() {
                         <DialogFooter className="mt-auto pt-2"><p className="text-xs text-muted-foreground">Powered by Tenor</p></DialogFooter>
                     </DialogContent>
                     </Dialog>
-                    <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send" disabled={!newMessage.trim() || isRecording || isUploadingFile}>
+                    <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send" disabled={!newMessage.trim() || isRecording || isUploadingFile || agoraClientRef.current !==null}>
                         <Send className="h-5 w-5" />
                     </Button>
                 </form>
@@ -1459,23 +1558,26 @@ export default function MessagesPage() {
                             </AvatarFallback>
                         </Avatar>
                         <h3 className="text-xl font-semibold text-foreground">{dmPartnerProfile.displayName || 'User'}</h3>
-                        {dmPartnerProfile.email && selectedConversation.id === `${currentUser?.uid}_self` && (
+                        {dmPartnerProfile.email && selectedConversation.id === `${currentUser?.uid}_self` && ( // Only show email for "Saved Messages"
                             <p className="text-sm text-muted-foreground">{dmPartnerProfile.email}</p>
                         )}
-                         <p className="text-xs text-muted-foreground mt-1 italic">Status: Away (placeholder)</p>
+                         <p className="text-xs text-muted-foreground mt-1 italic">{dmPartnerProfile.bio || (otherUserId === currentUser?.uid ? "Your personal space." : "User bio placeholder.")}</p>
                     </div>
                 </div>
                 <ScrollArea className="flex-1 min-h-0"> 
                     <div className="p-4 space-y-3">
-                        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">About</h4>
-                        <p className="text-sm text-foreground/90">User bio placeholder. This is where a short description about the user would go.</p>
+                        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                            {otherUserId === currentUser?.uid ? "Your Info" : "About"}
+                        </h4>
+                        <p className="text-sm text-foreground/90">{dmPartnerProfile.bio || (otherUserId === currentUser?.uid ? "Saved messages and notes." : "This user hasn't shared their bio yet.")}</p>
                         
-                        {selectedConversation.id !== `${currentUser?.uid}_self` && (
+                        {selectedConversation.id !== `${currentUser?.uid}_self` && dmPartnerProfile.mutualInterests && dmPartnerProfile.mutualInterests.length > 0 && (
                             <>
                                 <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mt-3">Mutual Interests</h4>
                                 <div className="flex flex-wrap gap-1.5">
-                                    <Badge variant="secondary">#Placeholder</Badge>
-                                    <Badge variant="secondary">#Tags</Badge>
+                                    {dmPartnerProfile.mutualInterests.map(interest => (
+                                        <Badge key={interest} variant="secondary">{interest}</Badge>
+                                    ))}
                                 </div>
                             </>
                         )}
@@ -1506,7 +1608,7 @@ export default function MessagesPage() {
             <DialogHeader>
                 <DialogTitle>Forward Message</DialogTitle>
                 <DialogDescription>
-                   Select a channel or user to forward this message to. (Recipient selection coming soon)
+                   Forward this message to your "Saved Messages". (More options coming soon)
                 </DialogDescription>
             </DialogHeader>
             {forwardingMessage && (
@@ -1519,16 +1621,16 @@ export default function MessagesPage() {
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users..." 
+                    placeholder="Search channels or users (coming soon)..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    
+                    disabled // Keep disabled until search is implemented
                 />
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => {setIsForwardDialogOpen(false); setForwardingMessage(null); setForwardSearchTerm("");}}>Cancel</Button>
                 <Button onClick={handleForwardMessage} >
-                    Forward
+                    Forward to Saved Messages
                 </Button>
             </DialogFooter>
         </DialogContent>
