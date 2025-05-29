@@ -68,7 +68,6 @@ interface UserAppSettings {
     themeSecondaryAccent?: string;
     themeSecondaryAccentFg?: string;
     uiScale?: UiScale;
-    onboardingComplete?: boolean; // Add this
 }
 
 
@@ -265,7 +264,8 @@ export default function ThemeSelectionPage() {
         });
       }
     };
-  }, [initialMode, initialAccentValue, initialAccentFgValue, currentUser, isSubmitting, applyTheme]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMode, initialAccentValue, initialAccentFgValue, currentUser, isSubmitting]);
 
 
   if (isCheckingAuth || !initialMode) { 
@@ -278,8 +278,8 @@ export default function ThemeSelectionPage() {
 
   return (
     <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
-      <Card className="w-full max-w-lg bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
-        <CardHeader className="text-center pt-6 pb-4">
+      <Card className="flex flex-col w-full max-w-lg max-h-[90vh] bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
+        <CardHeader className="text-center pt-6 pb-4 shrink-0">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
             Customize Your vibe
           </CardTitle>
@@ -287,7 +287,7 @@ export default function ThemeSelectionPage() {
             Choose your preferred theme mode and accent color.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-8 pt-2">
+        <CardContent className="flex-1 overflow-y-auto space-y-8 px-6 pt-2">
           <div className="space-y-3">
             <Label className="text-lg font-semibold text-foreground flex items-center">
               <Palette className="mr-2 h-6 w-6 text-accent" /> Theme Mode
@@ -353,7 +353,7 @@ export default function ThemeSelectionPage() {
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-3 pt-8">
+        <CardFooter className="flex flex-col space-y-3 pt-8 shrink-0">
           <Button
             onClick={handleSave}
             disabled={isSubmitting || !currentUser}

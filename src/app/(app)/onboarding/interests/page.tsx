@@ -27,10 +27,11 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { BookOpen, Gift, Hash, Heart, UserCircle, Palette, Film, Music, Plane, Code, Loader2, PersonStanding } from 'lucide-react';
-import { auth, db } from '@/lib/firebase'; // Firestore import
+import { auth, db } from '@/lib/firebase'; 
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
+import { doc, getDoc, setDoc } from 'firebase/firestore'; 
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
+import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
 
 const interestsSchema = z.object({
   hobbies: z.string().min(1, { message: "Please enter at least one hobby." }).describe("Comma-separated list of hobbies"),
@@ -50,6 +51,7 @@ const ageRanges = [
   "45-54",
   "55-64",
   "65+",
+  "Prefer not to say",
 ];
 
 const genderOptions = [
@@ -67,6 +69,9 @@ const passionOptions = [
   { value: "reading", label: "Reading", icon: <BookOpen className="mr-2 h-4 w-4" /> },
   { value: "technology", label: "Technology", icon: <Code className="mr-2 h-4 w-4" /> },
   { value: "travel", label: "Travel", icon: <Plane className="mr-2 h-4 w-4" /> },
+  { value: "gaming", label: "Gaming", icon: <UserCircle className="mr-2 h-4 w-4" /> }, // Example, replace icon if needed
+  { value: "sports_fitness", label: "Sports & Fitness", icon: <UserCircle className="mr-2 h-4 w-4" /> },
+  { value: "food_cooking", label: "Food & Cooking", icon: <UserCircle className="mr-2 h-4 w-4" /> },
   { value: "other", label: "Other", icon: <UserCircle className="mr-2 h-4 w-4" /> },
 ];
 
@@ -125,12 +130,6 @@ export default function InterestsPage() {
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
         await setDoc(userDocRef, { profileDetails: profileDetailsToSave }, { merge: true });
-
-        // Clear old localStorage items for these fields
-        Object.keys(profileDetailsToSave).forEach(key => {
-            localStorage.removeItem(`userInterests_${key}_${currentUser.uid}`);
-            localStorage.removeItem(`userProfile_${key}_${currentUser.uid}`); // In case old profile keys existed
-        });
         
         toast({
           title: "Interests Saved!",
@@ -146,19 +145,35 @@ export default function InterestsPage() {
     }
   };
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
     if (!currentUser) {
         toast({ variant: "destructive", title: "Error", description: "You must be logged in." });
         router.push('/login');
         return;
     }
-    // No data to clear from Firestore if skipping, as nothing was saved yet.
-    // Old localStorage clearing is handled in onSubmit if user *did* save.
-    toast({
-      title: 'Skipping Interests',
-      description: 'Proceeding to theme selection.',
-    });
-    router.push('/onboarding/theme');
+     setIsSubmitting(true); // Prevent double clicks
+    // Ensure minimal profileDetails object exists if skipping
+    const profileDetailsToSave = {
+        hobbies: "Not set",
+        age: "Not set",
+        gender: "Not set",
+        tags: "Not set",
+        passion: "Not set",
+    };
+    try {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      await setDoc(userDocRef, { profileDetails: profileDetailsToSave }, { merge: true });
+      toast({
+        title: 'Skipping Interests',
+        description: 'Proceeding to theme selection. You can update interests later.',
+      });
+      router.push('/onboarding/theme');
+    } catch (error) {
+      console.error("Error setting default interests on skip:", error);
+      toast({ variant: "destructive", title: "Skip Failed", description: "Could not proceed. Please try again." });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   if (isCheckingAuth) {
@@ -172,8 +187,8 @@ export default function InterestsPage() {
 
   return (
     <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
-      <Card className="w-full max-w-lg bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
-        <CardHeader className="text-center pt-6 pb-4">
+      <Card className="flex flex-col w-full max-w-lg max-h-[90vh] bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
+        <CardHeader className="text-center pt-6 pb-4 shrink-0">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
             Share Your vibe
           </CardTitle>
@@ -181,9 +196,9 @@ export default function InterestsPage() {
             Tell us a bit more about yourself to personalize your experience. Fields with <span className="text-destructive">*</span> are required.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4 pt-2"> {/* Reduced space-y from 6 to 4 */}
+        <CardContent className="flex-1 overflow-y-auto space-y-4 px-6 pt-2"> 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4"> {/* Reduced space-y from 6 to 4 */}
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
                 control={form.control}
                 name="age"
@@ -310,10 +325,11 @@ export default function InterestsPage() {
                   </FormItem>
                 )}
               />
+              {/* Submit button removed from here, handled by CardFooter */}
             </form>
           </Form>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-3 pt-6">
+        <CardFooter className="flex flex-col space-y-3 pt-6 shrink-0">
           <Button
             onClick={form.handleSubmit(onSubmit)}
             disabled={isSubmitting || !currentUser}

@@ -14,7 +14,7 @@ import { updateProfile, onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 
-// Cloudinary configuration (API Key is safe for client-side with unsigned uploads)
+// Cloudinary configuration
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
 const CLOUDINARY_API_KEY = '775545995624823';
 const CLOUDINARY_UPLOAD_PRESET = 'vibe_app'; 
@@ -33,7 +33,6 @@ export default function AvatarUploadPage() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
-        // Check Firestore for onboarding completion
         const userDocRef = doc(db, "users", user.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
@@ -84,7 +83,7 @@ export default function AvatarUploadPage() {
   const handleNext = async () => {
     let userForOperation = auth.currentUser;
     if (!userForOperation) {
-        await auth.currentUser?.reload(); // Attempt to refresh user state
+        await auth.currentUser?.reload(); 
         userForOperation = auth.currentUser;
     }
     
@@ -136,6 +135,10 @@ export default function AvatarUploadPage() {
 
         if (userForProfileUpdate) {
           await updateProfile(userForProfileUpdate, { photoURL: newAvatarUrlFromCloudinary });
+           // Also save to Firestore user document
+          const userDocRef = doc(db, "users", userForProfileUpdate.uid);
+          await setDoc(userDocRef, { profileDetails: { photoURL: newAvatarUrlFromCloudinary } }, { merge: true });
+
           toast({
             title: 'Avatar Uploaded!',
             description: 'Your profile picture has been updated.',
@@ -159,9 +162,13 @@ export default function AvatarUploadPage() {
     }
   };
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
     if (isUploading) return;
      let userForOperation = auth.currentUser;
+    if (!userForOperation) {
+       await auth.currentUser?.reload();
+       userForOperation = auth.currentUser;
+    }
     if (!userForOperation) {
        toast({ variant: 'destructive', title: 'Authentication Error', description: 'Please log in again.' });
        router.push('/login');
@@ -184,8 +191,8 @@ export default function AvatarUploadPage() {
 
   return (
     <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
-      <Card className="w-full max-w-md bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
-        <CardHeader className="text-center pt-6 pb-4">
+      <Card className="flex flex-col w-full max-w-lg max-h-[90vh] bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
+        <CardHeader className="text-center pt-6 pb-4 shrink-0">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
             Set Your vibe
           </CardTitle>
@@ -193,7 +200,7 @@ export default function AvatarUploadPage() {
             Upload a profile picture to personalize your experience.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col items-center space-y-6 pt-2">
+        <CardContent className="flex-1 overflow-y-auto flex flex-col items-center space-y-6 px-6 pt-2">
           <Avatar
             className={`h-36 w-36 border-4 border-primary shadow-[0_0_15px_hsl(var(--primary)/0.5),_0_0_5px_hsl(var(--accent)/0.3)] ${isUploading ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-90'} transition-opacity`}
             onClick={handleUploadButtonClick}
@@ -234,7 +241,7 @@ export default function AvatarUploadPage() {
             {isUploading ? 'Processing...' : (avatarFile ? 'Change Picture' : 'Choose a Picture')}
           </Button>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-3 pt-4">
+        <CardFooter className="flex flex-col space-y-3 pt-4 shrink-0">
           <Button
             onClick={handleNext}
             disabled={isUploading || !currentUser}

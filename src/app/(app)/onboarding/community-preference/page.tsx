@@ -60,16 +60,17 @@ export default function CommunityPreferencePage() {
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
       
+      // Fetch existing appSettings to merge with
       const userDocSnap = await getDoc(userDocRef);
       let existingAppSettings: Partial<UserAppSettings> = {};
       if (userDocSnap.exists() && userDocSnap.data().appSettings) {
         existingAppSettings = userDocSnap.data().appSettings;
       }
       
-      const updatedAppSettings: UserAppSettings = {
-        ...existingAppSettings, 
+      const updatedAppSettings: Partial<UserAppSettings> = {
+        ...existingAppSettings, // Preserve existing settings like theme
         communityJoinPreference: preference,
-        onboardingComplete: true,
+        onboardingComplete: true, // Mark onboarding as complete here
       };
 
       await setDoc(userDocRef, { 
@@ -83,16 +84,10 @@ export default function CommunityPreferencePage() {
           : "No problem! You can explore communities at your own pace.",
       });
       
-      // Clear old localStorage flags that are now in Firestore
+      // Clear old localStorage flags (if any were used before Firestore persistence)
       localStorage.removeItem(`onboardingComplete_${currentUser.uid}`); 
       localStorage.removeItem(`community_join_preference_${currentUser.uid}`);
-      localStorage.removeItem(`theme_mode_${currentUser.uid}`);
-      localStorage.removeItem(`theme_accent_primary_${currentUser.uid}`);
-      localStorage.removeItem(`theme_accent_primary_fg_${currentUser.uid}`);
-      localStorage.removeItem(`theme_accent_secondary_${currentUser.uid}`);
-      localStorage.removeItem(`theme_accent_secondary_fg_${currentUser.uid}`);
-      localStorage.removeItem(`ui_scale_${currentUser.uid}`);
-
+      // Theme-related localStorage keys are handled by the theme page itself or settings
 
       router.push('/dashboard');
     } catch (error) {
@@ -113,8 +108,8 @@ export default function CommunityPreferencePage() {
 
   return (
     <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
-      <Card className="w-full max-w-lg bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
-        <CardHeader className="text-center pt-6 pb-4">
+      <Card className="flex flex-col w-full max-w-lg max-h-[90vh] bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
+        <CardHeader className="text-center pt-6 pb-4 shrink-0">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
             Join the Vibe?
           </CardTitle>
@@ -122,13 +117,13 @@ export default function CommunityPreferencePage() {
             Would you like to automatically join communities that match your interests and passions?
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6 pt-4 pb-2 flex flex-col items-center">
+        <CardContent className="flex-1 overflow-y-auto space-y-6 px-6 pt-4 pb-2 flex flex-col items-center">
            <Users className="h-20 w-20 text-accent mb-4" />
            <p className="text-sm text-muted-foreground text-center">
             This can help you quickly connect with like-minded people and relevant content. You can always adjust your community memberships later.
            </p>
         </CardContent>
-        <CardFooter className="flex flex-col sm:flex-row gap-4 pt-6 pb-6">
+        <CardFooter className="flex flex-col sm:flex-row gap-4 pt-6 pb-6 shrink-0">
           <Button
             onClick={() => handlePreference('yes')}
             disabled={isSubmitting || !currentUser}
