@@ -91,15 +91,17 @@ export default function InterestsPage() {
         if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
           router.replace('/dashboard');
         } else {
-          // If onboarding is not complete, but interests were previously saved to Firestore, load them.
-          if (userDocSnap.exists() && userDocSnap.data().profileDetails) {
-            const { hobbies, age, gender, tags, passion } = userDocSnap.data().profileDetails;
+          if (userDocSnap.exists()) {
+            const data = userDocSnap.data();
+            const profileDetails = data.profileDetails || {};
+            const appSettings = data.appSettings || {};
+            
             form.reset({
-              hobbies: hobbies || "",
-              age: age || "",
-              gender: gender || "",
-              tags: tags || "",
-              passion: passion || "",
+              hobbies: profileDetails.hobbies || "",
+              age: profileDetails.age || "",
+              gender: profileDetails.gender || "",
+              tags: profileDetails.tags || "",
+              passion: profileDetails.passion || "",
             });
           }
           setIsCheckingAuth(false);
@@ -140,12 +142,13 @@ export default function InterestsPage() {
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        // Merge with existing profileDetails if any, to not overwrite things like photoURL
         const userDocSnap = await getDoc(userDocRef);
-        const existingProfileDetails = userDocSnap.exists() ? userDocSnap.data().profileDetails : {};
+        const existingProfileDetails = userDocSnap.exists() ? userDocSnap.data().profileDetails || {} : {};
+        const existingAppSettings = userDocSnap.exists() ? userDocSnap.data().appSettings || {} : {};
         
         await setDoc(userDocRef, { 
-            profileDetails: { ...existingProfileDetails, ...profileDetailsToSave } 
+            profileDetails: { ...existingProfileDetails, ...profileDetailsToSave },
+            appSettings: existingAppSettings // Preserve existing appSettings
         }, { merge: true });
         
         toast({
@@ -179,10 +182,13 @@ export default function InterestsPage() {
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
       const userDocSnap = await getDoc(userDocRef);
-      const existingProfileDetails = userDocSnap.exists() ? userDocSnap.data().profileDetails : {};
+      const existingProfileDetails = userDocSnap.exists() ? userDocSnap.data().profileDetails || {} : {};
+      const existingAppSettings = userDocSnap.exists() ? userDocSnap.data().appSettings || {} : {};
+
 
       await setDoc(userDocRef, { 
-        profileDetails: { ...existingProfileDetails, ...profileDetailsToSave } 
+        profileDetails: { ...existingProfileDetails, ...profileDetailsToSave },
+        appSettings: existingAppSettings // Preserve existing appSettings
       }, { merge: true });
       toast({
         title: 'Skipping Interests',
@@ -216,7 +222,7 @@ export default function InterestsPage() {
             Tell us a bit more about yourself to personalize your experience. Fields with <span className="text-destructive">*</span> are required.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 p-0"> 
+        <CardContent className="flex-1 p-0 overflow-hidden"> {/* Added overflow-hidden here */}
           <ScrollArea className="h-full">
             <div className="px-6 pt-2 pb-6">
               <Form {...form}>
@@ -229,7 +235,7 @@ export default function InterestsPage() {
                         <FormLabel className="text-muted-foreground flex items-center">
                           <Gift className="mr-2 h-5 w-5 text-accent" /> Age Range <span className="text-destructive ml-1">*</span>
                         </FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
                           <FormControl>
                             <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
                               <SelectValue placeholder="Select your age range" />
@@ -256,7 +262,7 @@ export default function InterestsPage() {
                         <FormLabel className="text-muted-foreground flex items-center">
                           <PersonStanding className="mr-2 h-5 w-5 text-accent" /> Gender <span className="text-destructive ml-1">*</span>
                         </FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
                           <FormControl>
                             <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
                               <SelectValue placeholder="Select your gender" />
@@ -329,7 +335,7 @@ export default function InterestsPage() {
                         <FormLabel className="text-muted-foreground flex items-center">
                           <Heart className="mr-2 h-5 w-5 text-accent" /> Primary Passion <span className="text-destructive ml-1">*</span>
                         </FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
                           <FormControl>
                             <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
                               <SelectValue placeholder="Select your main passion" />
