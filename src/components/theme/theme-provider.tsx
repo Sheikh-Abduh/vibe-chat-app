@@ -1,9 +1,10 @@
 
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase'; // Ensure db is imported
+import { doc, getDoc } from 'firebase/firestore'; // Firestore imports
 
 // Default theme HSL variables (consistent with theme selection page and globals.css)
 const defaultDarkVars: Record<string, string> = {
@@ -24,14 +25,23 @@ const defaultLightVars: Record<string, string> = {
   '--border': '0 0% 85%', '--input': '0 0% 92%',
 };
 
-// These should match the initial defaults from globals.css or your desired app defaults
-const appDefaultPrimary = '289 85% 45%'; // Neon Purple
+const appDefaultPrimary = '289 85% 45%'; 
 const appDefaultPrimaryFg = '0 0% 100%';
-const appDefaultSecondary = '127 100% 43%'; // Forest Green (used as initial --accent)
-const appDefaultSecondaryFg = '220 3% 10%';
+const appDefaultSecondaryAccent = '127 100% 43%'; 
+const appDefaultSecondaryAccentFg = '220 3% 10%';
 const appDefaultUiScale = 'default';
 
 export type UiScale = 'compact' | 'default' | 'comfortable';
+
+interface UserAppSettings {
+  onboardingComplete?: boolean;
+  themeMode?: 'light' | 'dark';
+  themePrimaryAccent?: string;
+  themePrimaryAccentFg?: string;
+  themeSecondaryAccent?: string;
+  themeSecondaryAccentFg?: string;
+  uiScale?: UiScale;
+}
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -43,77 +53,53 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') { 
+  const applyThemeFromSettings = useCallback((settings: UserAppSettings | null) => {
+    if (typeof window !== 'undefined') {
       const root = document.documentElement;
+
+      const mode = settings?.themeMode || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      const primaryAccent = settings?.themePrimaryAccent || appDefaultPrimary;
+      const primaryAccentFg = settings?.themePrimaryAccentFg || appDefaultPrimaryFg;
+      const secondaryAccent = settings?.themeSecondaryAccent || appDefaultSecondaryAccent;
+      const secondaryAccentFg = settings?.themeSecondaryAccentFg || appDefaultSecondaryAccentFg;
+      const uiScale = settings?.uiScale || appDefaultUiScale;
+
+      const baseVarsToApply = mode === 'light' ? defaultLightVars : defaultDarkVars;
       
-      if (!currentUser) {
-        // Apply app defaults if no user is logged in
-        const systemPrefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
-        const baseVarsToApply = systemPrefersLight ? defaultLightVars : defaultDarkVars;
-        
-        for (const [key, value] of Object.entries(baseVarsToApply)) {
-          root.style.setProperty(key, value);
-        }
-        root.style.setProperty('--primary', appDefaultPrimary);
-        root.style.setProperty('--primary-foreground', appDefaultPrimaryFg);
-        root.style.setProperty('--ring', appDefaultPrimary);
-        root.style.setProperty('--accent', appDefaultSecondary);
-        root.style.setProperty('--accent-foreground', appDefaultSecondaryFg);
-
-        root.classList.remove('ui-scale-compact', 'ui-scale-default', 'ui-scale-comfortable');
-        root.classList.add(`ui-scale-${appDefaultUiScale}`);
-        return;
-      }
-
-      // User is logged in, try to apply their saved settings
-      const savedMode = localStorage.getItem(`theme_mode_${currentUser.uid}`) as 'light' | 'dark' | null;
-      const savedPrimaryAccent = localStorage.getItem(`theme_accent_primary_${currentUser.uid}`);
-      const savedPrimaryAccentFg = localStorage.getItem(`theme_accent_primary_fg_${currentUser.uid}`);
-      const savedSecondaryAccent = localStorage.getItem(`theme_accent_secondary_${currentUser.uid}`);
-      const savedSecondaryAccentFg = localStorage.getItem(`theme_accent_secondary_fg_${currentUser.uid}`);
-      const savedUiScale = localStorage.getItem(`ui_scale_${currentUser.uid}`) as UiScale | null;
-
-      let activeMode: 'light' | 'dark' = defaultDarkVars['--background'].includes('100%') ? 'light' : 'dark'; // Determine default based on CSS
-      if (savedMode) {
-        activeMode = savedMode;
-      } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-        activeMode = 'light';
-      }
-      
-      const themeVars = activeMode === 'dark' ? defaultDarkVars : defaultLightVars;
-      for (const [key, value] of Object.entries(themeVars)) {
+      for (const [key, value] of Object.entries(baseVarsToApply)) {
         root.style.setProperty(key, value);
       }
-
-      if (savedPrimaryAccent) {
-        root.style.setProperty('--primary', savedPrimaryAccent);
-        root.style.setProperty('--ring', savedPrimaryAccent); 
-      } else {
-        root.style.setProperty('--primary', appDefaultPrimary); // Fallback to app default
-        root.style.setProperty('--ring', appDefaultPrimary);
-      }
-      if (savedPrimaryAccentFg) {
-        root.style.setProperty('--primary-foreground', savedPrimaryAccentFg);
-      } else {
-        root.style.setProperty('--primary-foreground', appDefaultPrimaryFg); // Fallback
-      }
-
-      if (savedSecondaryAccent) {
-        root.style.setProperty('--accent', savedSecondaryAccent);
-      } else {
-        root.style.setProperty('--accent', appDefaultSecondary); // Fallback
-      }
-      if (savedSecondaryAccentFg) {
-        root.style.setProperty('--accent-foreground', savedSecondaryAccentFg);
-      } else {
-        root.style.setProperty('--accent-foreground', appDefaultSecondaryFg); // Fallback
-      }
+      root.style.setProperty('--primary', primaryAccent);
+      root.style.setProperty('--primary-foreground', primaryAccentFg);
+      root.style.setProperty('--ring', primaryAccent); 
+      root.style.setProperty('--accent', secondaryAccent);
+      root.style.setProperty('--accent-foreground', secondaryAccentFg);
 
       root.classList.remove('ui-scale-compact', 'ui-scale-default', 'ui-scale-comfortable');
-      root.classList.add(`ui-scale-${savedUiScale || appDefaultUiScale}`);
+      root.classList.add(`ui-scale-${uiScale}`);
     }
-  }, [currentUser]); 
+  }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      getDoc(userDocRef).then(userDocSnap => {
+        if (userDocSnap.exists()) {
+          const data = userDocSnap.data();
+          applyThemeFromSettings(data.appSettings as UserAppSettings || null);
+        } else {
+          // User document doesn't exist yet, apply app defaults
+          applyThemeFromSettings(null);
+        }
+      }).catch(error => {
+        console.error("Error fetching user settings from Firestore:", error);
+        applyThemeFromSettings(null); // Fallback to defaults on error
+      });
+    } else {
+      // No user logged in, apply app defaults
+      applyThemeFromSettings(null);
+    }
+  }, [currentUser, applyThemeFromSettings]); 
 
   return <>{children}</>;
 }

@@ -8,19 +8,22 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { Sun, Moon, Palette, CheckCircle, Loader2 } from 'lucide-react';
-import { auth } from '@/lib/firebase';
+import { Sun, Moon, Palette, CheckCircle, Loader2, ArrowLeft, RefreshCcw, Ruler } from 'lucide-react';
+import { auth, db } from '@/lib/firebase'; // Ensure db is imported
+import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { cn } from '@/lib/utils';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
+import type { UiScale } from '@/components/theme/theme-provider';
+
 
 type ThemeMode = 'light' | 'dark';
 
 interface AccentColorOption {
   name: string;
-  value: string; // HSL string for --primary
-  primaryForeground: string; // HSL string for --primary-foreground
-  className: string; // Tailwind class for bg color of swatch
+  value: string; 
+  primaryForeground: string; 
+  className: string; 
 }
 
 const accentOptions: AccentColorOption[] = [
@@ -34,33 +37,28 @@ const accentOptions: AccentColorOption[] = [
 
 // Default theme values (from globals.css - dark mode)
 const defaultDarkVars = {
-  '--background': '220 3% 10%',
-  '--foreground': '0 0% 98%',
-  '--card': '220 3% 12%',
-  '--card-foreground': '0 0% 98%',
-  '--popover': '220 3% 10%',
-  '--popover-foreground': '0 0% 98%',
-  '--secondary': '220 3% 18%',
-  '--secondary-foreground': '0 0% 98%',
-  '--muted': '220 3% 15%',
-  '--muted-foreground': '0 0% 70%',
-  '--border': '220 3% 18%',
-  '--input': '220 3% 13%',
+  '--background': '220 3% 10%', '--foreground': '0 0% 98%',
+  '--card': '220 3% 12%', '--card-foreground': '0 0% 98%',
+  '--popover': '220 3% 10%', '--popover-foreground': '0 0% 98%',
+  '--secondary': '220 3% 18%', '--secondary-foreground': '0 0% 98%',
+  '--muted': '220 3% 15%', '--muted-foreground': '0 0% 70%',
+  '--border': '220 3% 18%', '--input': '220 3% 13%',
 };
 
 const defaultLightVars = {
-  '--background': '0 0% 100%',
-  '--foreground': '220 3% 10%',
-  '--card': '0 0% 97%',
-  '--card-foreground': '220 3% 10%',
-  '--popover': '0 0% 100%',
-  '--popover-foreground': '220 3% 10%',
-  '--secondary': '0 0% 95%',
-  '--secondary-foreground': '220 3% 10%',
-  '--muted': '0 0% 90%',
-  '--muted-foreground': '220 3% 25%',
-  '--border': '0 0% 85%',
-  '--input': '0 0% 92%',
+  '--background': '0 0% 100%', '--foreground': '220 3% 10%',
+  '--card': '0 0% 97%', '--card-foreground': '220 3% 10%',
+  '--popover': '0 0% 100%', '--popover-foreground': '220 3% 10%',
+  '--secondary': '0 0% 95%', '--secondary-foreground': '220 3% 10%',
+  '--muted': '0 0% 90%', '--muted-foreground': '220 3% 25%',
+  '--border': '0 0% 85%', '--input': '0 0% 92%',
+};
+
+const defaultAppThemeForOnboarding = {
+    mode: 'dark' as ThemeMode,
+    primary: accentOptions[0], // Neon Purple
+    secondary: accentOptions[4], // Emerald Green as a default secondary for consistency
+    scale: 'default' as UiScale,
 };
 
 
@@ -71,8 +69,8 @@ export default function ThemeSelectionPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  const [selectedMode, setSelectedMode] = useState<ThemeMode>('dark');
-  const [selectedAccent, setSelectedAccent] = useState<AccentColorOption>(accentOptions[0]);
+  const [selectedMode, setSelectedMode] = useState<ThemeMode>(defaultAppThemeForOnboarding.mode);
+  const [selectedAccent, setSelectedAccent] = useState<AccentColorOption>(defaultAppThemeForOnboarding.primary);
   
   const [initialMode, setInitialMode] = useState<ThemeMode | null>(null);
   const [initialAccentValue, setInitialAccentValue] = useState<string | null>(null);
@@ -83,7 +81,7 @@ export default function ThemeSelectionPage() {
     if (typeof window !== 'undefined') {
         const rootStyle = getComputedStyle(document.documentElement);
         const bg = rootStyle.getPropertyValue('--background').trim();
-        const currentLightness = bg.split(' ').length === 3 ? parseInt(bg.split(' ')[2].replace('%','')) : (bg === '0 0% 100%' ? 100 : 10) ; // Handle cases where HSL might not be 3 parts
+        const currentLightness = bg.split(' ').length === 3 ? parseInt(bg.split(' ')[2].replace('%','')) : (bg === '0 0% 100%' ? 100 : 10) ; 
         
         const mode = currentLightness < 50 ? 'dark' : 'light';
         setInitialMode(mode);
@@ -95,7 +93,7 @@ export default function ThemeSelectionPage() {
         setInitialAccentFgValue(primaryFgColor);
 
         const foundAccent = accentOptions.find(opt => opt.value === primaryColor);
-        setSelectedAccent(foundAccent || accentOptions[0]);
+        setSelectedAccent(foundAccent || defaultAppThemeForOnboarding.primary);
     }
   }, []);
 
@@ -111,6 +109,7 @@ export default function ThemeSelectionPage() {
       root.style.setProperty('--primary', accent.value);
       root.style.setProperty('--primary-foreground', accent.primaryForeground);
       root.style.setProperty('--ring', accent.value); 
+      // Note: --accent (secondary) is not changed here during onboarding; it uses a default
     }
   }, []);
 
@@ -121,11 +120,12 @@ export default function ThemeSelectionPage() {
   }, [selectedMode, selectedAccent, applyTheme, initialMode, initialAccentValue]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
-        if (onboardingComplete === 'true') {
+        setCurrentUser(user);
+        const userDocRef = doc(db, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
           router.replace('/dashboard');
         } else {
           if (initialMode && initialAccentValue) {
@@ -141,15 +141,12 @@ export default function ThemeSelectionPage() {
 
   useEffect(() => {
     if (currentUser && initialMode && initialAccentValue) {
-      const onboardingComplete = localStorage.getItem(`onboardingComplete_${currentUser.uid}`);
-      if (onboardingComplete !== 'true') {
-        setIsCheckingAuth(false);
-      }
+        setIsCheckingAuth(false); // Assume auth is checked if we have user & initial theme values
     }
   }, [currentUser, initialMode, initialAccentValue]);
 
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!currentUser) {
       toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in." });
       router.push('/login');
@@ -157,70 +154,97 @@ export default function ThemeSelectionPage() {
     }
     setIsSubmitting(true);
 
-    localStorage.setItem(`theme_mode_${currentUser.uid}`, selectedMode);
-    localStorage.setItem(`theme_accent_primary_${currentUser.uid}`, selectedAccent.value);
-    localStorage.setItem(`theme_accent_primary_fg_${currentUser.uid}`, selectedAccent.primaryForeground);
-    // OnboardingComplete flag will be set in the next step
+    const themeSettingsToSave = {
+      themeMode: selectedMode,
+      themePrimaryAccent: selectedAccent.value,
+      themePrimaryAccentFg: selectedAccent.primaryForeground,
+      // Set default secondary accent during onboarding save, consistent with globals.css
+      themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value,
+      themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.primaryForeground,
+      uiScale: defaultAppThemeForOnboarding.scale,
+    };
 
-    toast({
-      title: "Theme Preferences Saved!",
-      description: "One last step to personalize your experience.",
-    });
+    try {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      await setDoc(userDocRef, { 
+        appSettings: themeSettingsToSave 
+      }, { mergeFields: ['appSettings.themeMode', 'appSettings.themePrimaryAccent', 'appSettings.themePrimaryAccentFg', 'appSettings.themeSecondaryAccent', 'appSettings.themeSecondaryAccentFg', 'appSettings.uiScale'] }); // Merge only theme fields
 
-    setTimeout(() => {
+      // Clear old localStorage items if any
+      localStorage.removeItem(`theme_mode_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_primary_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_primary_fg_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_secondary_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_secondary_fg_${currentUser.uid}`);
+      localStorage.removeItem(`ui_scale_${currentUser.uid}`);
+
+
+      toast({
+        title: "Theme Preferences Saved!",
+        description: "One last step to personalize your experience.",
+      });
+
       router.push('/onboarding/community-preference');
-      // No need to setIsSubmitting(false) as we are navigating away.
-    }, 500);
+    } catch (error) {
+      console.error("Error saving theme to Firestore:", error);
+      toast({ variant: "destructive", title: "Save Failed", description: "Could not save theme preferences." });
+      setIsSubmitting(false);
+    }
   };
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
      if (!currentUser) {
       toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in." });
       router.push('/login');
       return;
     }
-    // OnboardingComplete flag will be set in the next step
-    toast({
-      title: 'Skipping Theme Customization',
-      description: 'Proceeding to the final onboarding step with default theme.',
-    });
-    // Revert to initial theme if skipped, so the next page also uses the initial (default) theme
+    setIsSubmitting(true);
+    // Revert to initial theme if skipped
     if (initialMode && initialAccentValue && initialAccentFgValue) {
-        const root = document.documentElement;
-        const themeVars = initialMode === 'dark' ? defaultDarkVars : defaultLightVars;
-        for (const [key, value] of Object.entries(themeVars)) {
-            root.style.setProperty(key, value);
-        }
-        root.style.setProperty('--primary', initialAccentValue);
-        root.style.setProperty('--primary-foreground', initialAccentFgValue);
-        root.style.setProperty('--ring', initialAccentValue);
+        applyTheme(initialMode, accentOptions.find(opt => opt.value === initialAccentValue && opt.primaryForeground === initialAccentFgValue) || defaultAppThemeForOnboarding.primary);
     }
-    router.push('/onboarding/community-preference');
+    
+    // Save default theme settings to Firestore if skipping
+    const defaultSettingsToSave = {
+        themeMode: defaultAppThemeForOnboarding.mode,
+        themePrimaryAccent: defaultAppThemeForOnboarding.primary.value,
+        themePrimaryAccentFg: defaultAppThemeForOnboarding.primary.primaryForeground,
+        themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value,
+        themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.primaryForeground,
+        uiScale: defaultAppThemeForOnboarding.scale,
+    };
+
+    try {
+        const userDocRef = doc(db, "users", currentUser.uid);
+        await setDoc(userDocRef, { appSettings: defaultSettingsToSave }, { mergeFields: ['appSettings.themeMode', 'appSettings.themePrimaryAccent', 'appSettings.themePrimaryAccentFg', 'appSettings.themeSecondaryAccent', 'appSettings.themeSecondaryAccentFg', 'appSettings.uiScale'] });
+        
+        toast({
+          title: 'Skipping Theme Customization',
+          description: 'Proceeding to the final onboarding step with default theme.',
+        });
+        router.push('/onboarding/community-preference');
+    } catch (error) {
+        console.error("Error saving default theme to Firestore:", error);
+        toast({ variant: "destructive", title: "Skip Failed", description: "Could not save default theme preferences." });
+        setIsSubmitting(false);
+    }
   };
   
   useEffect(() => {
-    // This effect handles reverting theme changes if the user navigates away
-    // from this page WITHOUT saving or skipping (e.g., using browser back button).
     return () => {
-      if (typeof window !== 'undefined' && initialMode && initialAccentValue && initialAccentFgValue && currentUser) {
-        const onboardingComplete = localStorage.getItem(`onboardingComplete_${currentUser.uid}`);
-        // Only revert if onboarding was not completed AND we are not in the process of submitting/saving.
-        if (onboardingComplete !== 'true' && !isSubmitting) { 
-            const root = document.documentElement;
-            const themeVars = initialMode === 'dark' ? defaultDarkVars : defaultLightVars;
-             for (const [key, value] of Object.entries(themeVars)) {
-                root.style.setProperty(key, value);
+      if (typeof window !== 'undefined' && initialMode && initialAccentValue && initialAccentFgValue && currentUser && !isSubmitting) {
+        const userDocRef = doc(db, "users", currentUser.uid);
+        getDoc(userDocRef).then(snap => {
+            if (!(snap.exists() && snap.data().appSettings?.onboardingComplete)) {
+                applyTheme(initialMode, accentOptions.find(opt => opt.value === initialAccentValue && opt.primaryForeground === initialAccentFgValue) || defaultAppThemeForOnboarding.primary);
             }
-            root.style.setProperty('--primary', initialAccentValue);
-            root.style.setProperty('--primary-foreground', initialAccentFgValue);
-            root.style.setProperty('--ring', initialAccentValue);
-        }
+        });
       }
     };
-  }, [initialMode, initialAccentValue, initialAccentFgValue, currentUser, isSubmitting]);
+  }, [initialMode, initialAccentValue, initialAccentFgValue, currentUser, isSubmitting, applyTheme]);
 
 
-  if (isCheckingAuth) {
+  if (isCheckingAuth || !initialMode) { // Ensure initialMode is loaded before rendering
     return <SplashScreenDisplay />;
   }
   
@@ -330,5 +354,3 @@ export default function ThemeSelectionPage() {
     </div>
   );
 }
-
-    

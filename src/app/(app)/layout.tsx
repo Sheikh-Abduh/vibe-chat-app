@@ -5,7 +5,8 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { onAuthStateChanged, signOut as firebaseSignOut, type User } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase'; // Ensure db is imported
+import { doc, getDoc, setDoc } from 'firebase/firestore'; // Firestore imports
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -34,13 +35,24 @@ import {
 
 
 interface UserStoredDetails {
-  hobbies: string;
-  age: string;
-  gender: string;
-  tags: string;
-  passion: string;
-  aboutMe: string;
-  status: string;
+  hobbies?: string;
+  age?: string;
+  gender?: string;
+  tags?: string;
+  passion?: string;
+  aboutMe?: string;
+  status?: string;
+}
+
+interface UserAppSettings {
+  onboardingComplete?: boolean;
+  themeMode?: 'light' | 'dark';
+  themePrimaryAccent?: string;
+  themePrimaryAccentFg?: string;
+  themeSecondaryAccent?: string;
+  themeSecondaryAccentFg?: string;
+  uiScale?: 'compact' | 'default' | 'comfortable';
+  // Add other app settings as needed
 }
 
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
@@ -50,14 +62,33 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userDetails, setUserDetails] = useState<UserStoredDetails | null>(null);
+  const [userAppSettings, setUserAppSettings] = useState<UserAppSettings | null>(null);
   
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
-        const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
-        if (onboardingComplete === 'true') {
+        
+        // Fetch settings from Firestore
+        const userDocRef = doc(db, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        let onboardingComplete = false;
+        let fetchedAppSettings: UserAppSettings = {};
+        let fetchedUserDetails: UserStoredDetails = {};
+
+        if (userDocSnap.exists()) {
+          const data = userDocSnap.data();
+          onboardingComplete = data.appSettings?.onboardingComplete === true;
+          fetchedAppSettings = data.appSettings || {};
+          fetchedUserDetails = data.profileDetails || {};
+        }
+        
+        setUserAppSettings(fetchedAppSettings);
+        setUserDetails(fetchedUserDetails);
+
+        if (onboardingComplete) {
           setIsCheckingAuth(false);
         } else {
           if (pathname.startsWith('/onboarding')) {
@@ -66,27 +97,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             router.replace('/onboarding/avatar');
           }
         }
-
-        const storedHobbies = localStorage.getItem(`userInterests_hobbies_${user.uid}`);
-        const storedAge = localStorage.getItem(`userInterests_age_${user.uid}`);
-        const storedGender = localStorage.getItem(`userInterests_gender_${user.uid}`);
-        const storedTags = localStorage.getItem(`userInterests_tags_${user.uid}`);
-        const storedPassionKey = localStorage.getItem(`userInterests_passion_${user.uid}`);
-        const storedAboutMe = localStorage.getItem(`userProfile_aboutMe_${user.uid}`);
-        const storedStatus = localStorage.getItem(`userProfile_status_${user.uid}`);
-
-        const passionDisplay = storedPassionKey ? storedPassionKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Not set";
-
-        setUserDetails({
-          hobbies: storedHobbies || "Not set",
-          age: storedAge || "Not set",
-          gender: storedGender || "Not set",
-          tags: storedTags || "Not set",
-          passion: passionDisplay,
-          aboutMe: storedAboutMe || "Tell us about yourself...",
-          status: storedStatus || "What's on your mind?",
-        });
-
       } else {
         router.replace('/login');
       }
@@ -100,13 +110,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       await firebaseSignOut(auth);
       setCurrentUser(null);
       setUserDetails(null);
-      if (currentUser) {
-        Object.keys(localStorage).forEach(key => {
-            if (key.includes(currentUser.uid)) {
-                localStorage.removeItem(key);
-            }
-        });
-      }
+      setUserAppSettings(null); // Clear app settings on logout
+      // Note: We don't clear localStorage here anymore, as settings are in Firestore.
+      // If there were any purely local, non-synced localStorage items, clear them.
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
       router.push('/login'); 
     } catch (error) {
@@ -131,6 +137,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   if (!currentUser) {
       return <SplashScreenDisplay />; 
   }
+
+  const passionDisplay = userDetails?.passion ? userDetails.passion.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Not set";
 
   return (
     <SidebarProvider defaultOpen={false}>
@@ -283,7 +291,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 {userDetails?.passion && userDetails.passion !== "Not set" && (
                   <div className="flex items-center">
                     <Heart className="mr-2.5 h-4 w-4 text-accent shrink-0" />
-                    <span className="text-muted-foreground font-medium mr-1.5">Passion:</span> <span className="text-card-foreground/90">{userDetails.passion}</span>
+                    <span className="text-muted-foreground font-medium mr-1.5">Passion:</span> <span className="text-card-foreground/90">{passionDisplay}</span>
                   </div>
                 )}
               </div>
@@ -318,7 +326,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                  <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground relative" asChild>
                     <Link href="/activity">
                         <BellDot className="h-5 w-5" />
-                        {/* Placeholder badge - replace with dynamic count */}
                         <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground p-1.5">3</span> 
                         <span className="sr-only">Activity Feed</span>
                     </Link>
@@ -344,5 +351,3 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 export default function AuthenticatedAppLayout({ children }: { children: React.ReactNode }) {
   return <AppLayoutContent>{children}</AppLayoutContent>;
 }
-
-

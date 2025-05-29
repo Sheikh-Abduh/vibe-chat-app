@@ -5,13 +5,13 @@ import React, { useState, useEffect, useRef, useCallback, type FormEvent, type C
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import type { User } from 'firebase/auth';
-import { auth, db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase'; // Ensure db is imported
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
 import type { TenorGif as TenorGifType } from '@/types/tenor';
-
-import EmojiPicker, { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
+import dynamic from 'next/dynamic';
+import { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
 
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -28,6 +28,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { Badge } from '@/components/ui/badge';
 import AgoraRTC, { type IAgoraRTCClient, type ILocalAudioTrack, type ILocalVideoTrack, type IAgoraRTCRemoteUser, type UID } from 'agora-rtc-sdk-ng';
+
+const EmojiPicker = dynamic(() => import('emoji-picker-react'), {
+  ssr: false,
+  loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
+});
 
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -50,7 +55,8 @@ interface TenorGif extends TenorGifType {}
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // THIS IS A SECURITY RISK FOR PRODUCTION
+// const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // THIS IS A SECURITY RISK FOR PRODUCTION
+const TENOR_API_KEY = "LIVDSRZULELA"; // Standard Tenor SDK key for testing - limited requests
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
 // Agora Configuration
@@ -316,20 +322,14 @@ export default function MessagesPage() {
         const convoSnap = await getDoc(convoDocRef);
         if (!convoSnap.exists()) {
             let participants = [currentUser.uid, otherUserId].sort();
-             // Handle self-chat (Saved Messages) where participants array might only have one distinct UID if not careful
-             if (currentUser.uid === otherUserId) {
-                 participants = [currentUser.uid, currentUser.uid]; // Ensure two entries for self-chat
-             } else if (participants.length === 1 && participants[0] === currentUser.uid && participants[0] === otherUserId) {
-                // This case should be covered by the above, but as a safeguard
-                participants = [currentUser.uid, currentUser.uid];
-            }
-
+             if (currentUser.uid === otherUserId) { // Ensure "Saved Messages" self-chat has two participant entries
+                 participants = [currentUser.uid, currentUser.uid]; 
+             }
 
             await setDoc(convoDocRef, {
                 participants: participants,
                 createdAt: serverTimestamp(),
                 lastMessageTimestamp: serverTimestamp(),
-                // Store user info keyed by UID for easier updates/retrieval if display names change
                 [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
                 [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
                 [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"), 
@@ -356,11 +356,11 @@ export default function MessagesPage() {
     const mentionMatches = messageText.match(/@([\w.-]+)/g) || [];
     const parsedMentionedUserIds = mentionMatches.map(match => match.substring(1)); 
 
-    const messageData: Partial<ChatMessage> = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text'; text: string; } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp() as any,
+      senderAvatarUrl: currentUser.photoURL || undefined,
+      timestamp: serverTimestamp(),
       type: 'text' as const,
       text: messageText,
       reactions: {},
@@ -368,7 +368,7 @@ export default function MessagesPage() {
     };
 
     if (parsedMentionedUserIds.length > 0) {
-        messageData.mentionedUserIds = parsedMentionedUserIds; // Store usernames, resolve to UIDs later if possible
+        messageData.mentionedUserIds = parsedMentionedUserIds;
     }
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -416,27 +416,23 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Omit<ChatMessage, 'id' | 'timestamp' | 'reactions' | 'isPinned'> & { timestamp: any } = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string;} = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-        senderAvatarUrl: currentUser.photoURL || null,
+        senderAvatarUrl: currentUser.photoURL || undefined,
         timestamp: serverTimestamp(),
         type: messageType,
         fileUrl: fileUrl,
         fileName: fileName,
         fileType: fileType,
-        ...(replyingToMessage && {
-            replyToMessageId: replyingToMessage.id,
-            replyToSenderName: replyingToMessage.senderName,
-            replyToSenderId: replyingToMessage.senderId,
-            replyToTextSnippet: (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : '')
-        })
+        reactions: {},
+        isPinned: false,
     };
-    if (!replyingToMessage) { // Remove reply fields if not replying
-        delete (messageData as any).replyToMessageId;
-        delete (messageData as any).replyToSenderName;
-        delete (messageData as any).replyToSenderId;
-        delete (messageData as any).replyToTextSnippet;
+    if (replyingToMessage) {
+        messageData.replyToMessageId = replyingToMessage.id;
+        messageData.replyToSenderName = replyingToMessage.senderName;
+        messageData.replyToSenderId = replyingToMessage.senderId;
+        messageData.replyToTextSnippet = (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : '');
     }
 
 
@@ -468,7 +464,7 @@ export default function MessagesPage() {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
     formData.append('api_key', CLOUDINARY_API_KEY);
-    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); // Cloudinary often handles audio as 'video' type
+    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); 
     try {
       const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${isVoiceMessage ? 'video' : 'auto'}/upload`, {
         method: 'POST',
@@ -498,7 +494,7 @@ export default function MessagesPage() {
     } finally {
       setIsUploadingFile(false);
       if (attachmentInputRef.current) {
-        attachmentInputRef.current.value = ""; // Reset file input
+        attachmentInputRef.current.value = ""; 
       }
     }
   };
@@ -535,11 +531,11 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Partial<ChatMessage> = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; } = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL || null,
-      timestamp: serverTimestamp() as any, 
+      senderAvatarUrl: currentUser.photoURL || undefined,
+      timestamp: serverTimestamp(), 
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
@@ -585,21 +581,19 @@ export default function MessagesPage() {
         media_formats: { 
             tinygif: { url: message.gifTinyUrl, dims: [] as number[], preview: '', duration: 0, size:0 }, 
             gif: { url: message.gifUrl || '', dims: [] as number[], preview: '', duration: 0, size:0 }
-            // Add other formats if you use them and they are available in `message`
         },
         content_description: message.gifContentDescription,
-        // Populate other required fields for TenorGifType if necessary
-        created: 0, // Placeholder
-        hasaudio: false, // Placeholder
-        itemurl: '', // Placeholder
-        shares: 0, // Placeholder
-        source_id: '', // Placeholder
-        tags: [], // Placeholder
-        url: '', // Placeholder
-        composite: null, // Placeholder
-        hascaption: false, // Placeholder
-        title: '', // Placeholder
-        flags: [], // Placeholder
+        created: 0, 
+        hasaudio: false, 
+        itemurl: '', 
+        shares: 0, 
+        source_id: '', 
+        tags: [], 
+        url: '', 
+        composite: null, 
+        hascaption: false, 
+        title: '', 
+        flags: [], 
     };
     handleToggleFavoriteGif(gifToFavorite);
   };
@@ -652,23 +646,20 @@ export default function MessagesPage() {
         
         let newUsersReactedWithEmoji;
         if (usersReactedWithEmoji.includes(currentUser.uid)) {
-          // User is removing their reaction
           newUsersReactedWithEmoji = usersReactedWithEmoji.filter(uid => uid !== currentUser.uid);
         } else {
-          // User is adding their reaction
           newUsersReactedWithEmoji = [...usersReactedWithEmoji, currentUser.uid];
         }
 
         const newReactionsData = { ...currentReactions };
         if (newUsersReactedWithEmoji.length === 0) {
-          // If no users are left reacting with this emoji, remove the emoji key
           delete newReactionsData[emoji];
         } else {
           newReactionsData[emoji] = newUsersReactedWithEmoji;
         }
         transaction.update(messageRef, { reactions: newReactionsData });
       });
-    setReactionPickerOpenForMessageId(null); // Close picker after reaction
+    setReactionPickerOpenForMessageId(null); 
     } catch (error) {
       console.error("Error toggling reaction: ", error);
       toast({
@@ -692,17 +683,14 @@ export default function MessagesPage() {
         return;
     }
   
-    // For DMs, forward to "Saved Messages"
     const targetConversationId = [currentUser.uid, currentUser.uid].sort().join('_'); 
 
-    // Ensure "Saved Messages" conversation document exists
     const savedMessagesConvoDocRef = doc(db, `direct_messages/${targetConversationId}`);
     try {
         const savedMessagesConvoSnap = await getDoc(savedMessagesConvoDocRef);
         if (!savedMessagesConvoSnap.exists()) {
-            // Create the "Saved Messages" conversation document if it doesn't exist
             await setDoc(savedMessagesConvoDocRef, {
-                participants: [currentUser.uid, currentUser.uid], // Both participants are the current user
+                participants: [currentUser.uid, currentUser.uid], 
                 createdAt: serverTimestamp(),
                 lastMessageTimestamp: serverTimestamp(),
                 [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -717,23 +705,22 @@ export default function MessagesPage() {
         return;
     }
 
-    const messageData: Partial<ChatMessage> = {
+    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; isForwarded: boolean; forwardedFromSenderName: string; } = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-        senderAvatarUrl: currentUser.photoURL || null,
-        timestamp: serverTimestamp() as any,
+        senderAvatarUrl: currentUser.photoURL || undefined,
+        timestamp: serverTimestamp(),
         type: forwardingMessage.type,
         isForwarded: true,
         forwardedFromSenderName: forwardingMessage.senderName,
-        reactions: {}, // Reactions are not forwarded
-        isPinned: false, // Pinned status is not forwarded
+        reactions: {}, 
+        isPinned: false, 
     };
 
-    // Copy relevant content fields
     if (forwardingMessage.text) messageData.text = forwardingMessage.text;
     if (forwardingMessage.fileUrl) messageData.fileUrl = forwardingMessage.fileUrl;
     if (forwardingMessage.fileName) messageData.fileName = forwardingMessage.fileName;
-    if (forwardingMessage.fileType) messageData.fileType = forwardingMessage.fileType; // Crucial for files/voice
+    if (forwardingMessage.fileType) messageData.fileType = forwardingMessage.fileType; 
     if (forwardingMessage.gifUrl) messageData.gifUrl = forwardingMessage.gifUrl;
     if (forwardingMessage.gifId) messageData.gifId = forwardingMessage.gifId;
     if (forwardingMessage.gifTinyUrl) messageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
@@ -743,9 +730,8 @@ export default function MessagesPage() {
       const messagesColRef = collection(db, `direct_messages/${targetConversationId}/messages`);
       await addDoc(messagesColRef, messageData);
   
-      // Update lastMessage for the "Saved Messages" conversation
       const convoDocRef = doc(db, `direct_messages/${targetConversationId}`);
-      let lastMessageText = "Forwarded message"; // Default text
+      let lastMessageText = "Forwarded message"; 
       if (messageData.text) lastMessageText = messageData.text.substring(0, 50) + (messageData.text.length > 50 ? "..." : ""); 
       else if (messageData.type === 'image') lastMessageText = "Forwarded an image";
       else if (messageData.type === 'gif') lastMessageText = "Forwarded a GIF";
@@ -769,8 +755,8 @@ export default function MessagesPage() {
   };
 
   const fetchTrendingGifs = async () => {
-    if (!TENOR_API_KEY.startsWith("AIza")) { 
-        toast({ variant: "destructive", title: "Tenor API Key Invalid", description: "Please check configuration."}); setLoadingGifs(false); return;
+    if (!TENOR_API_KEY) { 
+        toast({ variant: "destructive", title: "Tenor API Key Missing", description: "Please check configuration."}); setLoadingGifs(false); return;
     }
     setLoadingGifs(true);
     try {
@@ -783,7 +769,7 @@ export default function MessagesPage() {
 
   const searchTenorGifs = async (term: string) => {
     if (!term.trim()) { fetchTrendingGifs(); return; }
-    if (!TENOR_API_KEY.startsWith("AIza")) { toast({ variant: "destructive", title: "Tenor API Key Invalid", description: "Please check configuration."}); setLoadingGifs(false); return; }
+    if (!TENOR_API_KEY) { toast({ variant: "destructive", title: "Tenor API Key Missing", description: "Please check configuration."}); setLoadingGifs(false); return; }
     setLoadingGifs(true);
     try {
       const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
@@ -831,11 +817,10 @@ export default function MessagesPage() {
             else setHasMicPermission(null); 
         };
       }).catch(() => {
-        // Permissions API might not be supported or query might fail
-        setHasMicPermission(null); // Treat as undetermined
+        setHasMicPermission(null); 
       });
     } else {
-        setHasMicPermission(null); // Fallback if Permissions API is not available
+        setHasMicPermission(null); 
     }
   }, []);
 
@@ -849,16 +834,16 @@ export default function MessagesPage() {
     } else {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' }); // Common format
+        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' }); 
         audioChunksRef.current = [];
         mediaRecorderRef.current.ondataavailable = (event) => audioChunksRef.current.push(event.data);
         mediaRecorderRef.current.onstop = async () => {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           const audioFile = new File([audioBlob], `voice_message_${Date.now()}.webm`, { type: 'audio/webm' });
           toast({ title: "Voice Message Recorded", description: "Uploading..." });
-          await uploadFileToCloudinaryAndSend(audioFile, true); // Pass true for isVoiceMessage
-          stream.getTracks().forEach(track => track.stop()); // Release microphone
-          setReplyingToMessage(null); // Clear reply context after sending
+          await uploadFileToCloudinaryAndSend(audioFile, true); 
+          stream.getTracks().forEach(track => track.stop()); 
+          setReplyingToMessage(null); 
         };
         mediaRecorderRef.current.start(); setIsRecording(true);
       } catch (error) {
@@ -874,6 +859,8 @@ export default function MessagesPage() {
             toast({ variant: "destructive", title: "Agora App ID Missing", description: "Agora App ID is not configured for DM calls." });
         } else if (currentUser && currentUser.uid === otherUserId) {
             toast({ title: "Cannot Call Yourself", description: "This feature is for calling other users." });
+        } else if (!AGORA_APP_ID){
+             toast({ variant: "destructive", title: "Agora App ID Not Set", description: "Voice/video functionality requires an Agora App ID configuration." });
         }
         setIsStartingCall(false);
         return;
@@ -890,13 +877,10 @@ export default function MessagesPage() {
     if (isVideoCall) {
         try {
             const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            videoStream.getTracks().forEach(track => track.stop()); // Stop after permission check
+            videoStream.getTracks().forEach(track => track.stop()); 
         } catch (error) {
             toast({ variant: "destructive", title: "Camera Access Denied", description: "Please allow camera access for video calls." });
             cameraPermission = false;
-            // Do not return here if it's a video call attempt but camera fails; proceed with audio-only if mic is fine.
-            // User can choose to enable camera later if they wish.
-            // Or, prompt user if they want to proceed with audio-only. For now, just warn.
         }
     }
 
@@ -911,12 +895,12 @@ export default function MessagesPage() {
 
         client.on("user-published", async (user, mediaType) => {
             await client.subscribe(user, mediaType);
-            setRemoteUsers(prev => [...prev.filter(u => u.uid !== user.uid), user]); // Add or update user
+            setRemoteUsers(prev => [...prev.filter(u => u.uid !== user.uid), user]); 
              if (mediaType === "video" && user.videoTrack) {
                 if (remoteVideoPlayerContainerRef.current) {
                      const playerContainer = document.getElementById(`remote-dm-player-${user.uid}`) || document.createElement('div');
                      playerContainer.id = `remote-dm-player-${user.uid}`;
-                     playerContainer.className = 'w-full h-full bg-black rounded-md shadow'; // Full size for single remote
+                     playerContainer.className = 'w-full h-full bg-black rounded-md shadow'; 
                      if(!document.getElementById(playerContainer.id)) remoteVideoPlayerContainerRef.current.appendChild(playerContainer);
                      user.videoTrack.play(playerContainer);
                 }
@@ -937,9 +921,7 @@ export default function MessagesPage() {
             if (playerContainer) playerContainer.remove();
         });
 
-        // IMPORTANT: Token Generation for Production
-        // In a production app, you MUST fetch a token from your backend server.
-        const token = null; // Using null for testing (only if your Agora project allows it)
+        const token = null; 
 
         const uid: UID = currentUser!.uid; 
         await client.join(AGORA_APP_ID, conversationId!, token, uid);
@@ -948,7 +930,7 @@ export default function MessagesPage() {
         setLocalAudioTrack(audioTrack);
         let tracksToPublish: (ILocalAudioTrack | ILocalVideoTrack)[] = [audioTrack];
 
-        if (isVideoCall && cameraPermission) { // Only attempt video if permission was granted
+        if (isVideoCall && cameraPermission) { 
             const videoTrack = await AgoraRTC.createCameraVideoTrack();
             setLocalVideoTrack(videoTrack);
             tracksToPublish.push(videoTrack);
@@ -964,9 +946,9 @@ export default function MessagesPage() {
         if (localAudioTrack) { localAudioTrack.close(); setLocalAudioTrack(null); }
         if (localVideoTrack) { localVideoTrack.close(); setLocalVideoTrack(null); }
         if (agoraClientRef.current) { await agoraClientRef.current.leave(); agoraClientRef.current = null; }
-        setRemoteUsers([]); // Clear remote users
-         if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = ''; // Clear remote player view
-         if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; // Clear local player view
+        setRemoteUsers([]); 
+         if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = ''; 
+         if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; 
     } finally {
         setIsStartingCall(false);
     }
@@ -986,15 +968,14 @@ export default function MessagesPage() {
     }
     if (agoraClientRef.current) {
         await agoraClientRef.current.leave();
-        agoraClientRef.current = null; // Reset client
-        setRemoteUsers([]); // Clear remote users
-        if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; // Clear local player
-        if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = ''; // Clear remote player
+        agoraClientRef.current = null; 
+        setRemoteUsers([]); 
+        if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; 
+        if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = ''; 
         toast({ title: "Call Ended", description: "You have left the call."});
     }
-    setIsStartingCall(false); // Ensure this is reset
+    setIsStartingCall(false); 
   };
-   // Effect to leave call when DM partner changes or component unmounts
   useEffect(() => {
     return () => {
         if (agoraClientRef.current) {
@@ -1002,7 +983,7 @@ export default function MessagesPage() {
         }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId]); // Re-run if conversationId changes
+  }, [conversationId]); 
 
 
   const shouldShowFullMessageHeader = (currentMessage: ChatMessage, previousMessage: ChatMessage | null) => {
@@ -1019,12 +1000,12 @@ export default function MessagesPage() {
     if (!isChatSearchOpen && chatSearchInputRef.current) {
         setTimeout(() => chatSearchInputRef.current?.focus(), 0);
     } else {
-        setChatSearchTerm(""); // Clear search term when closing
+        setChatSearchTerm(""); 
     }
   };
 
  const filteredMessages = messages.filter(msg => {
-    if (!chatSearchTerm.trim()) return true; // Show all if search is empty
+    if (!chatSearchTerm.trim()) return true; 
     const term = chatSearchTerm.toLowerCase();
     if (msg.text?.toLowerCase().includes(term)) return true;
     if (msg.fileName?.toLowerCase().includes(term)) return true;
@@ -1037,13 +1018,12 @@ export default function MessagesPage() {
   });
   
   const displayedMessages = showPinnedMessages
-    ? filteredMessages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()) // Ensure pinned messages are sorted by time
+    ? filteredMessages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()) 
     : filteredMessages;
 
   const handleMentionInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setNewMessage(value);
-     // Show suggestions if input ends with @ and a word character is not immediately following
     if (value.match(/@\S*$/) && otherUserId && currentUser?.uid !== otherUserId) { 
         setShowMentionSuggestions(true);
     } else {
@@ -1086,11 +1066,11 @@ export default function MessagesPage() {
                     selectedConversation?.id === savedMessagesConversation.id && "bg-accent text-accent-foreground" 
                 )}
                 onClick={() => {
-                    if (agoraClientRef.current) { handleLeaveDmCall(); } // Leave current DM call
+                    if (agoraClientRef.current) { handleLeaveDmCall(); } 
                     setSelectedConversation(savedMessagesConversation);
                     setOtherUserId(savedMessagesConversation.partnerId);
                     setOtherUserName(savedMessagesConversation.name);
-                    setDmPartnerProfile({ // Update DM partner profile for "Saved Messages"
+                    setDmPartnerProfile({ 
                         uid: currentUser.uid,
                         displayName: currentUser.displayName || "You",
                         photoURL: currentUser.photoURL,
@@ -1117,7 +1097,6 @@ export default function MessagesPage() {
                     <p className="text-xs text-muted-foreground truncate">Messages you save for later</p>
                 </div>
             </Button>
-            {/* Placeholder for other DM conversations */}
             <div className="p-4 text-center text-xs text-muted-foreground">
                 DM list coming soon.
             </div>
@@ -1211,26 +1190,22 @@ export default function MessagesPage() {
               </div>
             </div>
 
-            {/* Video Call UI Placeholders - only show if call is active */}
             {agoraClientRef.current && otherUserId !== currentUser.uid && (
                 <div className="p-2 border-b border-border/40 bg-black/50 flex flex-col items-center">
-                    {/* Local Video Player Container */}
                     {localVideoTrack && (
                         <div id="local-dm-video-player-container" ref={localVideoPlayerContainerRef} className="w-40 h-30 md:w-48 md:h-36 bg-black rounded-md shadow self-start mb-2 relative">
                              <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">You</p>
                         </div>
                     )}
-                    {/* Remote Video Player Container (single remote user for DMs) */}
                     {remoteUsers.length > 0 && remoteUsers[0].videoTrack && (
                         <div id="remote-dm-video-player-container" ref={remoteVideoPlayerContainerRef} className="w-full flex-1 aspect-video bg-black rounded-md shadow relative">
                              <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">{remoteUsers[0].uid === otherUserId ? otherUserName : `User ${remoteUsers[0].uid}`}</p>
                         </div>
                     )}
-                    {/* Placeholders for audio-only or waiting states */}
                     {remoteUsers.length === 0 && localVideoTrack && (
                         <p className="text-sm text-muted-foreground">Waiting for {otherUserName || 'user'} to join...</p>
                     )}
-                     {remoteUsers.length > 0 && !remoteUsers[0].videoTrack && localVideoTrack && ( // If we are in video call but remote has no video
+                     {remoteUsers.length > 0 && !remoteUsers[0].videoTrack && localVideoTrack && ( 
                         <div className="flex-1 flex items-center justify-center">
                             <Avatar className="h-24 w-24">
                                 <AvatarImage src={dmPartnerProfile?.photoURL || undefined} alt={otherUserName || ''} />
@@ -1265,7 +1240,7 @@ export default function MessagesPage() {
                     <div
                       key={msg.id}
                       className={cn(
-                        "flex items-start space-x-3 group relative hover:bg-muted/30 px-2 py-1 rounded-md",
+                        "flex items-start space-x-2 group relative hover:bg-muted/30 px-2 py-1 rounded-md",
                          isCurrentUserMsg && "flex-row-reverse space-x-reverse" 
                       )}
                     >
@@ -1275,9 +1250,9 @@ export default function MessagesPage() {
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       )}
-                       {!isCurrentUserMsg && !showHeader && <div className="w-8 shrink-0" /> }
+                       {!isCurrentUserMsg && !showHeader && null }
 
-                      <div className={cn("flex-1 min-w-0 max-w-[75%]", isCurrentUserMsg && "text-right")}>
+                      <div className={cn("flex-1 min-w-0 max-w-[calc(100%-2.5rem)]", isCurrentUserMsg && "text-right")}>
                         {showHeader && (
                           <div className={cn("flex items-baseline space-x-1.5", isCurrentUserMsg && "flex-row-reverse")}>
                             <p className="font-semibold text-sm text-foreground">{isCurrentUserMsg ? "You" : msg.senderName}</p>
@@ -1309,7 +1284,7 @@ export default function MessagesPage() {
                          <div className={cn("mt-0.5 p-2 rounded-lg inline-block", 
                             isCurrentUserMsg ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
                             showHeader ? "mt-0.5" : "mt-0",
-                            isCurrentUserMsg ? "text-left" : "text-left" // Ensure text inside bubble is left-aligned
+                            isCurrentUserMsg ? "text-left" : "text-left" 
                         )}>
                             {msg.type === 'text' && msg.text && (
                                 <p className="text-sm whitespace-pre-wrap break-words"
@@ -1360,9 +1335,9 @@ export default function MessagesPage() {
                           <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       )}
-                      {isCurrentUserMsg && !showHeader && <div className="w-8 shrink-0" />}
+                      {isCurrentUserMsg && !showHeader && null }
 
-                       <div className={cn("absolute top-0 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50", isCurrentUserMsg ? "left-2" : "right-2")}>
+                       <div className={cn("absolute top-1 right-1 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50 z-10")}>
                         <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" 
                             onClick={() => {
                                 setForwardingMessage(msg);
@@ -1431,7 +1406,6 @@ export default function MessagesPage() {
                  {showMentionSuggestions && (
                      <Popover open={showMentionSuggestions} onOpenChange={setShowMentionSuggestions} modal={false}>
                         <PopoverTrigger asChild>
-                            {/* Dummy trigger, actual trigger is typing @ */}
                             <div ref={mentionSuggestionsRef} className="absolute bottom-full left-0 mb-1 w-full max-w-sm"></div>
                         </PopoverTrigger>
                         <PopoverContent 
@@ -1482,7 +1456,7 @@ export default function MessagesPage() {
                     <PopoverContent className="w-auto p-0">
                         <EmojiPicker 
                             onEmojiClick={(emojiData: EmojiClickData) => { 
-                                setNewMessage(prev => prev + emojiData.emoji); 
+                                setNewMessage(prev => prev + emojiData.native); 
                                 setChatEmojiPickerOpen(false); 
                                 chatInputRef.current?.focus(); 
                             }} 
@@ -1558,7 +1532,7 @@ export default function MessagesPage() {
                             </AvatarFallback>
                         </Avatar>
                         <h3 className="text-xl font-semibold text-foreground">{dmPartnerProfile.displayName || 'User'}</h3>
-                        {dmPartnerProfile.email && selectedConversation.id === `${currentUser?.uid}_self` && ( // Only show email for "Saved Messages"
+                        {dmPartnerProfile.email && selectedConversation.id === `${currentUser?.uid}_self` && ( 
                             <p className="text-sm text-muted-foreground">{dmPartnerProfile.email}</p>
                         )}
                          <p className="text-xs text-muted-foreground mt-1 italic">{dmPartnerProfile.bio || (otherUserId === currentUser?.uid ? "Your personal space." : "User bio placeholder.")}</p>
@@ -1608,7 +1582,7 @@ export default function MessagesPage() {
             <DialogHeader>
                 <DialogTitle>Forward Message</DialogTitle>
                 <DialogDescription>
-                   Forward this message to your "Saved Messages". (More options coming soon)
+                   Forward this message to your "Saved Messages".
                 </DialogDescription>
             </DialogHeader>
             {forwardingMessage && (
@@ -1617,14 +1591,15 @@ export default function MessagesPage() {
                     {forwardingMessage.type === 'text' && forwardingMessage.text && <p className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatChatMessage(forwardingMessage.text) }} />}
                     {forwardingMessage.type === 'image' && forwardingMessage.fileUrl && <Image src={forwardingMessage.fileUrl} alt="Forwarded Image" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" data-ai-hint="forwarded content" />}
                     {forwardingMessage.type === 'gif' && forwardingMessage.gifUrl && <Image src={forwardingMessage.gifUrl} alt="Forwarded GIF" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" unoptimized data-ai-hint="forwarded content"/>}
+                    {forwardingMessage.type === 'voice_message' && forwardingMessage.fileUrl && <audio controls src={forwardingMessage.fileUrl} className="my-1 w-full max-w-xs h-10 rounded-md shadow-sm bg-muted invert-[5%] dark:invert-0" data-ai-hint="audio player"/>}
+                    {forwardingMessage.type === 'file' && forwardingMessage.fileUrl && <a href={forwardingMessage.fileUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center"><Paperclip className="h-4 w-4 mr-2 shrink-0" /><span className="truncate">{forwardingMessage.fileName || "Attached File"}</span></a>}
                  </div>
             )}
             <div className="grid gap-4 py-4">
                 <Input 
-                    placeholder="Search channels or users (coming soon)..." 
+                    placeholder="Search users or Saved Messages..." 
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
-                    disabled // Keep disabled until search is implemented
                 />
             </div>
             <DialogFooter>

@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Users, CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase'; // Ensure db is imported
+import { doc, setDoc, getDoc } from 'firebase/firestore'; // Firestore imports
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 
@@ -19,11 +20,12 @@ export default function CommunityPreferencePage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
-        if (onboardingComplete === 'true') {
+        setCurrentUser(user);
+        const userDocRef = doc(db, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
           router.replace('/dashboard');
         } else {
           setIsCheckingAuth(false);
@@ -35,7 +37,7 @@ export default function CommunityPreferencePage() {
     return () => unsubscribe();
   }, [router]);
 
-  const handlePreference = (preference: 'yes' | 'no') => {
+  const handlePreference = async (preference: 'yes' | 'no') => {
     if (!currentUser) {
       toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in." });
       router.push('/login');
@@ -43,23 +45,41 @@ export default function CommunityPreferencePage() {
     }
     setIsSubmitting(true);
 
-    localStorage.setItem(`community_join_preference_${currentUser.uid}`, preference);
-    localStorage.setItem(`onboardingComplete_${currentUser.uid}`, 'true');
+    try {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      // Save preference and mark onboarding as complete in Firestore
+      await setDoc(userDocRef, { 
+        appSettings: {
+          communityJoinPreference: preference,
+          onboardingComplete: true,
+          // Persist existing or default theme settings from localStorage to Firestore here
+          // This is a simplified example; ideally, theme settings are already in Firestore by now or defaults are applied
+          themeMode: localStorage.getItem(`theme_mode_${currentUser.uid}`) || 'dark',
+          themePrimaryAccent: localStorage.getItem(`theme_accent_primary_${currentUser.uid}`) || '289 85% 45%',
+          themePrimaryAccentFg: localStorage.getItem(`theme_accent_primary_fg_${currentUser.uid}`) || '0 0% 100%',
+          themeSecondaryAccent: localStorage.getItem(`theme_accent_secondary_${currentUser.uid}`) || '127 100% 43%',
+          themeSecondaryAccentFg: localStorage.getItem(`theme_accent_secondary_fg_${currentUser.uid}`) || '220 3% 10%',
+          uiScale: localStorage.getItem(`ui_scale_${currentUser.uid}`) || 'default',
+        }
+      }, { merge: true }); // merge:true ensures we don't overwrite other user data
 
-    toast({
-      title: "Onboarding Complete!",
-      description: preference === 'yes' 
-        ? "Great! We'll help you find relevant communities." 
-        : "No problem! You can explore communities at your own pace.",
-    });
+      toast({
+        title: "Onboarding Complete!",
+        description: preference === 'yes' 
+          ? "Great! We'll help you find relevant communities." 
+          : "No problem! You can explore communities at your own pace.",
+      });
+      
+      // Clear localStorage flags now that it's in Firestore
+      localStorage.removeItem(`onboardingComplete_${currentUser.uid}`); 
+      localStorage.removeItem(`community_join_preference_${currentUser.uid}`);
 
-    // Simulate API call or further processing if needed
-    console.log(`User ${currentUser.uid} preference for joining communities: ${preference}`);
-
-    setTimeout(() => {
       router.push('/dashboard');
-      // setIsSubmitting(false); // Not strictly necessary as we are navigating away
-    }, 500);
+    } catch (error) {
+      console.error("Error saving onboarding preference to Firestore:", error);
+      toast({ variant: "destructive", title: "Error", description: "Could not save your preference. Please try again." });
+      setIsSubmitting(false);
+    }
   };
   
   if (isCheckingAuth) {
@@ -116,5 +136,3 @@ export default function CommunityPreferencePage() {
     </div>
   );
 }
-
-    
