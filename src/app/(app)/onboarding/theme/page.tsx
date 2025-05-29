@@ -9,31 +9,32 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 import { Sun, Moon, Palette, CheckCircle, Loader2, ArrowLeft, RefreshCcw, Ruler } from 'lucide-react';
-import { auth, db } from '@/lib/firebase'; 
-import { doc, getDoc, setDoc } from 'firebase/firestore'; 
+import { auth, db } from '@/lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { cn } from '@/lib/utils';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import type { UiScale } from '@/components/theme/theme-provider';
-import { ScrollArea } from '@/components/ui/scroll-area'; 
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 
 type ThemeMode = 'light' | 'dark';
 
 interface AccentColorOption {
   name: string;
-  value: string; 
-  primaryForeground: string; 
-  className: string; 
+  value: string;
+  foreground: string; // Standardized property name
+  className: string;
 }
 
+// Ensure accentOptions here matches those in settings/appearance if they are meant to be identical
 const accentOptions: AccentColorOption[] = [
-  { name: 'Neon Purple', value: '289 85% 45%', primaryForeground: '0 0% 100%', className: 'bg-[hsl(289_85%_45%)]' },
-  { name: 'Crimson Red', value: '348 83% 47%', primaryForeground: '0 0% 100%', className: 'bg-[hsl(348_83%_47%)]' },
-  { name: 'Electric Blue', value: '217 91% 59%', primaryForeground: '0 0% 100%', className: 'bg-[hsl(217_91%_59%)]' },
-  { name: 'Sunny Yellow', value: '45 100% 51%', primaryForeground: '220 3% 10%', className: 'bg-[hsl(45_100%_51%)]' },
-  { name: 'Emerald Green', value: '145 63% 42%', primaryForeground: '0 0% 100%', className: 'bg-[hsl(145_63%_42%)]' },
-  { name: 'Vibrant Orange', value: '24 95% 53%', primaryForeground: '0 0% 100%', className: 'bg-[hsl(24_95%_53%)]'}
+  { name: 'Neon Purple', value: '289 85% 45%', foreground: '0 0% 100%', className: 'bg-[hsl(289_85%_45%)]' },
+  { name: 'Crimson Red', value: '348 83% 47%', foreground: '0 0% 100%', className: 'bg-[hsl(348_83%_47%)]' },
+  { name: 'Electric Blue', value: '217 91% 59%', foreground: '0 0% 100%', className: 'bg-[hsl(217_91%_59%)]' },
+  { name: 'Sunny Yellow', value: '45 100% 51%', foreground: '220 3% 10%', className: 'bg-[hsl(45_100%_51%)]' },
+  { name: 'Emerald Green', value: '145 63% 42%', foreground: '0 0% 100%', className: 'bg-[hsl(145_63%_42%)]' },
+  { name: 'Vibrant Orange', value: '24 95% 53%', foreground: '0 0% 100%', className: 'bg-[hsl(24_95%_53%)]'}
 ];
 
 // Default theme values (from globals.css - dark mode)
@@ -57,8 +58,8 @@ const defaultLightVars = {
 
 const defaultAppThemeForOnboarding = {
     mode: 'dark' as ThemeMode,
-    primary: accentOptions[0], 
-    secondary: accentOptions[4], 
+    primary: accentOptions[0], // Neon Purple
+    secondary: accentOptions[4], // Emerald Green (as an example for the fixed secondary on this page)
     scale: 'default' as UiScale,
 };
 
@@ -69,7 +70,8 @@ interface UserAppSettings {
     themeSecondaryAccent?: string;
     themeSecondaryAccentFg?: string;
     uiScale?: UiScale;
-    // onboardingComplete will be handled by community-preference page
+    onboardingComplete?: boolean;
+    communityJoinPreference?: 'yes' | 'no';
 }
 
 
@@ -82,7 +84,7 @@ export default function ThemeSelectionPage() {
 
   const [selectedMode, setSelectedMode] = useState<ThemeMode>(defaultAppThemeForOnboarding.mode);
   const [selectedAccent, setSelectedAccent] = useState<AccentColorOption>(defaultAppThemeForOnboarding.primary);
-  
+
   const [initialMode, setInitialMode] = useState<ThemeMode | null>(null);
   const [initialAccentValue, setInitialAccentValue] = useState<string | null>(null);
   const [initialAccentFgValue, setInitialAccentFgValue] = useState<string | null>(null);
@@ -92,16 +94,16 @@ export default function ThemeSelectionPage() {
     if (typeof window !== 'undefined') {
         const rootStyle = getComputedStyle(document.documentElement);
         const bg = rootStyle.getPropertyValue('--background').trim();
-        let currentLightness = 10; 
+        let currentLightness = 10;
         if (bg.includes(' ') && bg.split(' ').length >=3) {
           const lightnessPart = bg.split(' ')[2];
           if (lightnessPart && lightnessPart.includes('%')) {
             currentLightness = parseInt(lightnessPart.replace('%',''));
           }
-        } else if (bg === '0 0% 100%') { 
+        } else if (bg === '0 0% 100%') {
           currentLightness = 100;
         }
-        
+
         const mode = currentLightness < 50 ? 'dark' : 'light';
         setInitialMode(mode);
         setSelectedMode(mode);
@@ -111,7 +113,7 @@ export default function ThemeSelectionPage() {
         setInitialAccentValue(primaryColor);
         setInitialAccentFgValue(primaryFgColor);
 
-        const foundAccent = accentOptions.find(opt => opt.value === primaryColor && opt.primaryForeground === primaryFgColor);
+        const foundAccent = accentOptions.find(opt => opt.value === primaryColor && opt.foreground === primaryFgColor);
         setSelectedAccent(foundAccent || defaultAppThemeForOnboarding.primary);
     }
   }, []);
@@ -126,16 +128,17 @@ export default function ThemeSelectionPage() {
         root.style.setProperty(key, value);
       }
       root.style.setProperty('--primary', accent.value);
-      root.style.setProperty('--primary-foreground', accent.primaryForeground);
-      root.style.setProperty('--ring', accent.value); 
-      
+      root.style.setProperty('--primary-foreground', accent.foreground); // Use standardized 'foreground'
+      root.style.setProperty('--ring', accent.value);
+
+      // Keep secondary accent fixed to the onboarding default for this specific page's live preview
       root.style.setProperty('--accent', defaultAppThemeForOnboarding.secondary.value);
-      root.style.setProperty('--accent-foreground', defaultAppThemeForOnboarding.secondary.primaryForeground);
+      root.style.setProperty('--accent-foreground', defaultAppThemeForOnboarding.secondary.foreground);
     }
   }, []);
 
   useEffect(() => {
-    if (initialMode && initialAccentValue ) { 
+    if (initialMode && initialAccentValue ) {
         applyTheme(selectedMode, selectedAccent);
     }
   }, [selectedMode, selectedAccent, applyTheme, initialMode, initialAccentValue]);
@@ -149,7 +152,7 @@ export default function ThemeSelectionPage() {
         if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
           router.replace('/dashboard');
         } else {
-          if (initialMode && initialAccentValue) { 
+          if (initialMode && initialAccentValue) {
             setIsCheckingAuth(false);
           }
         }
@@ -158,7 +161,7 @@ export default function ThemeSelectionPage() {
       }
     });
     return () => unsubscribe();
-  }, [router, initialMode, initialAccentValue]); 
+  }, [router, initialMode, initialAccentValue]);
 
   useEffect(() => {
     if (currentUser && initialMode && initialAccentValue) {
@@ -178,28 +181,27 @@ export default function ThemeSelectionPage() {
     const themeSettingsToSave: Partial<UserAppSettings> = {
       themeMode: selectedMode,
       themePrimaryAccent: selectedAccent.value,
-      themePrimaryAccentFg: selectedAccent.primaryForeground,
-      themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value, 
-      themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.primaryForeground,
-      uiScale: defaultAppThemeForOnboarding.scale,
+      themePrimaryAccentFg: selectedAccent.foreground, // Save standardized 'foreground'
+      themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value, // Save default secondary
+      themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.foreground, // Save default secondary foreground
+      uiScale: defaultAppThemeForOnboarding.scale, // Save default UI scale
     };
 
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
-      // Fetch existing appSettings to merge with
       const userDocSnap = await getDoc(userDocRef);
       let existingAppSettings: Partial<UserAppSettings> = {};
       if (userDocSnap.exists() && userDocSnap.data().appSettings) {
         existingAppSettings = userDocSnap.data().appSettings;
       }
-      
-      const updatedAppSettings: UserAppSettings = {
-        ...existingAppSettings, // Preserve existing settings
-        ...themeSettingsToSave // Overwrite with new theme settings
+
+      const updatedAppSettings: Partial<UserAppSettings> = {
+        ...existingAppSettings,
+        ...themeSettingsToSave
       };
-      
-      await setDoc(userDocRef, { 
-        appSettings: updatedAppSettings 
+
+      await setDoc(userDocRef, {
+        appSettings: updatedAppSettings
       }, { merge: true });
 
 
@@ -224,8 +226,9 @@ export default function ThemeSelectionPage() {
       return;
     }
     setIsSubmitting(true);
+    // Apply application defaults before proceeding
     if (initialMode && initialAccentValue && initialAccentFgValue) {
-        const initialAccent = accentOptions.find(opt => opt.value === initialAccentValue && opt.primaryForeground === initialAccentFgValue);
+        const initialAccent = accentOptions.find(opt => opt.value === initialAccentValue && opt.foreground === initialAccentFgValue);
         if (initialAccent) {
              applyTheme(initialMode, initialAccent);
         } else {
@@ -234,32 +237,31 @@ export default function ThemeSelectionPage() {
     } else {
          applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
     }
-    
+
     const defaultSettingsToSave: Partial<UserAppSettings> = {
         themeMode: defaultAppThemeForOnboarding.mode,
         themePrimaryAccent: defaultAppThemeForOnboarding.primary.value,
-        themePrimaryAccentFg: defaultAppThemeForOnboarding.primary.primaryForeground,
+        themePrimaryAccentFg: defaultAppThemeForOnboarding.primary.foreground, // Save standardized 'foreground'
         themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value,
-        themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.primaryForeground,
+        themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.foreground,
         uiScale: defaultAppThemeForOnboarding.scale,
     };
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        // Fetch existing appSettings to merge with
         const userDocSnap = await getDoc(userDocRef);
         let existingAppSettings: Partial<UserAppSettings> = {};
         if (userDocSnap.exists() && userDocSnap.data().appSettings) {
             existingAppSettings = userDocSnap.data().appSettings;
         }
-        
-        const updatedAppSettings: UserAppSettings = {
-            ...existingAppSettings, // Preserve existing settings
-            ...defaultSettingsToSave // Overwrite with new default theme settings
+
+        const updatedAppSettings: Partial<UserAppSettings> = {
+            ...existingAppSettings,
+            ...defaultSettingsToSave
         };
 
         await setDoc(userDocRef, { appSettings: updatedAppSettings }, { merge: true });
-        
+
         toast({
           title: 'Skipping Theme Customization',
           description: 'Proceeding to the final onboarding step with default theme.',
@@ -272,44 +274,54 @@ export default function ThemeSelectionPage() {
       setIsSubmitting(false);
     }
   };
-  
+
   useEffect(() => {
     return () => {
       if (typeof window !== 'undefined' && initialMode && initialAccentValue && initialAccentFgValue && currentUser && !isSubmitting) {
+        // Only attempt to revert if not submitting and initial values were captured
         const userDocRef = doc(db, "users", currentUser.uid);
         getDoc(userDocRef).then(snap => {
-            if (!(snap.exists() && snap.data().appSettings?.onboardingComplete)) {
-                const initialAccent = accentOptions.find(opt => opt.value === initialAccentValue && opt.primaryForeground === initialAccentFgValue);
-                 if (initialAccent) {
-                    applyTheme(initialMode, initialAccent);
+            if (snap.exists() && snap.data().appSettings?.themePrimaryAccent) {
+                 const savedSettings = snap.data().appSettings as UserAppSettings;
+                 const savedPrimary = accentOptions.find(opt => opt.value === savedSettings.themePrimaryAccent && opt.foreground === savedSettings.themePrimaryAccentFg);
+                 if(savedPrimary && savedSettings.themeMode) {
+                    applyTheme(savedSettings.themeMode, savedPrimary);
                  } else {
-                    applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
+                    // Fallback if saved accent not found in options, apply initial page load theme
+                    const initialAccent = accentOptions.find(opt => opt.value === initialAccentValue && opt.foreground === initialAccentFgValue);
+                    if (initialAccent) applyTheme(initialMode, initialAccent);
                  }
+            } else {
+                 // No saved settings or navigating away before save, revert to initial page load theme
+                const initialAccent = accentOptions.find(opt => opt.value === initialAccentValue && opt.foreground === initialAccentFgValue);
+                if (initialAccent) {
+                    applyTheme(initialMode, initialAccent);
+                } else {
+                    // Absolute fallback if something went wrong with initial values
+                    applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
+                }
             }
         });
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialMode, initialAccentValue, initialAccentFgValue, currentUser, isSubmitting]);
+  }, [initialMode, initialAccentValue, initialAccentFgValue, currentUser, isSubmitting]); // Removed applyTheme from dependencies
 
 
-  if (isCheckingAuth || !initialMode) { 
+  if (isCheckingAuth || !initialMode || !currentUser) { // Ensure currentUser is also checked for initial render
     return <SplashScreenDisplay />;
   }
-  
-  if (!currentUser) {
-     return <SplashScreenDisplay />;
-  }
+
 
   return (
     <div className="flex h-full items-center justify-center overflow-y-auto overflow-x-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
-      <Card className="flex flex-col w-full max-w-lg bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
+      <Card className="flex flex-col w-full max-w-lg max-h-[90vh] bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
         <CardHeader className="text-center pt-6 pb-4 shrink-0">
           <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
             Customize Your vibe
           </CardTitle>
           <CardDescription className="text-muted-foreground pt-1">
-            Choose your preferred theme mode and accent color.
+            Choose your preferred theme mode and primary accent color.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex-1 p-0 overflow-hidden min-h-0">
@@ -355,9 +367,9 @@ export default function ThemeSelectionPage() {
 
               <div className="space-y-3">
                 <Label className="text-lg font-semibold text-foreground flex items-center">
-                  <Palette className="mr-2 h-6 w-6 text-accent" /> Accent Color (Primary)
+                  <Palette className="mr-2 h-6 w-6 text-accent" /> Primary Accent Color
                 </Label>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-3 sm:grid-cols-3 gap-3"> {/* Changed sm:grid-cols-4 to 3 for better fit */}
                   {accentOptions.map((accent) => (
                     <Button
                       key={accent.name}
@@ -382,11 +394,11 @@ export default function ThemeSelectionPage() {
             </div>
           </ScrollArea>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-3 pt-6 pb-6 shrink-0">
+        <CardFooter className="flex flex-col sm:flex-row gap-4 pt-6 pb-6 shrink-0">
           <Button
             onClick={handleSave}
             disabled={isSubmitting || !currentUser}
-            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base py-3
+            className="w-full sm:w-1/2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base py-3
                        shadow-[0_0_10px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
@@ -398,7 +410,7 @@ export default function ThemeSelectionPage() {
             variant="ghost"
             onClick={handleSkip}
             disabled={isSubmitting || !currentUser}
-            className="w-full text-muted-foreground hover:text-accent/80"
+            className="w-full sm:w-1/2 text-muted-foreground hover:text-accent/80"
           >
             Skip and use defaults
           </Button>
@@ -407,4 +419,3 @@ export default function ThemeSelectionPage() {
     </div>
   );
 }
-
