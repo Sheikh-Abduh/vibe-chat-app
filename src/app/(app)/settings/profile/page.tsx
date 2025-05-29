@@ -33,8 +33,9 @@ import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, type User, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore'; 
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
+import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea import
 
-// Cloudinary configuration
+// Cloudinary configuration (copied from onboarding/avatar)
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
 const CLOUDINARY_API_KEY = '775545995624823';
 const CLOUDINARY_UPLOAD_PRESET = 'vibe_app';
@@ -124,7 +125,7 @@ export default function EditProfilePage() {
         }
         
         form.reset({
-          displayName: user.displayName || "",
+          displayName: user.displayName || fetchedProfileDetails.displayName || "",
           aboutMe: fetchedProfileDetails.aboutMe || "",
           status: fetchedProfileDetails.status || "",
           hobbies: fetchedProfileDetails.hobbies || "",
@@ -174,13 +175,13 @@ export default function EditProfilePage() {
     }
     setIsSubmitting(true);
     let anyChangesMade = false;
-    let authProfileUpdated = false;
 
     let authUpdates: { displayName?: string; photoURL?: string } = {};
     if (data.displayName && data.displayName !== currentUser.displayName) {
       authUpdates.displayName = data.displayName;
     }
 
+    let newAvatarUrlFromCloudinary: string | null = null;
     if (avatarFile) {
       setIsUploadingAvatar(true);
       const formData = new FormData();
@@ -196,11 +197,15 @@ export default function EditProfilePage() {
         if (!response.ok) throw new Error((await response.json()).error?.message || 'Cloudinary upload failed.');
         const cloudinaryData = await response.json();
         if (cloudinaryData.secure_url) {
-          authUpdates.photoURL = cloudinaryData.secure_url;
+          newAvatarUrlFromCloudinary = cloudinaryData.secure_url;
+          authUpdates.photoURL = newAvatarUrlFromCloudinary;
         } else throw new Error('Cloudinary did not return a URL.');
       } catch (error: any) {
         console.error("Error uploading avatar:", error);
         toast({ variant: "destructive", title: "Avatar Upload Failed", description: error.message || "Could not upload new avatar." });
+        setIsUploadingAvatar(false);
+        setIsSubmitting(false);
+        return; 
       } finally {
         setIsUploadingAvatar(false);
       }
@@ -209,7 +214,6 @@ export default function EditProfilePage() {
     if (Object.keys(authUpdates).length > 0) {
       try {
         await updateProfile(currentUser, authUpdates);
-        authProfileUpdated = true;
         anyChangesMade = true;
       } catch (error: any) {
         console.error("Error updating Firebase Auth profile:", error);
@@ -218,8 +222,8 @@ export default function EditProfilePage() {
     }
     
     const profileDetailsToSave: UserProfileDetails = {
-      photoURL: authUpdates.photoURL || currentUser.photoURL, 
-      displayName: authUpdates.displayName || currentUser.displayName, // Keep displayName in sync
+      photoURL: newAvatarUrlFromCloudinary || currentUser.photoURL || undefined, 
+      displayName: data.displayName || currentUser.displayName || undefined,
       aboutMe: data.aboutMe || "",
       status: data.status || "",
       hobbies: data.hobbies || "",
@@ -268,14 +272,26 @@ export default function EditProfilePage() {
     }
 
     setIsSubmitting(false);
+    // Re-fetch current user to update display immediately
     if (auth.currentUser) {
-      form.reset({
-        ...profileDetailsToSave,
-        displayName: auth.currentUser.displayName || "",
-      });
-      setAvatarPreview(auth.currentUser.photoURL);
-      setAvatarFile(null);
+        await auth.currentUser.reload(); // Reload user data from Firebase Auth
+        const updatedUser = auth.currentUser;
+        if (updatedUser) {
+            setCurrentUser(updatedUser); // Update local state
+            setAvatarPreview(updatedUser.photoURL); // Update preview
+            form.reset({ // Reset form with potentially updated values
+                displayName: updatedUser.displayName || profileDetailsToSave.displayName || "",
+                aboutMe: profileDetailsToSave.aboutMe,
+                status: profileDetailsToSave.status,
+                hobbies: profileDetailsToSave.hobbies,
+                age: profileDetailsToSave.age,
+                gender: profileDetailsToSave.gender,
+                tags: profileDetailsToSave.tags,
+                passion: profileDetailsToSave.passion,
+            });
+        }
     }
+    setAvatarFile(null); // Clear selected file
   };
 
   if (isCheckingAuth) {
@@ -283,11 +299,11 @@ export default function EditProfilePage() {
   }
 
   if (!currentUser) {
-   return <SplashScreenDisplay />;
+   return <SplashScreenDisplay />; 
  }
 
   return (
-    <div className="flex h-full items-center justify-center overflow-hidden p-4 selection:bg-primary/30 selection:text-primary-foreground">
+    <div className="flex h-full items-center justify-center overflow-hidden p-4">
       <Card className="flex flex-col w-full max-w-lg bg-card border-border/50 shadow-xl max-h-[90vh]">
         <CardHeader className="shrink-0">
           <div className="flex items-center justify-between">
@@ -305,247 +321,251 @@ export default function EditProfilePage() {
             Update your profile information, username, and avatar.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto p-6 pt-6">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 sm:space-y-8">
+        <CardContent className="flex-1 p-0 min-h-0"> 
+          <ScrollArea className="h-full">
+            <div className="p-6 pt-6">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 sm:space-y-8">
 
-              <FormItem>
-                <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
-                  <UserCircle className="mr-2 h-5 w-5 text-accent" /> Profile Picture
-                </FormLabel>
-                <div className="flex items-center gap-3 sm:gap-4 mt-2">
-                  <Avatar
-                    className={`h-20 w-20 sm:h-24 sm:w-24 border-2 border-primary shadow-md ${isUploadingAvatar ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-90'} transition-opacity`}
-                    onClick={handleUploadAvatarButtonClick}
-                  >
-                    <AvatarImage src={avatarPreview || undefined} alt="User Avatar Preview" className="object-cover"/>
-                    <AvatarFallback className="bg-muted hover:bg-muted/80">
-                      <UserCircle className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground/70" />
-                    </AvatarFallback>
-                  </Avatar>
-                  <Input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleAvatarFileChange}
-                    className="hidden"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    disabled={isUploadingAvatar || isSubmitting}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleUploadAvatarButtonClick}
-                    disabled={isUploadingAvatar || isSubmitting}
-                    className="border-accent text-accent hover:bg-accent/10 hover:text-accent text-xs sm:text-sm py-2 px-3"
-                  >
-                    {isUploadingAvatar ? (
-                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                    ) : (
-                      <UploadCloud className="mr-1.5 h-4 w-4" />
+                  <FormItem>
+                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
+                      <UserCircle className="mr-2 h-5 w-5 text-accent" /> Profile Picture
+                    </FormLabel>
+                    <div className="flex items-center gap-3 sm:gap-4 mt-2">
+                      <Avatar
+                        className={`h-20 w-20 sm:h-24 sm:w-24 border-2 border-primary shadow-md ${isUploadingAvatar ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-90'} transition-opacity`}
+                        onClick={handleUploadAvatarButtonClick}
+                      >
+                        <AvatarImage src={avatarPreview || undefined} alt="User Avatar Preview" className="object-cover"/>
+                        <AvatarFallback className="bg-muted hover:bg-muted/80">
+                          <UserCircle className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground/70" />
+                        </AvatarFallback>
+                      </Avatar>
+                      <Input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleAvatarFileChange}
+                        className="hidden"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        disabled={isUploadingAvatar || isSubmitting}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleUploadAvatarButtonClick}
+                        disabled={isUploadingAvatar || isSubmitting}
+                        className="border-accent text-accent hover:bg-accent/10 hover:text-accent text-xs sm:text-sm py-2 px-3"
+                      >
+                        {isUploadingAvatar ? (
+                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        ) : (
+                          <UploadCloud className="mr-1.5 h-4 w-4" />
+                        )}
+                        {isUploadingAvatar ? 'Uploading...' : (avatarFile ? 'Change' : 'Upload')}
+                      </Button>
+                    </div>
+                    {avatarFile && <FormDescription className="text-xs text-muted-foreground/80 mt-1">New picture selected. Click "Save Changes" to apply.</FormDescription>}
+                  </FormItem>
+
+                  <FormField
+                    control={form.control}
+                    name="displayName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
+                          <UserCircle className="mr-2 h-5 w-5 text-accent" /> Username (Display Name)
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Your awesome username"
+                            className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs text-muted-foreground/80">
+                          This name will be visible to others.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
                     )}
-                    {isUploadingAvatar ? 'Uploading...' : (avatarFile ? 'Change' : 'Upload')}
-                  </Button>
-                </div>
-                {avatarFile && <FormDescription className="text-xs text-muted-foreground/80 mt-1">New picture selected. Click "Save Changes" to apply.</FormDescription>}
-              </FormItem>
+                  />
 
-              <FormField
-                control={form.control}
-                name="displayName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
-                      <UserCircle className="mr-2 h-5 w-5 text-accent" /> Username (Display Name)
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Your awesome username"
-                        className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs text-muted-foreground/80">
-                      This name will be visible to others.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="aboutMe"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
+                          <Info className="mr-2 h-5 w-5 text-accent" /> About Me
+                        </FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Tell us a little about yourself..."
+                            className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground min-h-[80px] sm:min-h-[100px]"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs text-muted-foreground/80">
+                          Share something interesting about you (max 500 characters).
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="aboutMe"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
-                      <Info className="mr-2 h-5 w-5 text-accent" /> About Me
-                    </FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Tell us a little about yourself..."
-                        className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground min-h-[80px] sm:min-h-[100px]"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs text-muted-foreground/80">
-                      Share something interesting about you (max 500 characters).
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
+                          <MessageSquare className="mr-2 h-5 w-5 text-accent" /> Status
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="What's on your mind?"
+                            className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
+                            {...field}
+                          />
+                        </FormControl>
+                         <FormDescription className="text-xs text-muted-foreground/80">
+                          A short status message or mood (max 100 characters).
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
-                      <MessageSquare className="mr-2 h-5 w-5 text-accent" /> Status
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="What's on your mind?"
-                        className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
-                        {...field}
-                      />
-                    </FormControl>
-                     <FormDescription className="text-xs text-muted-foreground/80">
-                      A short status message or mood (max 100 characters).
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="hobbies"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
+                          <Sparkles className="mr-2 h-5 w-5 text-accent" /> Hobbies
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Reading, Coding, Hiking (comma-separated)"
+                            className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs text-muted-foreground/80">
+                          List some of your favorite activities or interests.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="hobbies"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
-                      <Sparkles className="mr-2 h-5 w-5 text-accent" /> Hobbies
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., Reading, Coding, Hiking (comma-separated)"
-                        className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs text-muted-foreground/80">
-                      List some of your favorite activities or interests.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="age"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
+                           <Gift className="mr-2 h-5 w-5 text-accent" /> Age Range
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+                              <SelectValue placeholder="Select your age range" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-popover border-border/80 text-popover-foreground">
+                            {ageRanges.map((range) => (
+                              <SelectItem key={range} value={range} className="hover:bg-accent/20 focus:bg-accent/30">
+                                {range}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="age"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
-                       <Gift className="mr-2 h-5 w-5 text-accent" /> Age Range
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ""}>
-                      <FormControl>
-                        <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
-                          <SelectValue placeholder="Select your age range" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent className="bg-popover border-border/80 text-popover-foreground">
-                        {ageRanges.map((range) => (
-                          <SelectItem key={range} value={range} className="hover:bg-accent/20 focus:bg-accent/30">
-                            {range}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="gender"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
+                           <PersonStanding className="mr-2 h-5 w-5 text-accent" /> Gender
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+                              <SelectValue placeholder="Select your gender" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-popover border-border/80 text-popover-foreground">
+                            {genderOptions.map((gender) => (
+                              <SelectItem key={gender} value={gender} className="hover:bg-accent/20 focus:bg-accent/30">
+                                {gender}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="gender"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
-                       <PersonStanding className="mr-2 h-5 w-5 text-accent" /> Gender
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ""}>
-                      <FormControl>
-                        <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
-                          <SelectValue placeholder="Select your gender" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent className="bg-popover border-border/80 text-popover-foreground">
-                        {genderOptions.map((gender) => (
-                          <SelectItem key={gender} value={gender} className="hover:bg-accent/20 focus:bg-accent/30">
-                            {gender}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="tags"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
+                          <Hash className="mr-2 h-5 w-5 text-accent" /> Tags
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., TechEnthusiast, Foodie, Bookworm (comma-separated)"
+                            className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
+                            {...field}
+                          />
+                        </FormControl>
+                         <FormDescription className="text-xs text-muted-foreground/80">
+                          Keywords that describe you or your interests.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="tags"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
-                      <Hash className="mr-2 h-5 w-5 text-accent" /> Tags
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., TechEnthusiast, Foodie, Bookworm (comma-separated)"
-                        className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
-                        {...field}
-                      />
-                    </FormControl>
-                     <FormDescription className="text-xs text-muted-foreground/80">
-                      Keywords that describe you or your interests.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="passion"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
-                      <Heart className="mr-2 h-5 w-5 text-accent" /> Primary Passion
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ""}>
-                      <FormControl>
-                        <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
-                          <SelectValue placeholder="Select your main passion" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent className="bg-popover border-border/80 text-popover-foreground">
-                        {passionOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value} className="hover:bg-accent/20 focus:bg-accent/30 flex items-center">
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </form>
-          </Form>
+                  <FormField
+                    control={form.control}
+                    name="passion"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
+                          <Heart className="mr-2 h-5 w-5 text-accent" /> Primary Passion
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+                              <SelectValue placeholder="Select your main passion" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-popover border-border/80 text-popover-foreground">
+                            {passionOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value} className="hover:bg-accent/20 focus:bg-accent/30 flex items-center">
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </form>
+              </Form>
+            </div>
+          </ScrollArea>
         </CardContent>
         <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-6 sm:pt-8 pb-6 shrink-0">
           <Button
@@ -572,6 +592,4 @@ export default function EditProfilePage() {
     </div>
   );
 }
-    
-
     
