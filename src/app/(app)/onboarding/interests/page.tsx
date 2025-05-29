@@ -91,6 +91,17 @@ export default function InterestsPage() {
         if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
           router.replace('/dashboard');
         } else {
+          // If onboarding is not complete, but interests were previously saved to Firestore, load them.
+          if (userDocSnap.exists() && userDocSnap.data().profileDetails) {
+            const { hobbies, age, gender, tags, passion } = userDocSnap.data().profileDetails;
+            form.reset({
+              hobbies: hobbies || "",
+              age: age || "",
+              gender: gender || "",
+              tags: tags || "",
+              passion: passion || "",
+            });
+          }
           setIsCheckingAuth(false);
         }
       } else {
@@ -129,7 +140,13 @@ export default function InterestsPage() {
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        await setDoc(userDocRef, { profileDetails: profileDetailsToSave }, { merge: true });
+        // Merge with existing profileDetails if any, to not overwrite things like photoURL
+        const userDocSnap = await getDoc(userDocRef);
+        const existingProfileDetails = userDocSnap.exists() ? userDocSnap.data().profileDetails : {};
+        
+        await setDoc(userDocRef, { 
+            profileDetails: { ...existingProfileDetails, ...profileDetailsToSave } 
+        }, { merge: true });
         
         toast({
           title: "Interests Saved!",
@@ -161,7 +178,12 @@ export default function InterestsPage() {
     };
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
-      await setDoc(userDocRef, { profileDetails: profileDetailsToSave }, { merge: true });
+      const userDocSnap = await getDoc(userDocRef);
+      const existingProfileDetails = userDocSnap.exists() ? userDocSnap.data().profileDetails : {};
+
+      await setDoc(userDocRef, { 
+        profileDetails: { ...existingProfileDetails, ...profileDetailsToSave } 
+      }, { merge: true });
       toast({
         title: 'Skipping Interests',
         description: 'Proceeding to theme selection. You can update interests later.',
