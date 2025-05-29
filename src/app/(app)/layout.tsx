@@ -14,6 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuTrigger, // Added DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
 import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search, Users, Edit3, Heart, Info, Gift, PersonStanding, Hash, Sparkles, BellDot, Activity } from 'lucide-react';
@@ -56,6 +57,8 @@ interface UserAppSettings {
   communityJoinPreference?: 'yes' | 'no';
 }
 
+interface UserStoredDetails extends UserProfileDetails, Pick<UserAppSettings, 'communityJoinPreference'> {}
+
 
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -63,7 +66,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [userProfile, setUserProfile] = useState<UserProfileDetails | null>(null);
+  const [userStoredDetails, setUserStoredDetails] = useState<UserStoredDetails | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -83,11 +86,12 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
           onboardingComplete = fetchedAppSettings.onboardingComplete === true;
         }
         
-        setUserProfile({
+        setUserStoredDetails({
           displayName: user.displayName || "",
           photoURL: user.photoURL || "",
           email: user.email || "",
-          ...fetchedProfileDetails
+          ...fetchedProfileDetails,
+          communityJoinPreference: fetchedAppSettings.communityJoinPreference || 'no',
         });
 
         if (onboardingComplete) {
@@ -107,17 +111,26 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   }, [router, pathname]);
 
   const handleLogout = async () => {
-    setIsCheckingAuth(true);
+    setIsCheckingAuth(true); // Show splash while logging out
     try {
       await firebaseSignOut(auth);
       setCurrentUser(null);
-      setUserProfile(null);
+      setUserStoredDetails(null); // Clear stored details
+      // Clear relevant Firestore-backed settings from localStorage for a clean slate
+      // (This assumes ThemeProvider will reset to defaults if no user is logged in)
+      localStorage.removeItem(`theme_mode_${currentUser?.uid}`);
+      localStorage.removeItem(`theme_accent_primary_${currentUser?.uid}`);
+      localStorage.removeItem(`theme_accent_primary_fg_${currentUser?.uid}`);
+      localStorage.removeItem(`theme_accent_secondary_${currentUser?.uid}`);
+      localStorage.removeItem(`theme_accent_secondary_fg_${currentUser?.uid}`);
+      localStorage.removeItem(`ui_scale_${currentUser?.uid}`);
+      
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      router.push('/login');
+      router.push('/login'); 
     } catch (error) {
       console.error("Logout error:", error);
       toast({ variant: "destructive", title: "Logout Failed", description: "Could not log you out. Please try again." });
-      setIsCheckingAuth(false);
+      setIsCheckingAuth(false); // Hide splash on error
     }
   };
 
@@ -125,7 +138,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     return <SplashScreenDisplay />;
   }
   
-  const passionDisplay = userProfile?.passion ? userProfile.passion.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Not set";
+  const passionDisplay = userStoredDetails?.passion ? userStoredDetails.passion.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Not set";
 
   return (
     <SidebarProvider defaultOpen={false}>
@@ -195,13 +208,13 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 className="relative h-12 w-full rounded-md p-0 flex items-center justify-center hover:bg-transparent focus:bg-transparent group-data-[state=expanded]:justify-start group-data-[state=expanded]:px-2 group-data-[state=expanded]:gap-2 focus-visible:ring-0 focus-visible:ring-offset-0 focus:ring-0 focus:ring-offset-0"
               >
                 <Avatar className="h-9 w-9 avatar-pulse-neon">
-                  <AvatarImage src={userProfile?.photoURL || undefined} alt={userProfile?.displayName || currentUser.email || 'User avatar'} />
+                  <AvatarImage src={userStoredDetails?.photoURL || undefined} alt={userStoredDetails?.displayName || currentUser.email || 'User avatar'} />
                   <AvatarFallback className="bg-muted text-muted-foreground">
                     <UserCircle className="h-6 w-6" />
                   </AvatarFallback>
                 </Avatar>
                 <span className="hidden group-data-[state=expanded]:inline text-sm text-sidebar-foreground truncate">
-                  {userProfile?.displayName || currentUser.email?.split('@')[0] || "User"}
+                  {userStoredDetails?.displayName || currentUser.email?.split('@')[0] || "User"}
                 </span>
               </Button>
             </DropdownMenuTrigger>
@@ -214,14 +227,14 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
               <DropdownMenuLabel className="font-normal p-0 mb-4">
                 <div className="flex items-center space-x-3">
                    <Avatar className="h-14 w-14">
-                     <AvatarImage src={userProfile?.photoURL || undefined} alt={userProfile?.displayName || 'User avatar'} />
+                     <AvatarImage src={userStoredDetails?.photoURL || undefined} alt={userStoredDetails?.displayName || 'User avatar'} />
                      <AvatarFallback className="bg-muted text-muted-foreground text-xl">
-                       {(userProfile?.displayName || currentUser.email || "U").charAt(0).toUpperCase()}
+                       {(userStoredDetails?.displayName || currentUser.email || "U").charAt(0).toUpperCase()}
                      </AvatarFallback>
                    </Avatar>
                    <div>
                       <p className="text-base font-semibold leading-none text-card-foreground">
-                        {userProfile?.displayName || currentUser.email?.split('@')[0] || "User"}
+                        {userStoredDetails?.displayName || currentUser.email?.split('@')[0] || "User"}
                       </p>
                       {currentUser.email && (
                          <p className="text-xs leading-none text-muted-foreground mt-1">
@@ -233,49 +246,49 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
               </DropdownMenuLabel>
 
               <div className="space-y-2.5 text-sm text-card-foreground mb-4 text-left">
-                {userProfile?.aboutMe && (
+                {userStoredDetails?.aboutMe && (
                   <div className="flex items-start">
                     <Info className="mr-2.5 h-4 w-4 text-accent shrink-0 mt-0.5" />
                     <div>
                         <span className="text-muted-foreground font-medium">About:</span>
-                        <p className="italic text-card-foreground/90 leading-snug">{userProfile.aboutMe !== "Tell us about yourself..." && userProfile.aboutMe !== "" ? userProfile.aboutMe : <span className="text-muted-foreground">Not set</span>}</p>
+                        <p className="italic text-card-foreground/90 leading-snug">{userStoredDetails.aboutMe !== "Tell us about yourself..." && userStoredDetails.aboutMe !== "" ? userStoredDetails.aboutMe : <span className="text-muted-foreground">Not set</span>}</p>
                     </div>
                   </div>
                 )}
-                 {userProfile?.status && (
+                 {userStoredDetails?.status && (
                   <div className="flex items-start">
                     <MessageSquare className="mr-2.5 h-4 w-4 text-accent shrink-0 mt-0.5" />
                     <div>
                         <span className="text-muted-foreground font-medium">Status:</span>
-                        <p className="italic text-card-foreground/90 leading-snug">{userProfile.status !== "What's on your mind?" && userProfile.status !== "" ? userProfile.status : <span className="text-muted-foreground">Not set</span>}</p>
+                        <p className="italic text-card-foreground/90 leading-snug">{userStoredDetails.status !== "What's on your mind?" && userStoredDetails.status !== "" ? userStoredDetails.status : <span className="text-muted-foreground">Not set</span>}</p>
                     </div>
                   </div>
                 )}
-                {userProfile?.hobbies && userProfile.hobbies !== "Not set" && userProfile.hobbies !== "" && (
+                {userStoredDetails?.hobbies && userStoredDetails.hobbies !== "Not set" && userStoredDetails.hobbies !== "" && (
                   <div className="flex items-center">
                     <Sparkles className="mr-2.5 h-4 w-4 text-accent shrink-0" />
-                    <span className="text-muted-foreground font-medium mr-1.5">Hobbies:</span> <span className="text-card-foreground/90">{userProfile.hobbies}</span>
+                    <span className="text-muted-foreground font-medium mr-1.5">Hobbies:</span> <span className="text-card-foreground/90">{userStoredDetails.hobbies}</span>
                   </div>
                 )}
-                {userProfile?.age && userProfile.age !== "Not set" && (
+                {userStoredDetails?.age && userStoredDetails.age !== "Not set" && (
                   <div className="flex items-center">
                      <Gift className="mr-2.5 h-4 w-4 text-accent shrink-0" />
-                    <span className="text-muted-foreground font-medium mr-1.5">Age:</span> <span className="text-card-foreground/90">{userProfile.age}</span>
+                    <span className="text-muted-foreground font-medium mr-1.5">Age:</span> <span className="text-card-foreground/90">{userStoredDetails.age}</span>
                   </div>
                 )}
-                 {userProfile?.gender && userProfile.gender !== "Not set" && (
+                 {userStoredDetails?.gender && userStoredDetails.gender !== "Not set" && (
                   <div className="flex items-center">
                      <PersonStanding className="mr-2.5 h-4 w-4 text-accent shrink-0" />
-                    <span className="text-muted-foreground font-medium mr-1.5">Gender:</span> <span className="text-card-foreground/90">{userProfile.gender}</span>
+                    <span className="text-muted-foreground font-medium mr-1.5">Gender:</span> <span className="text-card-foreground/90">{userStoredDetails.gender}</span>
                   </div>
                 )}
-                {userProfile?.tags && userProfile.tags !== "Not set" && userProfile.tags !== "" && (
+                {userStoredDetails?.tags && userStoredDetails.tags !== "Not set" && userStoredDetails.tags !== "" && (
                   <div className="flex items-center">
                      <Hash className="mr-2.5 h-4 w-4 text-accent shrink-0" />
-                    <span className="text-muted-foreground font-medium mr-1.5">Tags:</span> <span className="text-card-foreground/90">{userProfile.tags}</span>
+                    <span className="text-muted-foreground font-medium mr-1.5">Tags:</span> <span className="text-card-foreground/90">{userStoredDetails.tags}</span>
                   </div>
                 )}
-                {userProfile?.passion && userProfile.passion !== "Not set" && (
+                {userStoredDetails?.passion && userStoredDetails.passion !== "Not set" && (
                   <div className="flex items-center">
                     <Heart className="mr-2.5 h-4 w-4 text-accent shrink-0" />
                     <span className="text-muted-foreground font-medium mr-1.5">Passion:</span> <span className="text-card-foreground/90">{passionDisplay}</span>
