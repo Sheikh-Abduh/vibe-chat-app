@@ -100,21 +100,26 @@ export default function InterestsPage() {
         const userDocRef = doc(db, "users", user.uid);
         const userDocSnap = await getDoc(userDocRef);
         
+        let profileData = {};
+        let onboardingComplete = false;
+
         if (userDocSnap.exists()) {
           const data = userDocSnap.data();
-          if (data.appSettings?.onboardingComplete === true) {
+          onboardingComplete = data.appSettings?.onboardingComplete === true;
+          if (onboardingComplete) {
             router.replace('/dashboard');
             return; 
           }
-          const profileDetails = data.profileDetails || {};
-          form.reset({
-            hobbies: profileDetails.hobbies || "",
-            age: profileDetails.age || "",
-            gender: profileDetails.gender || "",
-            tags: profileDetails.tags || "",
-            passion: profileDetails.passion || "",
-          });
+          profileData = data.profileDetails || {};
         }
+        
+        form.reset({
+          hobbies: (profileData as any).hobbies || "",
+          age: (profileData as any).age || "",
+          gender: (profileData as any).gender || "",
+          tags: (profileData as any).tags || "",
+          passion: (profileData as any).passion || "",
+        });
         setIsCheckingAuth(false);
       } else {
         router.replace('/login');
@@ -142,14 +147,8 @@ export default function InterestsPage() {
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        const existingData = userDocSnap.exists() ? userDocSnap.data() : {};
-        const existingProfileDetails = existingData.profileDetails || {};
-        const existingAppSettings = existingData.appSettings || {};
-
         await setDoc(userDocRef, { 
-            profileDetails: { ...existingProfileDetails, ...profileDetailsToSave },
-            appSettings: existingAppSettings 
+            profileDetails: profileDetailsToSave 
         }, { merge: true });
         
         toast({
@@ -182,15 +181,8 @@ export default function InterestsPage() {
     };
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
-      const userDocSnap = await getDoc(userDocRef);
-      const existingData = userDocSnap.exists() ? userDocSnap.data() : {};
-      const existingProfileDetails = existingData.profileDetails || {};
-      const existingAppSettings = existingData.appSettings || {};
-
-
       await setDoc(userDocRef, { 
-        profileDetails: { ...existingProfileDetails, ...profileDetailsToSave },
-        appSettings: existingAppSettings 
+        profileDetails: profileDetailsToSave 
       }, { merge: true });
       toast({
         title: 'Skipping Interests',
@@ -224,7 +216,7 @@ export default function InterestsPage() {
             Tell us a bit more about yourself to personalize your experience. Fields with <span className="text-destructive">*</span> are required.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 p-0 overflow-hidden min-h-0">
+        <CardContent className="flex-1 p-0 min-h-0"> {/* Added min-h-0 */}
           <ScrollArea className="h-full">
             <div className="px-6 pt-2 pb-6">
               <Form {...form}>
@@ -385,5 +377,6 @@ export default function InterestsPage() {
     </div>
   );
 }
+    
 
     
