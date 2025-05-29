@@ -28,7 +28,7 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
-import { UserCircle, Edit3, Sparkles, Gift, Hash, Heart, MessageSquare, Info, Loader2, PersonStanding, UploadCloud } from 'lucide-react';
+import { UserCircle, Edit3, Sparkles, Gift, Hash, Heart, MessageSquare, Info, Loader2, PersonStanding, UploadCloud, ArrowLeft } from 'lucide-react';
 import { auth, db } from '@/lib/firebase'; 
 import { onAuthStateChanged, type User, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore'; 
@@ -60,8 +60,8 @@ const passionOptions = [
 
 const profileSchema = z.object({
   displayName: z.string().min(3, { message: "Username must be at least 3 characters." }).optional(),
-  aboutMe: z.string().optional().describe("A short bio about yourself"),
-  status: z.string().optional().describe("Your current status or mood"),
+  aboutMe: z.string().max(500, { message: "About me cannot exceed 500 characters."}).optional().describe("A short bio about yourself"),
+  status: z.string().max(100, { message: "Status cannot exceed 100 characters."}).optional().describe("Your current status or mood"),
   hobbies: z.string().optional().describe("Comma-separated list of hobbies"),
   age: z.string().optional(),
   gender: z.string().optional(),
@@ -70,6 +70,18 @@ const profileSchema = z.object({
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
+
+interface UserProfileDetails {
+  photoURL?: string;
+  displayName?: string;
+  aboutMe?: string;
+  status?: string;
+  hobbies?: string;
+  age?: string;
+  gender?: string;
+  tags?: string;
+  passion?: string;
+}
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -105,21 +117,21 @@ export default function EditProfilePage() {
         
         const userDocRef = doc(db, "users", user.uid);
         const userDocSnap = await getDoc(userDocRef);
-        let profileData: Partial<ProfileFormValues> = {};
+        let fetchedProfileDetails: UserProfileDetails = {};
 
         if (userDocSnap.exists()) {
-          profileData = userDocSnap.data().profileDetails || {};
+          fetchedProfileDetails = userDocSnap.data()?.profileDetails || {};
         }
         
         form.reset({
           displayName: user.displayName || "",
-          aboutMe: profileData.aboutMe || "",
-          status: profileData.status || "",
-          hobbies: profileData.hobbies || "",
-          age: profileData.age || "",
-          gender: profileData.gender || "",
-          tags: profileData.tags || "",
-          passion: profileData.passion || "",
+          aboutMe: fetchedProfileDetails.aboutMe || "",
+          status: fetchedProfileDetails.status || "",
+          hobbies: fetchedProfileDetails.hobbies || "",
+          age: fetchedProfileDetails.age || "",
+          gender: fetchedProfileDetails.gender || "",
+          tags: fetchedProfileDetails.tags || "",
+          passion: fetchedProfileDetails.passion || "",
         });
         setIsCheckingAuth(false);
       } else {
@@ -162,8 +174,8 @@ export default function EditProfilePage() {
     }
     setIsSubmitting(true);
     let anyChangesMade = false;
+    let authProfileUpdated = false;
 
-    // 1. Update Display Name & Avatar in Firebase Auth
     let authUpdates: { displayName?: string; photoURL?: string } = {};
     if (data.displayName && data.displayName !== currentUser.displayName) {
       authUpdates.displayName = data.displayName;
@@ -197,8 +209,7 @@ export default function EditProfilePage() {
     if (Object.keys(authUpdates).length > 0) {
       try {
         await updateProfile(currentUser, authUpdates);
-        if (authUpdates.displayName) toast({ title: "Username Updated!", description: "Your display name has been changed." });
-        if (authUpdates.photoURL) toast({ title: "Avatar Updated!", description: "Your profile picture has been changed." });
+        authProfileUpdated = true;
         anyChangesMade = true;
       } catch (error: any) {
         console.error("Error updating Firebase Auth profile:", error);
@@ -206,10 +217,9 @@ export default function EditProfilePage() {
       }
     }
     
-    // 2. Save other details to Firestore
-    const profileDetailsToSave = {
-      // Include photoURL from authUpdates if it was set, otherwise keep existing or from Firestore
-      photoURL: authUpdates.photoURL || currentUser.photoURL || (form.getValues().aboutMe === "" ? null : avatarPreview), 
+    const profileDetailsToSave: UserProfileDetails = {
+      photoURL: authUpdates.photoURL || currentUser.photoURL, 
+      displayName: authUpdates.displayName || currentUser.displayName, // Keep displayName in sync
       aboutMe: data.aboutMe || "",
       status: data.status || "",
       hobbies: data.hobbies || "",
@@ -221,8 +231,25 @@ export default function EditProfilePage() {
 
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
-      await setDoc(userDocRef, { profileDetails: profileDetailsToSave }, { merge: true });
-      anyChangesMade = true; 
+      const userDocSnap = await getDoc(userDocRef);
+      let existingProfileDetails: UserProfileDetails = {};
+      if (userDocSnap.exists() && userDocSnap.data().profileDetails) {
+        existingProfileDetails = userDocSnap.data().profileDetails;
+      }
+      
+      let firestoreChangesMade = false;
+      for (const key in profileDetailsToSave) {
+        if (profileDetailsToSave[key as keyof UserProfileDetails] !== existingProfileDetails[key as keyof UserProfileDetails]) {
+          firestoreChangesMade = true;
+          break;
+        }
+      }
+
+      if (firestoreChangesMade) {
+        await setDoc(userDocRef, { profileDetails: profileDetailsToSave }, { merge: true });
+        anyChangesMade = true;
+      }
+      
     } catch (error) {
       console.error("Error saving profile details to Firestore:", error);
       toast({ variant: "destructive", title: "Profile Details Save Failed", description: "Could not save all profile details to database." });
@@ -233,7 +260,7 @@ export default function EditProfilePage() {
           title: "Profile Updated!",
           description: "Your changes have been saved successfully.",
         });
-    } else if (!form.formState.isDirty && !avatarFile && (!data.displayName || data.displayName === currentUser.displayName)) {
+    } else {
         toast({
             title: "No Changes Detected",
             description: "Your profile details are already up-to-date.",
@@ -241,14 +268,13 @@ export default function EditProfilePage() {
     }
 
     setIsSubmitting(false);
-    // Refresh form with potentially new values from auth and Cloudinary
     if (auth.currentUser) {
       form.reset({
-        ...profileDetailsToSave, // Use the structure we intend to save
-        displayName: auth.currentUser.displayName || "", // ensure displayName is from auth
+        ...profileDetailsToSave,
+        displayName: auth.currentUser.displayName || "",
       });
-      setAvatarPreview(auth.currentUser.photoURL); // update preview from auth
-      setAvatarFile(null); // Clear the selected file
+      setAvatarPreview(auth.currentUser.photoURL);
+      setAvatarFile(null);
     }
   };
 
@@ -261,39 +287,40 @@ export default function EditProfilePage() {
  }
 
   return (
-    <div className="h-full overflow-y-auto overflow-x-hidden p-6">
-        <div className="flex items-center mb-6">
-          <Edit3 className="mr-3 h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 4px hsl(var(--primary)/0.6)' }}>
-            Edit Your Profile
-          </h1>
-        </div>
-      <Card className="w-full bg-card border-border/50 shadow-xl">
-        <CardHeader>
-          <CardTitle className="text-2xl font-semibold text-foreground flex items-center">
-            <UserCircle className="mr-2 h-7 w-7 text-accent" />
-            Your Details
-          </CardTitle>
-          <CardDescription className="text-muted-foreground pt-1">
+    <div className="flex h-full items-center justify-center overflow-hidden p-4 selection:bg-primary/30 selection:text-primary-foreground">
+      <Card className="flex flex-col w-full max-w-lg bg-card border-border/50 shadow-xl max-h-[90vh]">
+        <CardHeader className="shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Edit3 className="mr-3 h-7 w-7 sm:h-8 sm:w-8 text-primary" />
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 4px hsl(var(--primary)/0.6)' }}>
+                Edit Your Profile
+              </h1>
+            </div>
+            <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} className="sm:hidden">
+              <ArrowLeft className="h-5 w-5 text-accent"/>
+            </Button>
+          </div>
+          <CardDescription className="text-muted-foreground pt-1 text-sm sm:text-base">
             Update your profile information, username, and avatar.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-8 pt-6">
+        <CardContent className="flex-1 overflow-y-auto p-6 pt-6">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 sm:space-y-8">
 
               <FormItem>
-                <FormLabel className="text-muted-foreground flex items-center text-base">
+                <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
                   <UserCircle className="mr-2 h-5 w-5 text-accent" /> Profile Picture
                 </FormLabel>
-                <div className="flex items-center gap-4 mt-2">
+                <div className="flex items-center gap-3 sm:gap-4 mt-2">
                   <Avatar
-                    className={`h-24 w-24 border-2 border-primary shadow-md ${isUploadingAvatar ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-90'} transition-opacity`}
+                    className={`h-20 w-20 sm:h-24 sm:w-24 border-2 border-primary shadow-md ${isUploadingAvatar ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-90'} transition-opacity`}
                     onClick={handleUploadAvatarButtonClick}
                   >
                     <AvatarImage src={avatarPreview || undefined} alt="User Avatar Preview" className="object-cover"/>
                     <AvatarFallback className="bg-muted hover:bg-muted/80">
-                      <UserCircle className="h-16 w-16 text-muted-foreground/70" />
+                      <UserCircle className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground/70" />
                     </AvatarFallback>
                   </Avatar>
                   <Input
@@ -309,14 +336,14 @@ export default function EditProfilePage() {
                     variant="outline"
                     onClick={handleUploadAvatarButtonClick}
                     disabled={isUploadingAvatar || isSubmitting}
-                    className="border-accent text-accent hover:bg-accent/10 hover:text-accent"
+                    className="border-accent text-accent hover:bg-accent/10 hover:text-accent text-xs sm:text-sm py-2 px-3"
                   >
                     {isUploadingAvatar ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
                     ) : (
-                      <UploadCloud className="mr-2 h-4 w-4" />
+                      <UploadCloud className="mr-1.5 h-4 w-4" />
                     )}
-                    {isUploadingAvatar ? 'Uploading...' : (avatarFile ? 'Change Picture' : 'Upload Picture')}
+                    {isUploadingAvatar ? 'Uploading...' : (avatarFile ? 'Change' : 'Upload')}
                   </Button>
                 </div>
                 {avatarFile && <FormDescription className="text-xs text-muted-foreground/80 mt-1">New picture selected. Click "Save Changes" to apply.</FormDescription>}
@@ -327,7 +354,7 @@ export default function EditProfilePage() {
                 name="displayName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-base">
+                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
                       <UserCircle className="mr-2 h-5 w-5 text-accent" /> Username (Display Name)
                     </FormLabel>
                     <FormControl>
@@ -350,18 +377,18 @@ export default function EditProfilePage() {
                 name="aboutMe"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-base">
+                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
                       <Info className="mr-2 h-5 w-5 text-accent" /> About Me
                     </FormLabel>
                     <FormControl>
                       <Textarea
                         placeholder="Tell us a little about yourself..."
-                        className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground min-h-[100px]"
+                        className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground min-h-[80px] sm:min-h-[100px]"
                         {...field}
                       />
                     </FormControl>
                     <FormDescription className="text-xs text-muted-foreground/80">
-                      Share something interesting about you.
+                      Share something interesting about you (max 500 characters).
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -373,7 +400,7 @@ export default function EditProfilePage() {
                 name="status"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-base">
+                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
                       <MessageSquare className="mr-2 h-5 w-5 text-accent" /> Status
                     </FormLabel>
                     <FormControl>
@@ -384,7 +411,7 @@ export default function EditProfilePage() {
                       />
                     </FormControl>
                      <FormDescription className="text-xs text-muted-foreground/80">
-                      A short status message or mood.
+                      A short status message or mood (max 100 characters).
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -396,7 +423,7 @@ export default function EditProfilePage() {
                 name="hobbies"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-base">
+                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
                       <Sparkles className="mr-2 h-5 w-5 text-accent" /> Hobbies
                     </FormLabel>
                     <FormControl>
@@ -419,7 +446,7 @@ export default function EditProfilePage() {
                 name="age"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-base">
+                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
                        <Gift className="mr-2 h-5 w-5 text-accent" /> Age Range
                     </FormLabel>
                     <Select onValueChange={field.onChange} value={field.value || ""}>
@@ -446,7 +473,7 @@ export default function EditProfilePage() {
                 name="gender"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-base">
+                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
                        <PersonStanding className="mr-2 h-5 w-5 text-accent" /> Gender
                     </FormLabel>
                     <Select onValueChange={field.onChange} value={field.value || ""}>
@@ -473,7 +500,7 @@ export default function EditProfilePage() {
                 name="tags"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-base">
+                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
                       <Hash className="mr-2 h-5 w-5 text-accent" /> Tags
                     </FormLabel>
                     <FormControl>
@@ -496,7 +523,7 @@ export default function EditProfilePage() {
                 name="passion"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center text-base">
+                    <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
                       <Heart className="mr-2 h-5 w-5 text-accent" /> Primary Passion
                     </FormLabel>
                     <Select onValueChange={field.onChange} value={field.value || ""}>
@@ -520,7 +547,7 @@ export default function EditProfilePage() {
             </form>
           </Form>
         </CardContent>
-        <CardFooter className="flex flex-col sm:flex-row justify-end gap-3 pt-8 pb-6">
+        <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-6 sm:pt-8 pb-6 shrink-0">
           <Button
             type="button"
             variant="outline"
@@ -533,11 +560,11 @@ export default function EditProfilePage() {
           <Button
             onClick={form.handleSubmit(onSubmit)}
             disabled={isSubmitting || isUploadingAvatar || !currentUser}
-            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base py-3
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm sm:text-base py-2.5 sm:py-3
                        shadow-[0_0_10px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
-            {(isSubmitting || isUploadingAvatar) && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+            {(isSubmitting || isUploadingAvatar) && <Loader2 className="mr-2 h-4 w-4 sm:h-5 sm:w-5 animate-spin" />}
             {(isSubmitting || isUploadingAvatar) ? 'Saving...' : 'Save Changes'}
           </Button>
         </CardFooter>
@@ -547,3 +574,4 @@ export default function EditProfilePage() {
 }
     
 
+    
