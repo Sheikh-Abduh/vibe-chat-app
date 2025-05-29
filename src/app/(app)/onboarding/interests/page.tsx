@@ -82,37 +82,6 @@ export default function InterestsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setCurrentUser(user);
-        const userDocRef = doc(db, "users", user.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
-          router.replace('/dashboard');
-        } else {
-          if (userDocSnap.exists()) {
-            const data = userDocSnap.data();
-            const profileDetails = data.profileDetails || {};
-            const appSettings = data.appSettings || {};
-            
-            form.reset({
-              hobbies: profileDetails.hobbies || "",
-              age: profileDetails.age || "",
-              gender: profileDetails.gender || "",
-              tags: profileDetails.tags || "",
-              passion: profileDetails.passion || "",
-            });
-          }
-          setIsCheckingAuth(false);
-        }
-      } else {
-        router.replace('/login');
-      }
-    });
-    return () => unsubscribe();
-  }, [router]);
-
   const form = useForm<InterestsFormValues>({
     resolver: zodResolver(interestsSchema),
     defaultValues: {
@@ -123,6 +92,37 @@ export default function InterestsPage() {
       passion: "",
     },
   });
+  
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setCurrentUser(user);
+        const userDocRef = doc(db, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        
+        if (userDocSnap.exists()) {
+          const data = userDocSnap.data();
+          if (data.appSettings?.onboardingComplete === true) {
+            router.replace('/dashboard');
+            return; // Important to return after redirect to prevent further state updates
+          }
+          const profileDetails = data.profileDetails || {};
+          form.reset({
+            hobbies: profileDetails.hobbies || "",
+            age: profileDetails.age || "",
+            gender: profileDetails.gender || "",
+            tags: profileDetails.tags || "",
+            passion: profileDetails.passion || "",
+          });
+        }
+        setIsCheckingAuth(false);
+      } else {
+        router.replace('/login');
+      }
+    });
+    return () => unsubscribe();
+  }, [router, form]);
+
 
   const onSubmit = async (data: InterestsFormValues) => {
     if (!currentUser) {
@@ -142,10 +142,12 @@ export default function InterestsPage() {
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
+        // Fetch existing data to merge, preserving appSettings
         const userDocSnap = await getDoc(userDocRef);
-        const existingProfileDetails = userDocSnap.exists() ? userDocSnap.data().profileDetails || {} : {};
-        const existingAppSettings = userDocSnap.exists() ? userDocSnap.data().appSettings || {} : {};
-        
+        const existingData = userDocSnap.exists() ? userDocSnap.data() : {};
+        const existingProfileDetails = existingData.profileDetails || {};
+        const existingAppSettings = existingData.appSettings || {};
+
         await setDoc(userDocRef, { 
             profileDetails: { ...existingProfileDetails, ...profileDetailsToSave },
             appSettings: existingAppSettings // Preserve existing appSettings
@@ -182,13 +184,14 @@ export default function InterestsPage() {
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
       const userDocSnap = await getDoc(userDocRef);
-      const existingProfileDetails = userDocSnap.exists() ? userDocSnap.data().profileDetails || {} : {};
-      const existingAppSettings = userDocSnap.exists() ? userDocSnap.data().appSettings || {} : {};
+      const existingData = userDocSnap.exists() ? userDocSnap.data() : {};
+      const existingProfileDetails = existingData.profileDetails || {};
+      const existingAppSettings = existingData.appSettings || {};
 
 
       await setDoc(userDocRef, { 
         profileDetails: { ...existingProfileDetails, ...profileDetailsToSave },
-        appSettings: existingAppSettings // Preserve existing appSettings
+        appSettings: existingAppSettings 
       }, { merge: true });
       toast({
         title: 'Skipping Interests',
@@ -208,7 +211,7 @@ export default function InterestsPage() {
   }
 
   if (!currentUser) {
-   return <SplashScreenDisplay />;
+   return <SplashScreenDisplay />; // Should be caught by onAuthStateChanged, but as a fallback
  }
 
   return (
@@ -222,7 +225,7 @@ export default function InterestsPage() {
             Tell us a bit more about yourself to personalize your experience. Fields with <span className="text-destructive">*</span> are required.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 p-0 overflow-hidden"> {/* Added overflow-hidden here */}
+        <CardContent className="flex-1 p-0 overflow-hidden min-h-0"> {/* Added min-h-0 */}
           <ScrollArea className="h-full">
             <div className="px-6 pt-2 pb-6">
               <Form {...form}>
@@ -383,5 +386,3 @@ export default function InterestsPage() {
     </div>
   );
 }
-
-    
