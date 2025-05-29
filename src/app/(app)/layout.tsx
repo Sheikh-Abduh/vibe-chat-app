@@ -14,7 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuTrigger, // Added DropdownMenuTrigger
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
 import { LogOut, UserCircle, Settings, LayoutDashboard, Compass, MessageSquare, Search, Users, Edit3, Heart, Info, Gift, PersonStanding, Hash, Sparkles, BellDot, Activity } from 'lucide-react';
@@ -30,7 +30,6 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInset,
-  SidebarTrigger,
 } from '@/components/ui/sidebar';
 
 interface UserProfileDetails {
@@ -76,7 +75,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         const userDocSnap = await getDoc(userDocRef);
 
         let onboardingComplete = false;
-        let fetchedProfileDetails: Partial<UserProfileDetails> = {};
+        let fetchedProfileDetails: UserProfileDetails = {};
         let fetchedAppSettings: Partial<UserAppSettings> = {};
 
         if (userDocSnap.exists()) {
@@ -87,10 +86,16 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         }
         
         setUserStoredDetails({
-          displayName: user.displayName || "",
-          photoURL: user.photoURL || "",
+          displayName: user.displayName || fetchedProfileDetails.displayName || "",
+          photoURL: user.photoURL || fetchedProfileDetails.photoURL || "",
           email: user.email || "",
-          ...fetchedProfileDetails,
+          aboutMe: fetchedProfileDetails.aboutMe || "Tell us about yourself...",
+          status: fetchedProfileDetails.status || "What's on your mind?",
+          hobbies: fetchedProfileDetails.hobbies || "Not set",
+          age: fetchedProfileDetails.age || "Not set",
+          gender: fetchedProfileDetails.gender || "Not set",
+          tags: fetchedProfileDetails.tags || "Not set",
+          passion: fetchedProfileDetails.passion || "Not set",
           communityJoinPreference: fetchedAppSettings.communityJoinPreference || 'no',
         });
 
@@ -111,26 +116,22 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   }, [router, pathname]);
 
   const handleLogout = async () => {
-    setIsCheckingAuth(true); // Show splash while logging out
+    setIsCheckingAuth(true); 
     try {
       await firebaseSignOut(auth);
       setCurrentUser(null);
-      setUserStoredDetails(null); // Clear stored details
-      // Clear relevant Firestore-backed settings from localStorage for a clean slate
-      // (This assumes ThemeProvider will reset to defaults if no user is logged in)
-      localStorage.removeItem(`theme_mode_${currentUser?.uid}`);
-      localStorage.removeItem(`theme_accent_primary_${currentUser?.uid}`);
-      localStorage.removeItem(`theme_accent_primary_fg_${currentUser?.uid}`);
-      localStorage.removeItem(`theme_accent_secondary_${currentUser?.uid}`);
-      localStorage.removeItem(`theme_accent_secondary_fg_${currentUser?.uid}`);
-      localStorage.removeItem(`ui_scale_${currentUser?.uid}`);
+      setUserStoredDetails(null); 
+      
+      // Firestore settings are user-specific and don't need manual clearing here
+      // as ThemeProvider will revert to defaults on user change.
+      // However, if you had other non-user-specific localStorage settings, clear them here.
       
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
       router.push('/login'); 
     } catch (error) {
       console.error("Logout error:", error);
       toast({ variant: "destructive", title: "Logout Failed", description: "Could not log you out. Please try again." });
-      setIsCheckingAuth(false); // Hide splash on error
+      setIsCheckingAuth(false);
     }
   };
 
@@ -144,7 +145,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     <SidebarProvider defaultOpen={false}>
       <Sidebar side="left" collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <SidebarHeader className="flex justify-center items-center p-1">
-           <Link href="/dashboard" className="block">
+           <Link href="/dashboard">
              <Image src="/logo.png" alt="vibe app logo" width={48} height={48} data-ai-hint="abstract logo" priority />
            </Link>
         </SidebarHeader>
@@ -315,7 +316,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         <div className="h-screen flex flex-col overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
           <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0 h-12">
             <div className="relative flex h-full items-center px-4">
-              {/* vibe.png - default size for small screens, larger for sm+ */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <Link href="/dashboard" className="flex items-center">
                   <Image src="/vibe.png" alt="vibe text logo" width={60} height={14} className="block sm:hidden" data-ai-hint="typography wordmark" priority />
