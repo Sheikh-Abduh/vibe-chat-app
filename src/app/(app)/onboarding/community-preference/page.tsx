@@ -11,6 +11,7 @@ import { auth, db } from '@/lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore'; 
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
+import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
 
 interface UserAppSettings {
   onboardingComplete?: boolean;
@@ -87,7 +88,13 @@ export default function CommunityPreferencePage() {
       // Clear old localStorage flags (if any were used before Firestore persistence)
       localStorage.removeItem(`onboardingComplete_${currentUser.uid}`); 
       localStorage.removeItem(`community_join_preference_${currentUser.uid}`);
-      // Theme-related localStorage keys are handled by the theme page itself or settings
+      localStorage.removeItem(`theme_mode_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_primary_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_primary_fg_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_secondary_${currentUser.uid}`);
+      localStorage.removeItem(`theme_accent_secondary_fg_${currentUser.uid}`);
+      localStorage.removeItem(`ui_scale_${currentUser.uid}`);
+
 
       router.push('/dashboard');
     } catch (error) {
@@ -117,11 +124,15 @@ export default function CommunityPreferencePage() {
             Would you like to automatically join communities that match your interests and passions?
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto space-y-6 px-6 pt-4 pb-2 flex flex-col items-center">
-           <Users className="h-20 w-20 text-accent mb-4" />
-           <p className="text-sm text-muted-foreground text-center">
-            This can help you quickly connect with like-minded people and relevant content. You can always adjust your community memberships later.
-           </p>
+        <CardContent className="flex-1 p-0">
+          <ScrollArea className="h-full">
+            <div className="px-6 pt-4 pb-2 flex flex-col items-center">
+              <Users className="h-20 w-20 text-accent mb-4" />
+              <p className="text-sm text-muted-foreground text-center">
+                This can help you quickly connect with like-minded people and relevant content. You can always adjust your community memberships later.
+              </p>
+            </div>
+          </ScrollArea>
         </CardContent>
         <CardFooter className="flex flex-col sm:flex-row gap-4 pt-6 pb-6 shrink-0">
           <Button

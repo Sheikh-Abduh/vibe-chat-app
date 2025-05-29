@@ -15,6 +15,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { cn } from '@/lib/utils';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import type { UiScale } from '@/components/theme/theme-provider';
+import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
 
 
 type ThemeMode = 'light' | 'dark';
@@ -68,6 +69,7 @@ interface UserAppSettings {
     themeSecondaryAccent?: string;
     themeSecondaryAccentFg?: string;
     uiScale?: UiScale;
+    // onboardingComplete will be handled by community-preference page
 }
 
 
@@ -127,7 +129,6 @@ export default function ThemeSelectionPage() {
       root.style.setProperty('--primary-foreground', accent.primaryForeground);
       root.style.setProperty('--ring', accent.value); 
       
-      // Keep secondary accent as default during onboarding theme selection for simplicity
       root.style.setProperty('--accent', defaultAppThemeForOnboarding.secondary.value);
       root.style.setProperty('--accent-foreground', defaultAppThemeForOnboarding.secondary.primaryForeground);
     }
@@ -287,73 +288,77 @@ export default function ThemeSelectionPage() {
             Choose your preferred theme mode and accent color.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto space-y-8 px-6 pt-2">
-          <div className="space-y-3">
-            <Label className="text-lg font-semibold text-foreground flex items-center">
-              <Palette className="mr-2 h-6 w-6 text-accent" /> Theme Mode
-            </Label>
-            <RadioGroup
-              value={selectedMode}
-              onValueChange={(value: string) => setSelectedMode(value as ThemeMode)}
-              className="grid grid-cols-2 gap-4"
-            >
-              <div>
-                <RadioGroupItem value="light" id="light" className="peer sr-only" />
-                <Label
-                  htmlFor="light"
-                  className={cn(
-                    "flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer",
-                    "peer-data-[state=checked]:border-primary peer-data-[state=checked]:shadow-[0_0_10px_hsl(var(--primary)/0.5)]"
-                  )}
-                >
-                  <Sun className="mb-2 h-7 w-7" />
-                  Light Mode
+        <CardContent className="flex-1 p-0">
+          <ScrollArea className="h-full">
+            <div className="space-y-8 px-6 pt-2 pb-6">
+              <div className="space-y-3">
+                <Label className="text-lg font-semibold text-foreground flex items-center">
+                  <Palette className="mr-2 h-6 w-6 text-accent" /> Theme Mode
                 </Label>
-              </div>
-              <div>
-                <RadioGroupItem value="dark" id="dark" className="peer sr-only" />
-                <Label
-                  htmlFor="dark"
-                  className={cn(
-                    "flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer",
-                    "peer-data-[state=checked]:border-primary peer-data-[state=checked]:shadow-[0_0_10px_hsl(var(--primary)/0.5)]"
-                  )}
+                <RadioGroup
+                  value={selectedMode}
+                  onValueChange={(value: string) => setSelectedMode(value as ThemeMode)}
+                  className="grid grid-cols-2 gap-4"
                 >
-                  <Moon className="mb-2 h-7 w-7" />
-                  Dark Mode
-                </Label>
+                  <div>
+                    <RadioGroupItem value="light" id="light" className="peer sr-only" />
+                    <Label
+                      htmlFor="light"
+                      className={cn(
+                        "flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer",
+                        "peer-data-[state=checked]:border-primary peer-data-[state=checked]:shadow-[0_0_10px_hsl(var(--primary)/0.5)]"
+                      )}
+                    >
+                      <Sun className="mb-2 h-7 w-7" />
+                      Light Mode
+                    </Label>
+                  </div>
+                  <div>
+                    <RadioGroupItem value="dark" id="dark" className="peer sr-only" />
+                    <Label
+                      htmlFor="dark"
+                      className={cn(
+                        "flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer",
+                        "peer-data-[state=checked]:border-primary peer-data-[state=checked]:shadow-[0_0_10px_hsl(var(--primary)/0.5)]"
+                      )}
+                    >
+                      <Moon className="mb-2 h-7 w-7" />
+                      Dark Mode
+                    </Label>
+                  </div>
+                </RadioGroup>
               </div>
-            </RadioGroup>
-          </div>
 
-          <div className="space-y-3">
-            <Label className="text-lg font-semibold text-foreground flex items-center">
-              <Palette className="mr-2 h-6 w-6 text-accent" /> Accent Color (Primary)
-            </Label>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-              {accentOptions.map((accent) => (
-                <Button
-                  key={accent.name}
-                  variant="outline"
-                  onClick={() => setSelectedAccent(accent)}
-                  className={cn(
-                    "h-20 w-full flex flex-col items-center justify-center border-2 p-2 transition-all duration-200 ease-in-out",
-                    selectedAccent.value === accent.value ? 'border-primary shadow-[0_0_10px_hsl(var(--primary)/0.7)] scale-105' : 'border-muted hover:border-foreground/50',
-                    "focus:ring-2 focus:ring-offset-2 focus:ring-ring"
-                  )}
-                  style={{ borderColor: selectedAccent.value === accent.value ? `hsl(${accent.value})` : undefined }}
-                >
-                  <div className={cn("h-8 w-8 rounded-full mb-2 border border-foreground/20", accent.className)} />
-                  <span className="text-xs text-center text-muted-foreground">{accent.name}</span>
-                   {selectedAccent.value === accent.value && (
-                    <CheckCircle className="h-5 w-5 text-primary absolute top-1 right-1" style={{ color: `hsl(${accent.value})` }}/>
-                  )}
-                </Button>
-              ))}
+              <div className="space-y-3">
+                <Label className="text-lg font-semibold text-foreground flex items-center">
+                  <Palette className="mr-2 h-6 w-6 text-accent" /> Accent Color (Primary)
+                </Label>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                  {accentOptions.map((accent) => (
+                    <Button
+                      key={accent.name}
+                      variant="outline"
+                      onClick={() => setSelectedAccent(accent)}
+                      className={cn(
+                        "h-20 w-full flex flex-col items-center justify-center border-2 p-2 transition-all duration-200 ease-in-out",
+                        selectedAccent.value === accent.value ? 'border-primary shadow-[0_0_10px_hsl(var(--primary)/0.7)] scale-105' : 'border-muted hover:border-foreground/50',
+                        "focus:ring-2 focus:ring-offset-2 focus:ring-ring"
+                      )}
+                      style={{ borderColor: selectedAccent.value === accent.value ? `hsl(${accent.value})` : undefined }}
+                    >
+                      <div className={cn("h-8 w-8 rounded-full mb-2 border border-foreground/20", accent.className)} />
+                      <span className="text-xs text-center text-muted-foreground">{accent.name}</span>
+                      {selectedAccent.value === accent.value && (
+                        <CheckCircle className="h-5 w-5 text-primary absolute top-1 right-1" style={{ color: `hsl(${accent.value})` }}/>
+                      )}
+                    </Button>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+          </ScrollArea>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-3 pt-8 shrink-0">
+        <CardFooter className="flex flex-col space-y-3 pt-6 pb-6 shrink-0">
           <Button
             onClick={handleSave}
             disabled={isSubmitting || !currentUser}

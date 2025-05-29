@@ -152,7 +152,6 @@ export default function InterestsPage() {
         return;
     }
      setIsSubmitting(true); // Prevent double clicks
-    // Ensure minimal profileDetails object exists if skipping
     const profileDetailsToSave = {
         hobbies: "Not set",
         age: "Not set",
@@ -196,140 +195,143 @@ export default function InterestsPage() {
             Tell us a bit more about yourself to personalize your experience. Fields with <span className="text-destructive">*</span> are required.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto space-y-4 px-6 pt-2"> 
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="age"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center">
-                       <Gift className="mr-2 h-5 w-5 text-accent" /> Age Range <span className="text-destructive ml-1">*</span>
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
-                          <SelectValue placeholder="Select your age range" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent className="bg-popover border-border/80 text-popover-foreground">
-                        {ageRanges.map((range) => (
-                          <SelectItem key={range} value={range} className="hover:bg-accent/20 focus:bg-accent/30">
-                            {range}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+        <CardContent className="flex-1 p-0"> 
+          <ScrollArea className="h-full">
+            <div className="px-6 pt-2 pb-6">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="age"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center">
+                          <Gift className="mr-2 h-5 w-5 text-accent" /> Age Range <span className="text-destructive ml-1">*</span>
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+                              <SelectValue placeholder="Select your age range" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-popover border-border/80 text-popover-foreground">
+                            {ageRanges.map((range) => (
+                              <SelectItem key={range} value={range} className="hover:bg-accent/20 focus:bg-accent/30">
+                                {range}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="gender"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center">
-                       <PersonStanding className="mr-2 h-5 w-5 text-accent" /> Gender <span className="text-destructive ml-1">*</span>
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
-                          <SelectValue placeholder="Select your gender" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent className="bg-popover border-border/80 text-popover-foreground">
-                        {genderOptions.map((gender) => (
-                          <SelectItem key={gender} value={gender} className="hover:bg-accent/20 focus:bg-accent/30">
-                            {gender}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="hobbies"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center">
-                      <Palette className="mr-2 h-5 w-5 text-accent" /> Hobbies <span className="text-destructive ml-1">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., Reading, Coding, Hiking (comma-separated)"
-                        className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs text-muted-foreground/80">
-                      List some of your favorite activities or interests.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="gender"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center">
+                          <PersonStanding className="mr-2 h-5 w-5 text-accent" /> Gender <span className="text-destructive ml-1">*</span>
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+                              <SelectValue placeholder="Select your gender" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-popover border-border/80 text-popover-foreground">
+                            {genderOptions.map((gender) => (
+                              <SelectItem key={gender} value={gender} className="hover:bg-accent/20 focus:bg-accent/30">
+                                {gender}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="hobbies"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center">
+                          <Palette className="mr-2 h-5 w-5 text-accent" /> Hobbies <span className="text-destructive ml-1">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Reading, Coding, Hiking (comma-separated)"
+                            className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs text-muted-foreground/80">
+                          List some of your favorite activities or interests.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="tags"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center">
-                      <Hash className="mr-2 h-5 w-5 text-accent" /> Tags <span className="text-destructive ml-1">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., TechEnthusiast, Foodie, Bookworm (comma-separated)"
-                        className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
-                        {...field}
-                      />
-                    </FormControl>
-                     <FormDescription className="text-xs text-muted-foreground/80">
-                      Keywords that describe you or your interests.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="tags"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center">
+                          <Hash className="mr-2 h-5 w-5 text-accent" /> Tags <span className="text-destructive ml-1">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., TechEnthusiast, Foodie, Bookworm (comma-separated)"
+                            className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs text-muted-foreground/80">
+                          Keywords that describe you or your interests.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="passion"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-muted-foreground flex items-center">
-                      <Heart className="mr-2 h-5 w-5 text-accent" /> Primary Passion <span className="text-destructive ml-1">*</span>
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
-                          <SelectValue placeholder="Select your main passion" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent className="bg-popover border-border/80 text-popover-foreground">
-                        {passionOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value} className="hover:bg-accent/20 focus:bg-accent/30 flex items-center">
-                            {option.icon} {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {/* Submit button removed from here, handled by CardFooter */}
-            </form>
-          </Form>
+                  <FormField
+                    control={form.control}
+                    name="passion"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center">
+                          <Heart className="mr-2 h-5 w-5 text-accent" /> Primary Passion <span className="text-destructive ml-1">*</span>
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+                              <SelectValue placeholder="Select your main passion" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-popover border-border/80 text-popover-foreground">
+                            {passionOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value} className="hover:bg-accent/20 focus:bg-accent/30 flex items-center">
+                                {option.icon} {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </form>
+              </Form>
+            </div>
+          </ScrollArea>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-3 pt-6 shrink-0">
+        <CardFooter className="flex flex-col space-y-3 pt-6 pb-6 shrink-0">
           <Button
             onClick={form.handleSubmit(onSubmit)}
             disabled={isSubmitting || !currentUser}

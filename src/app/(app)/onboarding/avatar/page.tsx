@@ -13,6 +13,7 @@ import { auth, db } from '@/lib/firebase';
 import { updateProfile, onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
+import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
 
 // Cloudinary configuration
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -200,48 +201,52 @@ export default function AvatarUploadPage() {
             Upload a profile picture to personalize your experience.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto flex flex-col items-center space-y-6 px-6 pt-2">
-          <Avatar
-            className={`h-36 w-36 border-4 border-primary shadow-[0_0_15px_hsl(var(--primary)/0.5),_0_0_5px_hsl(var(--accent)/0.3)] ${isUploading ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-90'} transition-opacity`}
-            onClick={handleUploadButtonClick}
-            role="button"
-            tabIndex={isUploading ? -1 : 0}
-            onKeyDown={(e) => !isUploading && (e.key === 'Enter' || e.key === ' ') && handleUploadButtonClick()}
-            aria-label="Upload profile picture"
-            aria-disabled={isUploading}
-          >
-            <AvatarImage src={avatarPreview || currentUser.photoURL || undefined} alt="User Avatar Preview" className="object-cover"/>
-            <AvatarFallback className="bg-muted hover:bg-muted/80">
-              <UserCircle className="h-24 w-24 text-muted-foreground/70" />
-            </AvatarFallback>
-          </Avatar>
-          <Input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            className="hidden"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            aria-hidden="true"
-            disabled={isUploading}
-          />
-          <Button
-            variant="outline"
-            onClick={handleUploadButtonClick}
-            disabled={isUploading}
-            className="w-full border-accent text-accent hover:bg-accent/10 hover:text-accent
-                       shadow-[0_0_8px_hsl(var(--accent)/0.4)] hover:shadow-[0_0_12px_hsl(var(--accent)/0.6)]
-                       focus:shadow-[0_0_12px_hsl(var(--accent)/0.6)]
-                       transition-all duration-300 ease-in-out"
-          >
-            {isUploading ? (
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            ) : (
-              <UploadCloud className="mr-2 h-5 w-5" />
-            )}
-            {isUploading ? 'Processing...' : (avatarFile ? 'Change Picture' : 'Choose a Picture')}
-          </Button>
+        <CardContent className="flex-1 p-0">
+          <ScrollArea className="h-full">
+            <div className="px-6 pt-2 pb-6 flex flex-col items-center space-y-6">
+              <Avatar
+                className={`h-36 w-36 border-4 border-primary shadow-[0_0_15px_hsl(var(--primary)/0.5),_0_0_5px_hsl(var(--accent)/0.3)] ${isUploading ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-90'} transition-opacity`}
+                onClick={handleUploadButtonClick}
+                role="button"
+                tabIndex={isUploading ? -1 : 0}
+                onKeyDown={(e) => !isUploading && (e.key === 'Enter' || e.key === ' ') && handleUploadButtonClick()}
+                aria-label="Upload profile picture"
+                aria-disabled={isUploading}
+              >
+                <AvatarImage src={avatarPreview || currentUser.photoURL || undefined} alt="User Avatar Preview" className="object-cover"/>
+                <AvatarFallback className="bg-muted hover:bg-muted/80">
+                  <UserCircle className="h-24 w-24 text-muted-foreground/70" />
+                </AvatarFallback>
+              </Avatar>
+              <Input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                aria-hidden="true"
+                disabled={isUploading}
+              />
+              <Button
+                variant="outline"
+                onClick={handleUploadButtonClick}
+                disabled={isUploading}
+                className="w-full border-accent text-accent hover:bg-accent/10 hover:text-accent
+                          shadow-[0_0_8px_hsl(var(--accent)/0.4)] hover:shadow-[0_0_12px_hsl(var(--accent)/0.6)]
+                          focus:shadow-[0_0_12px_hsl(var(--accent)/0.6)]
+                          transition-all duration-300 ease-in-out"
+              >
+                {isUploading ? (
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                ) : (
+                  <UploadCloud className="mr-2 h-5 w-5" />
+                )}
+                {isUploading ? 'Processing...' : (avatarFile ? 'Change Picture' : 'Choose a Picture')}
+              </Button>
+            </div>
+          </ScrollArea>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-3 pt-4 shrink-0">
+        <CardFooter className="flex flex-col space-y-3 pt-4 pb-6 shrink-0">
           <Button
             onClick={handleNext}
             disabled={isUploading || !currentUser}
