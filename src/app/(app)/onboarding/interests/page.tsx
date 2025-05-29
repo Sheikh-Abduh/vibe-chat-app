@@ -26,12 +26,12 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { BookOpen, Gift, Hash, Heart, UserCircle, Palette, Film, Music, Plane, Code, Loader2, PersonStanding } from 'lucide-react';
+import { BookOpen, Gift, Hash, Heart, Palette, Film, Music, Plane, Code, Loader2, PersonStanding } from 'lucide-react';
 import { auth, db } from '@/lib/firebase'; 
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore'; 
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 const interestsSchema = z.object({
   hobbies: z.string().min(1, { message: "Please enter at least one hobby." }).describe("Comma-separated list of hobbies"),
@@ -69,10 +69,10 @@ const passionOptions = [
   { value: "reading", label: "Reading", icon: <BookOpen className="mr-2 h-4 w-4" /> },
   { value: "technology", label: "Technology", icon: <Code className="mr-2 h-4 w-4" /> },
   { value: "travel", label: "Travel", icon: <Plane className="mr-2 h-4 w-4" /> },
-  { value: "gaming", label: "Gaming", icon: <UserCircle className="mr-2 h-4 w-4" /> }, // Example, replace icon if needed
-  { value: "sports_fitness", label: "Sports & Fitness", icon: <UserCircle className="mr-2 h-4 w-4" /> },
-  { value: "food_cooking", label: "Food & Cooking", icon: <UserCircle className="mr-2 h-4 w-4" /> },
-  { value: "other", label: "Other", icon: <UserCircle className="mr-2 h-4 w-4" /> },
+  { value: "gaming", label: "Gaming", icon: <Palette className="mr-2 h-4 w-4" /> }, 
+  { value: "sports_fitness", label: "Sports & Fitness", icon: <Palette className="mr-2 h-4 w-4" /> },
+  { value: "food_cooking", label: "Food & Cooking", icon: <Palette className="mr-2 h-4 w-4" /> },
+  { value: "other", label: "Other", icon: <Palette className="mr-2 h-4 w-4" /> },
 ];
 
 export default function InterestsPage() {
@@ -151,7 +151,7 @@ export default function InterestsPage() {
         router.push('/login');
         return;
     }
-     setIsSubmitting(true); // Prevent double clicks
+     setIsSubmitting(true); 
     const profileDetailsToSave = {
         hobbies: "Not set",
         age: "Not set",
@@ -182,7 +182,6 @@ export default function InterestsPage() {
   if (!currentUser) {
    return <SplashScreenDisplay />;
  }
-
 
   return (
     <div className="flex h-full items-center justify-center overflow-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
@@ -356,3 +355,5 @@ export default function InterestsPage() {
     </div>
   );
 }
+
+    
