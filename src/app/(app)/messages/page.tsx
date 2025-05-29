@@ -12,6 +12,7 @@ import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timest
 import type { TenorGif as TenorGifType } from '@/types/tenor';
 import dynamic from 'next/dynamic';
 import { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
+import { Picker as EmojiMartPicker } from 'emoji-mart';
 
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -29,7 +30,7 @@ import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { Badge } from '@/components/ui/badge';
 import AgoraRTC, { type IAgoraRTCClient, type ILocalAudioTrack, type ILocalVideoTrack, type IAgoraRTCRemoteUser, type UID } from 'agora-rtc-sdk-ng';
 
-const EmojiPicker = dynamic(() => import('emoji-picker-react'), {
+const EmojiPicker = dynamic(() => import('emoji-picker-react').then(mod => mod.default), {
   ssr: false,
   loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
 });
@@ -55,7 +56,6 @@ interface TenorGif extends TenorGifType {}
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
-// const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // THIS IS A SECURITY RISK FOR PRODUCTION
 const TENOR_API_KEY = "LIVDSRZULELA"; // Standard Tenor SDK key for testing - limited requests
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
@@ -82,29 +82,29 @@ type ChatMessage = {
   reactions?: Record<string, string[]>;
   replyToMessageId?: string;
   replyToSenderName?: string;
-  replyToSenderId?: string; 
+  replyToSenderId?: string;
   replyToTextSnippet?: string;
   isForwarded?: boolean;
   forwardedFromSenderName?: string;
-  mentionedUserIds?: string[]; 
+  mentionedUserIds?: string[];
 };
 
 interface DmConversation {
-  id: string; 
+  id: string;
   name: string;
   avatarUrl?: string;
   dataAiHint?: string;
-  partnerId: string; 
+  partnerId: string;
 }
 
 const formatChatMessage = (text: string): string => {
   if (!text) return '';
   let formattedText = text;
   formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  
+
   // @Mentions: @username (basic styling) - Apply this first
   formattedText = formattedText.replace(/@([\w.-]+)/g, '<span class="bg-accent/20 text-accent font-medium px-1 rounded">@$1</span>');
-  
+
   // Bold: **text** or __text__
   formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
   // Italic: *text* or _text_
@@ -127,7 +127,7 @@ export default function MessagesPage() {
   const router = useRouter();
 
   const [selectedConversation, setSelectedConversation] = useState<DmConversation | null>(null);
-  const [otherUserId, setOtherUserId] = useState<string | null>(null); 
+  const [otherUserId, setOtherUserId] = useState<string | null>(null);
   const [otherUserName, setOtherUserName] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [dmPartnerProfile, setDmPartnerProfile] = useState<Partial<User> & {bio?: string; mutualInterests?: string[]} | null>(null);
@@ -169,7 +169,7 @@ export default function MessagesPage() {
   const [isChatSearchOpen, setIsChatSearchOpen] = useState(false);
   const [chatSearchTerm, setChatSearchTerm] = useState("");
   const chatSearchInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
   const mentionSuggestionsRef = useRef<HTMLDivElement>(null);
   const [isStartingCall, setIsStartingCall] = useState(false);
@@ -196,8 +196,8 @@ export default function MessagesPage() {
         };
         setSelectedConversation(savedMessagesConvo);
         setOtherUserId(user.uid);
-        setOtherUserName('Saved Messages'); 
-        setDmPartnerProfile({ 
+        setOtherUserName('Saved Messages');
+        setDmPartnerProfile({
             uid: user.uid,
             displayName: user.displayName || "You",
             photoURL: user.photoURL,
@@ -209,7 +209,7 @@ export default function MessagesPage() {
         const modeFromStorage = localStorage.getItem(`theme_mode_${user.uid}`) as 'light' | 'dark' | null;
         const systemPrefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         setCurrentThemeMode(modeFromStorage || (systemPrefersDark ? 'dark' : 'light'));
-        
+
         const storedFavorites = localStorage.getItem(`favorited_gifs_${user.uid}`);
         setFavoritedGifs(storedFavorites ? JSON.parse(storedFavorites) : []);
         setIsCheckingAuth(false);
@@ -287,11 +287,11 @@ export default function MessagesPage() {
       setMessages([]);
     }
   }, [conversationId, currentUser, toast]);
-  
+
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   useEffect(scrollToBottom, [messages, showPinnedMessages, chatSearchTerm]);
-  
+
   const getFavoriteStorageKey = () => currentUser ? `favorited_gifs_${currentUser.uid}` : null;
 
   const handleToggleFavoriteGif = (gif: TenorGif) => {
@@ -323,7 +323,7 @@ export default function MessagesPage() {
         if (!convoSnap.exists()) {
             let participants = [currentUser.uid, otherUserId].sort();
              if (currentUser.uid === otherUserId) { // Ensure "Saved Messages" self-chat has two participant entries
-                 participants = [currentUser.uid, currentUser.uid]; 
+                 participants = [currentUser.uid, currentUser.uid];
              }
 
             await setDoc(convoDocRef, {
@@ -332,7 +332,7 @@ export default function MessagesPage() {
                 lastMessageTimestamp: serverTimestamp(),
                 [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
                 [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
-                [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"), 
+                [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"),
                 [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || (otherUserId === currentUser.uid ? currentUser.photoURL : null),
             });
         }
@@ -353,10 +353,16 @@ export default function MessagesPage() {
     if (!conversationReady) return;
 
     const messageText = newMessage.trim();
-    const mentionMatches = messageText.match(/@([\w.-]+)/g) || [];
-    const parsedMentionedUserIds = mentionMatches.map(match => match.substring(1)); 
+    const mentionRegex = /@([\w.-]+)/g;
+    let match;
+    const mentionedUserDisplayNames: string[] = [];
+    while ((match = mentionRegex.exec(messageText)) !== null) {
+      mentionedUserDisplayNames.push(match[1]);
+    }
+    // In a real app, resolve display names to UIDs here for messageData.mentionedUserIds
+    const resolvedMentionedUserIds = mentionedUserDisplayNames; // Placeholder
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text'; text: string; } = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || undefined,
@@ -367,8 +373,8 @@ export default function MessagesPage() {
       isPinned: false,
     };
 
-    if (parsedMentionedUserIds.length > 0) {
-        messageData.mentionedUserIds = parsedMentionedUserIds;
+    if (resolvedMentionedUserIds.length > 0) {
+      messageData.mentionedUserIds = resolvedMentionedUserIds;
     }
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -380,9 +386,9 @@ export default function MessagesPage() {
     try {
       const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
       await addDoc(messagesColRef, messageData);
-      
+
       const convoDocRef = doc(db, `direct_messages/${conversationId}`);
-      await updateDoc(convoDocRef, { 
+      await updateDoc(convoDocRef, {
         lastMessage: messageData.text,
         lastMessageTimestamp: serverTimestamp(),
         [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -408,7 +414,7 @@ export default function MessagesPage() {
 
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
-    
+
     let messageType: ChatMessage['type'] = 'file';
     if (fileType.startsWith('image/')) {
       messageType = 'image';
@@ -416,7 +422,7 @@ export default function MessagesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string;} = {
+    const messageData: Partial<ChatMessage> = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || undefined,
@@ -424,7 +430,7 @@ export default function MessagesPage() {
         type: messageType,
         fileUrl: fileUrl,
         fileName: fileName,
-        fileType: fileType,
+        fileType: fileType, // Added this field
         reactions: {},
         isPinned: false,
     };
@@ -441,7 +447,7 @@ export default function MessagesPage() {
       await addDoc(messagesColRef, messageData);
 
        const convoDocRef = doc(db, `direct_messages/${conversationId}`);
-        await updateDoc(convoDocRef, { 
+        await updateDoc(convoDocRef, {
             lastMessage: messageType === 'image' ? 'Sent an image' : (messageType === 'voice_message' ? 'Sent a voice message' : `Sent a file: ${fileName}`),
             lastMessageTimestamp: serverTimestamp(),
             [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -464,7 +470,7 @@ export default function MessagesPage() {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
     formData.append('api_key', CLOUDINARY_API_KEY);
-    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); 
+    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto');
     try {
       const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${isVoiceMessage ? 'video' : 'auto'}/upload`, {
         method: 'POST',
@@ -494,11 +500,11 @@ export default function MessagesPage() {
     } finally {
       setIsUploadingFile(false);
       if (attachmentInputRef.current) {
-        attachmentInputRef.current.value = ""; 
+        attachmentInputRef.current.value = "";
       }
     }
   };
-  
+
   const handleFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -513,7 +519,7 @@ export default function MessagesPage() {
       return;
     }
 
-    if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/') && !file.type.startsWith('audio/')) { 
+    if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/') && !file.type.startsWith('audio/')) {
         toast({
             variant: 'destructive',
             title: 'Invalid File Type',
@@ -531,11 +537,11 @@ export default function MessagesPage() {
     const conversationReady = await ensureConversationDocument();
     if (!conversationReady) return;
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; } = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || undefined,
-      timestamp: serverTimestamp(), 
+      timestamp: serverTimestamp(),
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
       gifId: gif.id,
@@ -555,7 +561,7 @@ export default function MessagesPage() {
       const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
       await addDoc(messagesColRef, messageData);
         const convoDocRef = doc(db, `direct_messages/${conversationId}`);
-        await updateDoc(convoDocRef, { 
+        await updateDoc(convoDocRef, {
             lastMessage: 'Sent a GIF',
             lastMessageTimestamp: serverTimestamp(),
             [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -578,22 +584,12 @@ export default function MessagesPage() {
     }
     const gifToFavorite: TenorGif = {
         id: message.gifId,
-        media_formats: { 
-            tinygif: { url: message.gifTinyUrl, dims: [] as number[], preview: '', duration: 0, size:0 }, 
-            gif: { url: message.gifUrl || '', dims: [] as number[], preview: '', duration: 0, size:0 }
+        media_formats: {
+            tinygif: { url: message.gifTinyUrl, dims: [0,0], preview: '', duration: 0, size:0 },
+            gif: { url: message.gifUrl || '', dims: [0,0], preview: '', duration: 0, size:0 }
         },
         content_description: message.gifContentDescription,
-        created: 0, 
-        hasaudio: false, 
-        itemurl: '', 
-        shares: 0, 
-        source_id: '', 
-        tags: [], 
-        url: '', 
-        composite: null, 
-        hascaption: false, 
-        title: '', 
-        flags: [], 
+        created: 0, hasaudio: false, itemurl: '', shares: 0, source_id: '', tags: [], url: '', composite: null, hascaption: false, title: '', flags: []
     };
     handleToggleFavoriteGif(gifToFavorite);
   };
@@ -643,7 +639,7 @@ export default function MessagesPage() {
         }
         const currentReactions = (messageDocSnap.data().reactions || {}) as Record<string, string[]>;
         const usersReactedWithEmoji = currentReactions[emoji] || [];
-        
+
         let newUsersReactedWithEmoji;
         if (usersReactedWithEmoji.includes(currentUser.uid)) {
           newUsersReactedWithEmoji = usersReactedWithEmoji.filter(uid => uid !== currentUser.uid);
@@ -659,7 +655,7 @@ export default function MessagesPage() {
         }
         transaction.update(messageRef, { reactions: newReactionsData });
       });
-    setReactionPickerOpenForMessageId(null); 
+    setReactionPickerOpenForMessageId(null);
     } catch (error) {
       console.error("Error toggling reaction: ", error);
       toast({
@@ -682,15 +678,15 @@ export default function MessagesPage() {
         setForwardingMessage(null);
         return;
     }
-  
-    const targetConversationId = [currentUser.uid, currentUser.uid].sort().join('_'); 
+
+    const targetConversationId = [currentUser.uid, currentUser.uid].sort().join('_');
 
     const savedMessagesConvoDocRef = doc(db, `direct_messages/${targetConversationId}`);
     try {
         const savedMessagesConvoSnap = await getDoc(savedMessagesConvoDocRef);
         if (!savedMessagesConvoSnap.exists()) {
             await setDoc(savedMessagesConvoDocRef, {
-                participants: [currentUser.uid, currentUser.uid], 
+                participants: [currentUser.uid, currentUser.uid],
                 createdAt: serverTimestamp(),
                 lastMessageTimestamp: serverTimestamp(),
                 [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -705,7 +701,7 @@ export default function MessagesPage() {
         return;
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; isForwarded: boolean; forwardedFromSenderName: string; } = {
+    const messageData: Partial<ChatMessage> = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || undefined,
@@ -713,36 +709,36 @@ export default function MessagesPage() {
         type: forwardingMessage.type,
         isForwarded: true,
         forwardedFromSenderName: forwardingMessage.senderName,
-        reactions: {}, 
-        isPinned: false, 
+        reactions: {},
+        isPinned: false,
     };
 
     if (forwardingMessage.text) messageData.text = forwardingMessage.text;
     if (forwardingMessage.fileUrl) messageData.fileUrl = forwardingMessage.fileUrl;
     if (forwardingMessage.fileName) messageData.fileName = forwardingMessage.fileName;
-    if (forwardingMessage.fileType) messageData.fileType = forwardingMessage.fileType; 
+    if (forwardingMessage.fileType) messageData.fileType = forwardingMessage.fileType;
     if (forwardingMessage.gifUrl) messageData.gifUrl = forwardingMessage.gifUrl;
     if (forwardingMessage.gifId) messageData.gifId = forwardingMessage.gifId;
     if (forwardingMessage.gifTinyUrl) messageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
     if (forwardingMessage.gifContentDescription) messageData.gifContentDescription = forwardingMessage.gifContentDescription;
-  
+
     try {
       const messagesColRef = collection(db, `direct_messages/${targetConversationId}/messages`);
       await addDoc(messagesColRef, messageData);
-  
+
       const convoDocRef = doc(db, `direct_messages/${targetConversationId}`);
-      let lastMessageText = "Forwarded message"; 
-      if (messageData.text) lastMessageText = messageData.text.substring(0, 50) + (messageData.text.length > 50 ? "..." : ""); 
+      let lastMessageText = "Forwarded message";
+      if (messageData.text) lastMessageText = messageData.text.substring(0, 50) + (messageData.text.length > 50 ? "..." : "");
       else if (messageData.type === 'image') lastMessageText = "Forwarded an image";
       else if (messageData.type === 'gif') lastMessageText = "Forwarded a GIF";
       else if (messageData.type === 'file') lastMessageText = `Forwarded a file: ${messageData.fileName || 'attachment'}`;
       else if (messageData.type === 'voice_message') lastMessageText = "Forwarded a voice message";
-      
+
       await updateDoc(convoDocRef, {
         lastMessage: lastMessageText,
         lastMessageTimestamp: serverTimestamp(),
       });
-  
+
       toast({ title: "Message Forwarded", description: "Message forwarded to your Saved Messages." });
     } catch (error) {
       console.error("Error forwarding message:", error);
@@ -755,7 +751,7 @@ export default function MessagesPage() {
   };
 
   const fetchTrendingGifs = async () => {
-    if (!TENOR_API_KEY) { 
+    if (!TENOR_API_KEY) {
         toast({ variant: "destructive", title: "Tenor API Key Missing", description: "Please check configuration."}); setLoadingGifs(false); return;
     }
     setLoadingGifs(true);
@@ -763,7 +759,7 @@ export default function MessagesPage() {
       const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to fetch trending GIFs');
       const data = await response.json(); setGifs(data.results || []);
-    } catch (error) { console.error("Error fetching trending GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: "Could not load trending GIFs." });} 
+    } catch (error) { console.error("Error fetching trending GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: "Could not load trending GIFs." });}
     finally { setLoadingGifs(false); }
   };
 
@@ -775,7 +771,7 @@ export default function MessagesPage() {
       const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) throw new Error('Failed to search GIFs');
       const data = await response.json(); setGifs(data.results || []);
-    } catch (error) { console.error("Error searching GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: "Could not search GIFs." });} 
+    } catch (error) { console.error("Error searching GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: "Could not search GIFs." });}
     finally { setLoadingGifs(false); }
   };
 
@@ -790,7 +786,7 @@ export default function MessagesPage() {
   };
 
   const requestMicPermission = async (): Promise<boolean> => {
-    if (hasMicPermission === true) return true; 
+    if (hasMicPermission === true) return true;
     if (hasMicPermission === false) {
         toast({ variant: "destructive", title: "Microphone Access Denied", description: "Please allow microphone access in your browser settings to use this feature." });
         return false;
@@ -805,22 +801,22 @@ export default function MessagesPage() {
       toast({ variant: "destructive", title: "Microphone Access Denied", description: "Please allow microphone access in your browser settings." }); return false;
     }
   };
-  
+
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
       navigator.permissions.query({ name: 'microphone' as PermissionName }).then(status => {
         if (status.state === 'granted') setHasMicPermission(true);
         else if (status.state === 'denied') setHasMicPermission(false);
-         status.onchange = () => { 
+         status.onchange = () => {
             if (status.state === 'granted') setHasMicPermission(true);
             else if (status.state === 'denied') setHasMicPermission(false);
-            else setHasMicPermission(null); 
+            else setHasMicPermission(null);
         };
       }).catch(() => {
-        setHasMicPermission(null); 
+        setHasMicPermission(null);
       });
     } else {
-        setHasMicPermission(null); 
+        setHasMicPermission(null);
     }
   }, []);
 
@@ -834,16 +830,16 @@ export default function MessagesPage() {
     } else {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' }); 
+        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
         audioChunksRef.current = [];
         mediaRecorderRef.current.ondataavailable = (event) => audioChunksRef.current.push(event.data);
         mediaRecorderRef.current.onstop = async () => {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           const audioFile = new File([audioBlob], `voice_message_${Date.now()}.webm`, { type: 'audio/webm' });
           toast({ title: "Voice Message Recorded", description: "Uploading..." });
-          await uploadFileToCloudinaryAndSend(audioFile, true); 
-          stream.getTracks().forEach(track => track.stop()); 
-          setReplyingToMessage(null); 
+          await uploadFileToCloudinaryAndSend(audioFile, true);
+          stream.getTracks().forEach(track => track.stop());
+          setReplyingToMessage(null);
         };
         mediaRecorderRef.current.start(); setIsRecording(true);
       } catch (error) {
@@ -852,7 +848,7 @@ export default function MessagesPage() {
       }
     }
   };
-  
+
  const handleStartCall = async (isVideoCall: boolean) => {
     if (!otherUserId || (currentUser && currentUser.uid === otherUserId) || isStartingCall || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" || !AGORA_APP_ID) {
         if (AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" || !AGORA_APP_ID) {
@@ -877,7 +873,7 @@ export default function MessagesPage() {
     if (isVideoCall) {
         try {
             const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            videoStream.getTracks().forEach(track => track.stop()); 
+            videoStream.getTracks().forEach(track => track.stop());
         } catch (error) {
             toast({ variant: "destructive", title: "Camera Access Denied", description: "Please allow camera access for video calls." });
             cameraPermission = false;
@@ -895,12 +891,12 @@ export default function MessagesPage() {
 
         client.on("user-published", async (user, mediaType) => {
             await client.subscribe(user, mediaType);
-            setRemoteUsers(prev => [...prev.filter(u => u.uid !== user.uid), user]); 
+            setRemoteUsers(prev => [...prev.filter(u => u.uid !== user.uid), user]);
              if (mediaType === "video" && user.videoTrack) {
                 if (remoteVideoPlayerContainerRef.current) {
                      const playerContainer = document.getElementById(`remote-dm-player-${user.uid}`) || document.createElement('div');
                      playerContainer.id = `remote-dm-player-${user.uid}`;
-                     playerContainer.className = 'w-full h-full bg-black rounded-md shadow'; 
+                     playerContainer.className = 'w-full h-full bg-black rounded-md shadow';
                      if(!document.getElementById(playerContainer.id)) remoteVideoPlayerContainerRef.current.appendChild(playerContainer);
                      user.videoTrack.play(playerContainer);
                 }
@@ -912,7 +908,7 @@ export default function MessagesPage() {
         client.on("user-unpublished", (user, mediaType) => {
             if (mediaType === "video") {
                 const playerContainer = document.getElementById(`remote-dm-player-${user.uid}`);
-                if (playerContainer) playerContainer.innerHTML = ''; 
+                if (playerContainer) playerContainer.innerHTML = '';
             }
         });
         client.on("user-left", (user) => {
@@ -921,16 +917,16 @@ export default function MessagesPage() {
             if (playerContainer) playerContainer.remove();
         });
 
-        const token = null; 
+        const token = null;
 
-        const uid: UID = currentUser!.uid; 
+        const uid: UID = currentUser!.uid;
         await client.join(AGORA_APP_ID, conversationId!, token, uid);
 
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
         setLocalAudioTrack(audioTrack);
         let tracksToPublish: (ILocalAudioTrack | ILocalVideoTrack)[] = [audioTrack];
 
-        if (isVideoCall && cameraPermission) { 
+        if (isVideoCall && cameraPermission) {
             const videoTrack = await AgoraRTC.createCameraVideoTrack();
             setLocalVideoTrack(videoTrack);
             tracksToPublish.push(videoTrack);
@@ -946,9 +942,9 @@ export default function MessagesPage() {
         if (localAudioTrack) { localAudioTrack.close(); setLocalAudioTrack(null); }
         if (localVideoTrack) { localVideoTrack.close(); setLocalVideoTrack(null); }
         if (agoraClientRef.current) { await agoraClientRef.current.leave(); agoraClientRef.current = null; }
-        setRemoteUsers([]); 
-         if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = ''; 
-         if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; 
+        setRemoteUsers([]);
+         if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = '';
+         if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = '';
     } finally {
         setIsStartingCall(false);
     }
@@ -968,13 +964,13 @@ export default function MessagesPage() {
     }
     if (agoraClientRef.current) {
         await agoraClientRef.current.leave();
-        agoraClientRef.current = null; 
-        setRemoteUsers([]); 
-        if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; 
-        if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = ''; 
+        agoraClientRef.current = null;
+        setRemoteUsers([]);
+        if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = '';
+        if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = '';
         toast({ title: "Call Ended", description: "You have left the call."});
     }
-    setIsStartingCall(false); 
+    setIsStartingCall(false);
   };
   useEffect(() => {
     return () => {
@@ -983,7 +979,7 @@ export default function MessagesPage() {
         }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId]); 
+  }, [conversationId]);
 
 
   const shouldShowFullMessageHeader = (currentMessage: ChatMessage, previousMessage: ChatMessage | null) => {
@@ -1000,12 +996,12 @@ export default function MessagesPage() {
     if (!isChatSearchOpen && chatSearchInputRef.current) {
         setTimeout(() => chatSearchInputRef.current?.focus(), 0);
     } else {
-        setChatSearchTerm(""); 
+        setChatSearchTerm("");
     }
   };
 
  const filteredMessages = messages.filter(msg => {
-    if (!chatSearchTerm.trim()) return true; 
+    if (!chatSearchTerm.trim()) return true;
     const term = chatSearchTerm.toLowerCase();
     if (msg.text?.toLowerCase().includes(term)) return true;
     if (msg.fileName?.toLowerCase().includes(term)) return true;
@@ -1016,15 +1012,15 @@ export default function MessagesPage() {
     if (msg.forwardedFromSenderName?.toLowerCase().includes(term)) return true;
     return false;
   });
-  
+
   const displayedMessages = showPinnedMessages
-    ? filteredMessages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()) 
+    ? filteredMessages.filter(msg => msg.isPinned).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
     : filteredMessages;
 
   const handleMentionInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setNewMessage(value);
-    if (value.match(/@\S*$/) && otherUserId && currentUser?.uid !== otherUserId) { 
+    if (value.match(/@\S*$/) && otherUserId && currentUser?.uid !== otherUserId) {
         setShowMentionSuggestions(true);
     } else {
         setShowMentionSuggestions(false);
@@ -1040,7 +1036,7 @@ export default function MessagesPage() {
   if (isCheckingAuth || !currentUser) {
     return <SplashScreenDisplay />;
   }
-  
+
   const savedMessagesConversation: DmConversation = {
     id: `${currentUser.uid}_self`,
     name: 'Saved Messages',
@@ -1051,26 +1047,26 @@ export default function MessagesPage() {
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
-      {/* Column 1: Conversation List (Placeholder for now) */}
-      <div className="h-full w-72 bg-card border-r border-border/40 flex flex-col overflow-hidden">
+      {/* Column 1: Conversation List */}
+      <div className="h-full w-64 sm:w-72 bg-card border-r border-border/40 flex flex-col overflow-hidden">
         <div className="p-3 border-b border-border/40 shadow-sm shrink-0">
-          <Input placeholder="Search DMs..." className="bg-muted border-border/60"/>
+          <Input placeholder="Search DMs..." className="bg-muted border-border/60 text-sm"/>
         </div>
-        <ScrollArea className="flex-1 min-h-0"> 
+        <ScrollArea className="flex-1 min-h-0">
           <div className="p-2 space-y-1">
-             <Button 
-                key={savedMessagesConversation.id} 
-                variant="ghost" 
+             <Button
+                key={savedMessagesConversation.id}
+                variant="ghost"
                 className={cn(
-                    "w-full justify-start h-auto py-2.5",
-                    selectedConversation?.id === savedMessagesConversation.id && "bg-accent text-accent-foreground" 
+                    "w-full justify-start h-auto py-2.5 px-3",
+                    selectedConversation?.id === savedMessagesConversation.id && "bg-accent text-accent-foreground"
                 )}
                 onClick={() => {
-                    if (agoraClientRef.current) { handleLeaveDmCall(); } 
+                    if (agoraClientRef.current) { handleLeaveDmCall(); }
                     setSelectedConversation(savedMessagesConversation);
                     setOtherUserId(savedMessagesConversation.partnerId);
                     setOtherUserName(savedMessagesConversation.name);
-                    setDmPartnerProfile({ 
+                    setDmPartnerProfile({
                         uid: currentUser.uid,
                         displayName: currentUser.displayName || "You",
                         photoURL: currentUser.photoURL,
@@ -1084,11 +1080,11 @@ export default function MessagesPage() {
                     setChatSearchTerm("");
                 }}
              >
-                <Avatar className="h-10 w-10 mr-3">
+                <Avatar className="h-9 w-9 sm:h-10 sm:w-10 mr-3">
                     {savedMessagesConversation.avatarUrl ? (
                          <AvatarImage src={savedMessagesConversation.avatarUrl} alt={savedMessagesConversation.name} data-ai-hint={savedMessagesConversation.dataAiHint}/>
                     ) : (
-                        <Bookmark className="h-5 w-5 text-muted-foreground" />
+                        <Bookmark className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                     )}
                     <AvatarFallback><Bookmark /></AvatarFallback>
                 </Avatar>
@@ -1109,14 +1105,14 @@ export default function MessagesPage() {
         {selectedConversation && otherUserId && conversationId ? (
           <>
             <div className="p-3 border-b border-border/40 shadow-sm flex items-center justify-between shrink-0">
-              <div className="flex items-center">
-                 <Avatar className="h-8 w-8 mr-3">
+              <div className="flex items-center min-w-0"> {/* Added min-w-0 for better truncation */}
+                 <Avatar className="h-7 w-7 sm:h-8 sm:w-8 mr-2 sm:mr-3">
                     <AvatarImage src={selectedConversation.avatarUrl || dmPartnerProfile?.photoURL || undefined} alt={otherUserName || ''} data-ai-hint={selectedConversation.dataAiHint}/>
                     <AvatarFallback>{(otherUserName || 'U').substring(0,1)}</AvatarFallback>
                 </Avatar>
-                <h3 className="text-lg font-semibold text-foreground">{otherUserName || 'Direct Message'}</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-foreground truncate">{otherUserName || 'Direct Message'}</h3>
               </div>
-              <div className={cn("flex items-center space-x-1 sm:space-x-2", isChatSearchOpen && "w-full sm:max-w-xs")}>
+              <div className={cn("flex items-center space-x-1", isChatSearchOpen && "w-full sm:max-w-xs")}>
                  {isChatSearchOpen ? (
                     <div className="flex items-center w-full bg-muted rounded-md px-2">
                         <Search className="h-4 w-4 text-muted-foreground mr-2"/>
@@ -1136,54 +1132,54 @@ export default function MessagesPage() {
                     <>
                          {otherUserId !== currentUser.uid && (
                             <>
-                                <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="text-muted-foreground hover:text-foreground" 
-                                    title={agoraClientRef.current ? "End Call" : "Start Voice Call"} 
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9"
+                                    title={agoraClientRef.current ? "End Call" : "Start Voice Call"}
                                     onClick={!agoraClientRef.current ? () => handleStartCall(false) : handleLeaveDmCall}
                                     disabled={isStartingCall || (AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" && !agoraClientRef.current) || !AGORA_APP_ID}
                                 >
-                                    {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-5 w-5 animate-spin"/> : (agoraClientRef.current ? <X className="h-5 w-5 text-destructive"/> : <Phone className="h-5 w-5"/>)}
+                                    {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin"/> : (agoraClientRef.current ? <X className="h-4 w-4 sm:h-5 sm:w-5 text-destructive"/> : <Phone className="h-4 w-4 sm:h-5 sm:w-5"/>)}
                                 </Button>
-                                <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="text-muted-foreground hover:text-foreground" 
-                                    title={agoraClientRef.current && localVideoTrack ? "End Video Call" : "Start Video Call"} 
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9"
+                                    title={agoraClientRef.current && localVideoTrack ? "End Video Call" : "Start Video Call"}
                                     onClick={!agoraClientRef.current ? () => handleStartCall(true) : handleLeaveDmCall}
                                     disabled={isStartingCall || (AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" && !agoraClientRef.current) || !AGORA_APP_ID}
                                 >
-                                     {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-5 w-5 animate-spin"/> : (agoraClientRef.current && localVideoTrack ? <X className="h-5 w-5 text-destructive"/> : <VideoIcon className="h-5 w-5"/>)}
+                                     {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin"/> : (agoraClientRef.current && localVideoTrack ? <X className="h-4 w-4 sm:h-5 sm:w-5 text-destructive"/> : <VideoIcon className="h-4 w-4 sm:h-5 sm:w-5"/>)}
                                 </Button>
                             </>
                         )}
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="text-muted-foreground hover:text-foreground"
+                            className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9"
                             onClick={handleChatSearchToggle}
                             title="Search Messages in DM"
                         >
-                            <Search className="h-5 w-5" />
+                            <Search className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                         <Button
                             variant="ghost"
                             size="icon"
-                            className={cn("text-muted-foreground hover:text-foreground", showPinnedMessages && "text-primary bg-primary/10")}
+                            className={cn("text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9", showPinnedMessages && "text-primary bg-primary/10")}
                             onClick={() => setShowPinnedMessages(!showPinnedMessages)}
                             title={showPinnedMessages ? "Show All Messages" : "Show Pinned Messages"}
                         >
-                            {showPinnedMessages ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
+                            {showPinnedMessages ? <PinOff className="h-4 w-4 sm:h-5 sm:w-5" /> : <Pin className="h-4 w-4 sm:h-5 sm:w-5" />}
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className={cn("text-muted-foreground hover:text-foreground", isMessagesRightBarOpen && "bg-accent/20 text-accent")}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn("text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9", isMessagesRightBarOpen && "bg-accent/20 text-accent")}
                           onClick={() => setIsMessagesRightBarOpen(!isMessagesRightBarOpen)}
                           title={isMessagesRightBarOpen ? "Hide User Info" : "Show User Info"}
                         >
-                          <UserIcon className="h-5 w-5" />
+                          <UserIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                     </>
                  )}
@@ -1193,7 +1189,7 @@ export default function MessagesPage() {
             {agoraClientRef.current && otherUserId !== currentUser.uid && (
                 <div className="p-2 border-b border-border/40 bg-black/50 flex flex-col items-center">
                     {localVideoTrack && (
-                        <div id="local-dm-video-player-container" ref={localVideoPlayerContainerRef} className="w-40 h-30 md:w-48 md:h-36 bg-black rounded-md shadow self-start mb-2 relative">
+                        <div id="local-dm-video-player-container" ref={localVideoPlayerContainerRef} className="w-32 h-24 sm:w-40 sm:h-30 md:w-48 md:h-36 bg-black rounded-md shadow self-start mb-2 relative">
                              <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">You</p>
                         </div>
                     )}
@@ -1205,23 +1201,23 @@ export default function MessagesPage() {
                     {remoteUsers.length === 0 && localVideoTrack && (
                         <p className="text-sm text-muted-foreground">Waiting for {otherUserName || 'user'} to join...</p>
                     )}
-                     {remoteUsers.length > 0 && !remoteUsers[0].videoTrack && localVideoTrack && ( 
+                     {remoteUsers.length > 0 && !remoteUsers[0].videoTrack && localVideoTrack && (
                         <div className="flex-1 flex items-center justify-center">
-                            <Avatar className="h-24 w-24">
+                            <Avatar className="h-16 w-16 sm:h-24 sm:w-24">
                                 <AvatarImage src={dmPartnerProfile?.photoURL || undefined} alt={otherUserName || ''} />
-                                <AvatarFallback className="text-3xl">{(otherUserName || 'U').substring(0,1)}</AvatarFallback>
+                                <AvatarFallback className="text-2xl sm:text-3xl">{(otherUserName || 'U').substring(0,1)}</AvatarFallback>
                             </Avatar>
                         </div>
                      )}
                 </div>
             )}
 
-            <ScrollArea className="flex-1 min-h-0 bg-card/30"> 
-              <div className="p-4 space-y-0.5">
+            <ScrollArea className="flex-1 min-h-0 bg-card/30">
+              <div className="p-2 sm:p-4 space-y-0.5">
                 {displayedMessages.length === 0 && (
-                  <div className="text-center text-muted-foreground py-4">
-                    {chatSearchTerm.trim() ? "No DMs found matching your search." : 
-                     (showPinnedMessages ? "No pinned DMs in this conversation." : 
+                  <div className="text-center text-muted-foreground py-4 text-sm">
+                    {chatSearchTerm.trim() ? "No DMs found matching your search." :
+                     (showPinnedMessages ? "No pinned DMs in this conversation." :
                       (messages.length === 0 && !currentUser ? "Loading messages..." : "No messages yet. Start the conversation!"))}
                   </div>
                 )}
@@ -1230,7 +1226,7 @@ export default function MessagesPage() {
                   const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
                   const isCurrentUserMsg = msg.senderId === currentUser.uid;
                    let hasBeenRepliedTo = false;
-                    if (isCurrentUserMsg && currentUser) { 
+                    if (isCurrentUserMsg && currentUser) {
                       hasBeenRepliedTo = displayedMessages.some(
                         (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
                       );
@@ -1241,7 +1237,7 @@ export default function MessagesPage() {
                       key={msg.id}
                       className={cn(
                         "flex items-start space-x-2 group relative hover:bg-muted/30 px-2 py-1 rounded-md",
-                         isCurrentUserMsg && "flex-row-reverse space-x-reverse" 
+                         isCurrentUserMsg && "flex-row-reverse space-x-reverse"
                       )}
                     >
                       {!isCurrentUserMsg && showHeader && (
@@ -1252,7 +1248,7 @@ export default function MessagesPage() {
                       )}
                        {!isCurrentUserMsg && !showHeader && null }
 
-                      <div className={cn("flex-1 min-w-0 max-w-[calc(100%-2.5rem)]", isCurrentUserMsg && "text-right")}>
+                      <div className={cn("flex-1 min-w-0", isCurrentUserMsg ? "text-right pr-10 sm:pr-12" : "pl-0", showHeader ? "" : (isCurrentUserMsg ? "" : "pl-0"))}>
                         {showHeader && (
                           <div className={cn("flex items-baseline space-x-1.5", isCurrentUserMsg && "flex-row-reverse")}>
                             <p className="font-semibold text-sm text-foreground">{isCurrentUserMsg ? "You" : msg.senderName}</p>
@@ -1260,7 +1256,7 @@ export default function MessagesPage() {
                               <p title={msg.timestamp ? format(msg.timestamp, 'PPpp') : undefined}>
                                 {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
                               </p>
-                              {msg.timestamp && <p className="ml-1.5 mr-1.5">({format(msg.timestamp, 'p')})</p>}
+                              {msg.timestamp && <p className="ml-1.5 mr-0.5">({format(msg.timestamp, 'p')})</p>}
                             </div>
                             {msg.isPinned && <Pin className="h-3 w-3 text-amber-400 ml-1" title="Pinned Message"/>}
                              {hasBeenRepliedTo && <MessageSquareReply className="h-3 w-3 text-blue-400 ml-1" title="Someone replied to this" />}
@@ -1270,7 +1266,7 @@ export default function MessagesPage() {
                             <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max", isCurrentUserMsg ? "ml-auto text-left" : "mr-auto text-left")}>
                                  <div className="flex items-center">
                                   <CornerUpRight className="h-3 w-3 mr-1.5 text-primary/70" />
-                                  <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>: 
+                                  <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>:
                                   <span className="italic ml-1 truncate">"{msg.replyToTextSnippet}"</span></span>
                                 </div>
                             </div>
@@ -1281,18 +1277,18 @@ export default function MessagesPage() {
                             Forwarded from {msg.forwardedFromSenderName}
                           </div>
                         )}
-                         <div className={cn("mt-0.5 p-2 rounded-lg inline-block", 
+                         <div className={cn("mt-0.5 p-2 rounded-lg inline-block",
                             isCurrentUserMsg ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
                             showHeader ? "mt-0.5" : "mt-0",
-                            isCurrentUserMsg ? "text-left" : "text-left" 
+                            isCurrentUserMsg ? "text-left" : "text-left"
                         )}>
                             {msg.type === 'text' && msg.text && (
                                 <p className="text-sm whitespace-pre-wrap break-words"
                                 dangerouslySetInnerHTML={{ __html: formatChatMessage(msg.text) }} />
                             )}
                             {msg.type === 'gif' && msg.gifUrl && (
-                               <div className="relative max-w-[300px] mt-1 group/gif">
-                                    <Image src={msg.gifUrl} alt={msg.gifContentDescription || "GIF"} width={0} height={0} style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem' }} unoptimized priority={false} data-ai-hint="animated gif" />
+                               <div className="relative max-w-[250px] sm:max-w-[300px] mt-1 group/gif">
+                                    <Image src={msg.gifUrl} alt={msg.gifContentDescription || "GIF"} width={0} height={0} style={{ width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '200px', borderRadius: '0.375rem' }} unoptimized priority={false} data-ai-hint="animated gif" />
                                     {currentUser && msg.gifId && (
                                         <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover/gif:opacity-100 transition-opacity" onClick={() => handleFavoriteGifFromChat(msg)} title={isGifFavorited(msg.gifId || "") ? "Unfavorite" : "Favorite"}>
                                             <Star className={cn("h-4 w-4", isGifFavorited(msg.gifId || "") ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
@@ -1338,11 +1334,11 @@ export default function MessagesPage() {
                       {isCurrentUserMsg && !showHeader && null }
 
                        <div className={cn("absolute top-1 right-1 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50 z-10")}>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" 
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward"
                             onClick={() => {
                                 setForwardingMessage(msg);
                                 setIsForwardDialogOpen(true);
-                                setForwardSearchTerm(""); 
+                                setForwardSearchTerm("");
                             }}>
                           <Share2 className="h-4 w-4" />
                         </Button>
@@ -1356,14 +1352,14 @@ export default function MessagesPage() {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0">
-                             <EmojiPicker 
-                                onEmojiClick={(emojiData: EmojiClickData) => { 
-                                    handleToggleReaction(msg.id, emojiData.emoji); 
-                                    setReactionPickerOpenForMessageId(null); 
-                                }} 
+                             <EmojiPicker
+                                onEmojiSelect={(emojiData: EmojiClickData) => {
+                                    handleToggleReaction(msg.id, emojiData.emoji);
+                                    setReactionPickerOpenForMessageId(null);
+                                }}
                                 theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
                                 emojiStyle={EmojiStyle.NATIVE}
-                                searchPlaceholder="Search emoji..."
+                                searchPlaceholder="Search reaction..."
                                 previewConfig={{showPreview: false}}
                              />
                           </PopoverContent>
@@ -1383,18 +1379,18 @@ export default function MessagesPage() {
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
-            <div className="p-3 border-t border-border/40 shrink-0 relative">
+            <div className="p-2 sm:p-3 border-t border-border/40 shrink-0 relative">
                 {replyingToMessage && (
                     <div className="mb-2 p-2 text-sm bg-muted rounded-md flex justify-between items-center">
                         <div>
-                            Replying to <span className="font-semibold text-foreground">{replyingToMessage.senderName}</span>: 
+                            Replying to <span className="font-semibold text-foreground">{replyingToMessage.senderName}</span>:
                             <em className="ml-1 text-muted-foreground truncate">
-                                "{replyingToMessage.text?.substring(0,50) || 
+                                "{replyingToMessage.text?.substring(0,50) ||
                                  (replyingToMessage.type === 'image' && "Image") ||
                                  (replyingToMessage.type === 'file' && `File: ${replyingToMessage.fileName || 'attachment'}`) ||
                                  (replyingToMessage.type === 'gif' && "GIF") ||
                                  (replyingToMessage.type === 'voice_message' && "Voice Message") || "..."}"
-                                {(replyingToMessage.text && replyingToMessage.text.length > 50) || 
+                                {(replyingToMessage.text && replyingToMessage.text.length > 50) ||
                                  (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''}
                             </em>
                         </div>
@@ -1408,11 +1404,11 @@ export default function MessagesPage() {
                         <PopoverTrigger asChild>
                             <div ref={mentionSuggestionsRef} className="absolute bottom-full left-0 mb-1 w-full max-w-sm"></div>
                         </PopoverTrigger>
-                        <PopoverContent 
+                        <PopoverContent
                             className="p-1 w-64 max-h-48 overflow-y-auto z-20 shadow-lg rounded-md border bg-popover"
                             side="top"
                             align="start"
-                            avoidCollisions={false} 
+                            avoidCollisions={false}
                         >
                             {otherUserId && currentUser?.uid !== otherUserId && dmPartnerProfile?.displayName &&
                              dmPartnerProfile.displayName.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase()) ? (
@@ -1428,38 +1424,38 @@ export default function MessagesPage() {
                         </PopoverContent>
                     </Popover>
                 )}
-                <form onSubmit={handleSendMessage} className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
+                <form onSubmit={handleSendMessage} className="flex items-center p-1.5 rounded-lg bg-muted space-x-1 sm:space-x-1.5">
                     <input type="file" ref={attachmentInputRef} onChange={handleFileSelected} className="hidden" accept={ALLOWED_FILE_TYPES.join(',')} disabled={isUploadingFile || isRecording || agoraClientRef.current !==null} />
-                    {isUploadingFile ? <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" /> : (
-                    <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Attach File" onClick={() => attachmentInputRef.current?.click()} disabled={isUploadingFile || isRecording || agoraClientRef.current !==null}>
-                        <Paperclip className="h-5 w-5" />
+                    {isUploadingFile ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin text-primary shrink-0" /> : (
+                    <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0 h-8 w-8 sm:h-9 sm:w-9" title="Attach File" onClick={() => attachmentInputRef.current?.click()} disabled={isUploadingFile || isRecording || agoraClientRef.current !==null}>
+                        <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
                     </Button>
                     )}
                     <Input ref={chatInputRef} type="text" placeholder={isRecording ? "Recording..." : (agoraClientRef.current !== null ? "In a call..." :`Message ${otherUserName || 'User'}... (@mention, **bold**)`)}
-                        className="flex-1 bg-transparent text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
+                        className="flex-1 bg-transparent text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-8 sm:h-9 px-2"
                         value={newMessage} onChange={handleMentionInputChange}
                         onKeyPress={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isRecording && !isUploadingFile && agoraClientRef.current === null) handleSendMessage(e); }}
                         disabled={isRecording || isUploadingFile || agoraClientRef.current !==null}
                     />
                     <Button type="button" variant={isRecording ? "destructive" : "ghost"} size="icon"
-                        className={cn("shrink-0", isRecording ? "text-destructive-foreground hover:bg-destructive/90" : "text-muted-foreground hover:text-foreground")}
+                        className={cn("shrink-0 h-8 w-8 sm:h-9 sm:w-9", isRecording ? "text-destructive-foreground hover:bg-destructive/90" : "text-muted-foreground hover:text-foreground")}
                         title={isRecording ? "Stop Recording" : "Send Voice Message"} onClick={handleToggleRecording} disabled={hasMicPermission === false || isUploadingFile || agoraClientRef.current !==null}>
-                        {isRecording ? <StopCircle className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                        {isRecording ? <StopCircle className="h-4 w-4 sm:h-5 sm:w-5" /> : <Mic className="h-4 w-4 sm:h-5 sm:w-5" />}
                     </Button>
-                    {hasMicPermission === false && <AlertTriangle className="h-5 w-5 text-destructive" title="Mic permission denied"/>}
+                    {hasMicPermission === false && <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-destructive" title="Mic permission denied"/>}
                     <Popover open={chatEmojiPickerOpen} onOpenChange={setChatEmojiPickerOpen}>
                     <PopoverTrigger asChild>
-                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Emoji" disabled={isRecording || isUploadingFile || agoraClientRef.current !==null}>
-                            <Smile className="h-5 w-5" />
+                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0 h-8 w-8 sm:h-9 sm:w-9" title="Emoji" disabled={isRecording || isUploadingFile || agoraClientRef.current !==null}>
+                            <Smile className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
-                        <EmojiPicker 
-                            onEmojiClick={(emojiData: EmojiClickData) => { 
-                                setNewMessage(prev => prev + emojiData.native); 
-                                setChatEmojiPickerOpen(false); 
-                                chatInputRef.current?.focus(); 
-                            }} 
+                        <EmojiPicker
+                            onEmojiSelect={(emojiData: EmojiClickData) => {
+                                setNewMessage(prev => prev + emojiData.emoji);
+                                setChatEmojiPickerOpen(false);
+                                chatInputRef.current?.focus();
+                            }}
                             theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
                             emojiStyle={EmojiStyle.NATIVE}
                             searchPlaceholder="Search emoji..."
@@ -1469,8 +1465,8 @@ export default function MessagesPage() {
                     </Popover>
                     <Dialog open={showGifPicker} onOpenChange={setShowGifPicker}>
                     <DialogTrigger asChild>
-                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="GIF" disabled={isRecording || isUploadingFile || agoraClientRef.current !==null}>
-                            <Film className="h-5 w-5" />
+                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0 h-8 w-8 sm:h-9 sm:w-9" title="GIF" disabled={isRecording || isUploadingFile || agoraClientRef.current !==null}>
+                            <Film className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[425px] md:max-w-[600px] lg:max-w-[800px] h-[70vh] flex flex-col">
@@ -1479,7 +1475,7 @@ export default function MessagesPage() {
                         <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="search">Search</TabsTrigger><TabsTrigger value="favorites">Favorites</TabsTrigger></TabsList>
                         <TabsContent value="search">
                             <Input type="text" placeholder="Search Tenor GIFs..." value={gifSearchTerm} onChange={handleGifSearchChange} className="my-2"/>
-                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-200px)]"> 
+                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-200px)]">
                             <div className="p-1">
                             {loadingGifs ? <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                                 : gifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
@@ -1492,7 +1488,7 @@ export default function MessagesPage() {
                             </ScrollArea>
                         </TabsContent>
                         <TabsContent value="favorites">
-                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-150px)]"> 
+                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-150px)]">
                             <div className="p-1">
                             {favoritedGifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                 {favoritedGifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
@@ -1507,14 +1503,14 @@ export default function MessagesPage() {
                         <DialogFooter className="mt-auto pt-2"><p className="text-xs text-muted-foreground">Powered by Tenor</p></DialogFooter>
                     </DialogContent>
                     </Dialog>
-                    <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send" disabled={!newMessage.trim() || isRecording || isUploadingFile || agoraClientRef.current !==null}>
-                        <Send className="h-5 w-5" />
+                    <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0 h-8 w-8 sm:h-9 sm:w-9" title="Send" disabled={!newMessage.trim() || isRecording || isUploadingFile || agoraClientRef.current !==null}>
+                        <Send className="h-4 w-4 sm:h-5 sm:w-5" />
                     </Button>
                 </form>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground p-4">
+          <div className="flex-1 flex items-center justify-center text-muted-foreground p-4 text-base sm:text-lg">
             {currentUser ? "Select 'Saved Messages' to start." : <SplashScreenDisplay />}
           </div>
         )}
@@ -1522,32 +1518,32 @@ export default function MessagesPage() {
 
       {/* Column 3: DM Partner Info Bar */}
       {isMessagesRightBarOpen && selectedConversation && dmPartnerProfile && (
-          <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden">
-                <div className="p-4 border-b border-border/40 shadow-sm shrink-0">
+          <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col overflow-hidden hidden md:flex"> {/* Hidden on small screens */}
+                <div className="p-3 sm:p-4 border-b border-border/40 shadow-sm shrink-0">
                     <div className="flex flex-col items-center text-center">
-                        <Avatar className="h-24 w-24 mb-3 border-2 border-primary shadow-md">
+                        <Avatar className="h-20 w-20 sm:h-24 sm:w-24 mb-3 border-2 border-primary shadow-md">
                             <AvatarImage src={dmPartnerProfile.photoURL || undefined} alt={dmPartnerProfile.displayName || 'User'} data-ai-hint="person portrait"/>
-                            <AvatarFallback className="text-3xl">
+                            <AvatarFallback className="text-2xl sm:text-3xl">
                                 {(dmPartnerProfile.displayName || 'U').substring(0,1).toUpperCase()}
                             </AvatarFallback>
                         </Avatar>
-                        <h3 className="text-xl font-semibold text-foreground">{dmPartnerProfile.displayName || 'User'}</h3>
-                        {dmPartnerProfile.email && selectedConversation.id === `${currentUser?.uid}_self` && ( 
-                            <p className="text-sm text-muted-foreground">{dmPartnerProfile.email}</p>
+                        <h3 className="text-lg sm:text-xl font-semibold text-foreground">{dmPartnerProfile.displayName || 'User'}</h3>
+                        {dmPartnerProfile.email && selectedConversation.id === `${currentUser?.uid}_self` && (
+                            <p className="text-xs sm:text-sm text-muted-foreground">{dmPartnerProfile.email}</p>
                         )}
                          <p className="text-xs text-muted-foreground mt-1 italic">{dmPartnerProfile.bio || (otherUserId === currentUser?.uid ? "Your personal space." : "User bio placeholder.")}</p>
                     </div>
                 </div>
-                <ScrollArea className="flex-1 min-h-0"> 
-                    <div className="p-4 space-y-3">
-                        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                <ScrollArea className="flex-1 min-h-0">
+                    <div className="p-3 sm:p-4 space-y-3">
+                        <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                             {otherUserId === currentUser?.uid ? "Your Info" : "About"}
                         </h4>
                         <p className="text-sm text-foreground/90">{dmPartnerProfile.bio || (otherUserId === currentUser?.uid ? "Saved messages and notes." : "This user hasn't shared their bio yet.")}</p>
-                        
+
                         {selectedConversation.id !== `${currentUser?.uid}_self` && dmPartnerProfile.mutualInterests && dmPartnerProfile.mutualInterests.length > 0 && (
                             <>
-                                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mt-3">Mutual Interests</h4>
+                                <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground uppercase tracking-wide mt-3">Mutual Interests</h4>
                                 <div className="flex flex-wrap gap-1.5">
                                     {dmPartnerProfile.mutualInterests.map(interest => (
                                         <Badge key={interest} variant="secondary">{interest}</Badge>
@@ -1555,13 +1551,13 @@ export default function MessagesPage() {
                                 </div>
                             </>
                         )}
-                         <Button variant="outline" className="w-full mt-4" onClick={() => toast({title: "Coming Soon", description: "Viewing full profiles will be available later."})}>View Full Profile</Button>
+                         <Button variant="outline" className="w-full mt-4 text-xs sm:text-sm" onClick={() => toast({title: "Coming Soon", description: "Viewing full profiles will be available later."})}>View Full Profile</Button>
                     </div>
                 </ScrollArea>
             </div>
       )}
       {!selectedConversation && isMessagesRightBarOpen && (
-         <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col items-center justify-center text-muted-foreground p-4 text-center overflow-hidden">
+         <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col items-center justify-center text-muted-foreground p-4 text-center overflow-hidden hidden md:flex">
             Select a conversation to see details.
          </div>
       )}
@@ -1596,10 +1592,11 @@ export default function MessagesPage() {
                  </div>
             )}
             <div className="grid gap-4 py-4">
-                <Input 
-                    placeholder="Search users or Saved Messages..." 
+                <Input
+                    placeholder="Search users or Saved Messages (coming soon)..."
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
+                    disabled
                 />
             </div>
             <DialogFooter>
@@ -1613,5 +1610,3 @@ export default function MessagesPage() {
     </div>
   );
 }
-
-    

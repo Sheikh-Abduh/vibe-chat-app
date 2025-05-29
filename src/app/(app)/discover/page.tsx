@@ -25,29 +25,29 @@ export default function DiscoverPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-12">
+    <div className="h-full overflow-y-auto p-4 md:p-6 space-y-8 md:space-y-12">
       <section>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 md:mb-8">
           <div className="flex items-center mb-4 sm:mb-0">
-            <Globe className="mr-3 h-9 w-9 text-primary" />
-            <h1 className="text-4xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.6)' }}>
+            <Globe className="mr-2 md:mr-3 h-7 w-7 md:h-9 md:w-9 text-primary" />
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.6)' }}>
               Explore Communities
             </h1>
           </div>
           <Button
             onClick={handleMakeCommunity}
             variant="outline"
-            className="group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.4)] hover:shadow-[0_0_12px_hsl(var(--accent)/0.6)] transition-all duration-300 ease-in-out"
+            className="group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.4)] hover:shadow-[0_0_12px_hsl(var(--accent)/0.6)] transition-all duration-300 ease-in-out text-sm md:text-base py-2 px-3 md:px-4"
           >
-            <PlusCircle className="mr-2 h-5 w-5" />
+            <PlusCircle className="mr-2 h-4 w-4 md:h-5 md:w-5" />
             Make Your Own Community
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
           {placeholderCommunities.map((community) => (
             <Card key={community.id} className="bg-card border-border/50 shadow-lg hover:shadow-[0_0_15px_hsl(var(--primary)/0.3)] transition-shadow duration-300 flex flex-col">
-              <div className="relative w-full h-40">
+              <div className="relative w-full h-32 sm:h-40">
                 <Image
                   src={community.image}
                   alt={community.name}
@@ -56,18 +56,18 @@ export default function DiscoverPage() {
                   data-ai-hint={community.dataAiHint}
                 />
               </div>
-              <CardHeader className="pb-2 pt-4">
-                <CardTitle className="text-xl text-foreground group-hover:text-primary transition-colors">{community.name}</CardTitle>
+              <CardHeader className="pb-2 pt-3 sm:pt-4">
+                <CardTitle className="text-lg sm:text-xl text-foreground group-hover:text-primary transition-colors">{community.name}</CardTitle>
               </CardHeader>
-              <CardContent className="flex-grow">
-                <CardDescription className="text-sm text-muted-foreground line-clamp-2">{community.description}</CardDescription>
+              <CardContent className="flex-grow text-sm sm:text-base">
+                <CardDescription className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{community.description}</CardDescription>
                 <p className="text-xs text-muted-foreground/80 mt-2 flex items-center">
                     <Users className="mr-1.5 h-3 w-3" />
                     {community.members.toLocaleString()} members
                 </p>
               </CardContent>
-              <div className="p-4 pt-0">
-                 <Button variant="outline" className="w-full group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.3)] hover:shadow-[0_0_10px_hsl(var(--accent)/0.5)] transition-all duration-300" disabled>
+              <div className="p-3 sm:p-4 pt-0">
+                 <Button variant="outline" className="w-full group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.3)] hover:shadow-[0_0_10px_hsl(var(--accent)/0.5)] transition-all duration-300 text-xs sm:text-sm" disabled>
                     View Community
                  </Button>
               </div>
@@ -78,4 +78,3 @@ export default function DiscoverPage() {
     </div>
   );
 }
-    

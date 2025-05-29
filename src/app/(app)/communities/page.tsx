@@ -8,7 +8,7 @@ import { auth, db } from '@/lib/firebase'; // Ensure db is imported
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
-import type { TenorGif as TenorGifType } from '@/types/tenor'; 
+import type { TenorGif as TenorGifType } from '@/types/tenor';
 import dynamic from 'next/dynamic';
 import { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
 
@@ -128,20 +128,20 @@ type ChatMessage = {
   type: 'text' | 'image' | 'file' | 'gif' | 'voice_message';
   fileUrl?: string;
   fileName?: string;
-  fileType?: string; 
+  fileType?: string;
   gifUrl?: string;
-  gifId?: string; 
-  gifTinyUrl?: string; 
-  gifContentDescription?: string; 
+  gifId?: string;
+  gifTinyUrl?: string;
+  gifContentDescription?: string;
   isPinned?: boolean;
-  reactions?: Record<string, string[]>; 
+  reactions?: Record<string, string[]>;
   replyToMessageId?: string;
   replyToSenderName?: string;
-  replyToSenderId?: string; 
+  replyToSenderId?: string;
   replyToTextSnippet?: string;
   isForwarded?: boolean;
   forwardedFromSenderName?: string;
-  mentionedUserIds?: string[]; 
+  mentionedUserIds?: string[];
 };
 
 /**
@@ -226,7 +226,7 @@ type ChatMessage = {
  * 10. Voice & Video Channels (Advanced - Requires third-party service like Agora/Twilio):
  *     - **Agora Integration (Structural Placeholders):**
  *       - SDK: `agora-rtc-sdk-ng` is added to `package.json`.
- *       - Client Initialization: Placeholder for creating Agora client (`AgoraRTC.createClient`). Requires YOUR_AGORA_APP_ID.
+ *       - Client Initialization: Placeholder for creating Agora client (`AgoraRTC.createClient`). Uses AGORA_APP_ID.
  *       - Token Generation: Commented out placeholder for fetching a token from YOUR backend. Production Agora apps require token authentication.
  *       - Channel Join/Leave: Placeholder logic for joining and leaving channels.
  *       - Stream Publishing/Subscription: Placeholder comments for creating local tracks (audio/video) and handling remote user streams.
@@ -237,12 +237,11 @@ type ChatMessage = {
 
 const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
 
-interface TenorGif extends TenorGifType {} 
+interface TenorGif extends TenorGifType {}
 
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
-// const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // THIS IS A SECURITY RISK FOR PRODUCTION
 const TENOR_API_KEY = "LIVDSRZULELA"; // Standard Tenor SDK key for testing - limited requests
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
@@ -255,11 +254,11 @@ const ALLOWED_FILE_TYPES = [
   'application/pdf',
   'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .doc, .docx
   'text/plain',
-  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/aac', 
+  'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/aac',
 ];
 
 // Agora Configuration
-const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48"; 
+const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48";
 
 
 const formatChatMessage = (text: string): string => {
@@ -270,7 +269,7 @@ const formatChatMessage = (text: string): string => {
 
   // @Mentions: @username (basic styling) - Apply this first
   formattedText = formattedText.replace(/@([\w.-]+)/g, '<span class="bg-accent/20 text-accent font-medium px-1 rounded">@$1</span>');
-  
+
   // Bold: **text** or __text__
   formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
   // Italic: *text* or _text_
@@ -283,7 +282,7 @@ const formatChatMessage = (text: string): string => {
   formattedText = formattedText.replace(/\^\^(.*?)\^\^/g, '<sup>$1</sup>');
   // Subscript: vvtextvv
   formattedText = formattedText.replace(/vv(.*?)vv/g, '<sub>$1</sub>');
-  
+
   return formattedText;
 };
 
@@ -320,7 +319,7 @@ export default function CommunitiesPage() {
   const audioChunksRef = useRef<Blob[]>([]);
 
   const [isUploadingFile, setIsUploadingFile] = useState(false);
-  
+
   const [reactionPickerOpenForMessageId, setReactionPickerOpenForMessageId] = useState<string | null>(null);
   const [chatEmojiPickerOpen, setChatEmojiPickerOpen] = useState(false);
   const [currentThemeMode, setCurrentThemeMode] = useState<'light' | 'dark'>('dark');
@@ -343,8 +342,8 @@ export default function CommunitiesPage() {
   const [localAudioTrack, setLocalAudioTrack] = useState<ILocalAudioTrack | null>(null);
   const [localVideoTrack, setLocalVideoTrack] = useState<ILocalVideoTrack | null>(null);
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
-  const localVideoPlayerContainerRef = useRef<HTMLDivElement>(null); 
-  const remoteVideoPlayersContainerRef = useRef<HTMLDivElement>(null); 
+  const localVideoPlayerContainerRef = useRef<HTMLDivElement>(null);
+  const remoteVideoPlayersContainerRef = useRef<HTMLDivElement>(null);
 
 
   useEffect(() => {
@@ -408,7 +407,7 @@ export default function CommunitiesPage() {
 
   useEffect(() => {
     if (selectedChannel && selectedCommunity && currentUser && selectedChannel.type === 'text') {
-      setMessages([]); 
+      setMessages([]);
 
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
       const q = query(messagesRef, orderBy('timestamp', 'asc'));
@@ -423,7 +422,7 @@ export default function CommunitiesPage() {
             senderName: data.senderName,
             senderAvatarUrl: data.senderAvatarUrl || null,
             timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
-            type: data.type || 'text', 
+            type: data.type || 'text',
             fileUrl: data.fileUrl,
             fileName: data.fileName,
             fileType: data.fileType,
@@ -452,7 +451,7 @@ export default function CommunitiesPage() {
             title: "Error loading messages",
             description: "Could not load messages for this channel.",
         });
-        if (selectedChannel) { 
+        if (selectedChannel) {
             setMessages([{
                 id: 'system-error-' + selectedChannel.id,
                 text: `Error loading messages for #${selectedChannel.name}. Please try again later.`,
@@ -485,7 +484,7 @@ export default function CommunitiesPage() {
   };
 
   const handleSelectChannel = (channel: Channel) => {
-    if (agoraClientRef.current) { 
+    if (agoraClientRef.current) {
         handleLeaveVoiceChannel();
     }
     setSelectedChannel(channel);
@@ -508,35 +507,44 @@ export default function CommunitiesPage() {
     }
 
     const messageText = newMessage.trim();
-    
-    const mentionMatches = messageText.match(/@([\w.-]+)/g) || [];
-    // For now, store usernames. Resolve to UIDs later for actual notifications.
-    const parsedMentionedUserIds = mentionMatches.map(match => match.substring(1)); 
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'text'; text: string } = {
+    // Resolve @mentions to UIDs - placeholder for actual UID resolution
+    const mentionRegex = /@([\w.-]+)/g;
+    let match;
+    const mentionedUserDisplayNames: string[] = [];
+    while ((match = mentionRegex.exec(messageText)) !== null) {
+      mentionedUserDisplayNames.push(match[1]);
+    }
+    // In a real app, you'd resolve these display names to UIDs.
+    // For this prototype, we'll store the display names.
+    // This would require a backend function or more complex client-side logic for UID lookup.
+    const resolvedMentionedUserIds = mentionedUserDisplayNames; // Placeholder
+
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || undefined,
-      timestamp: serverTimestamp(), 
+      timestamp: serverTimestamp(),
       type: 'text' as const,
       text: messageText,
       reactions: {},
       isPinned: false,
     };
 
-    if (parsedMentionedUserIds.length > 0) {
-        messageData.mentionedUserIds = parsedMentionedUserIds;
+    if (resolvedMentionedUserIds.length > 0) {
+        messageData.mentionedUserIds = resolvedMentionedUserIds;
     }
+
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
         messageData.replyToSenderId = replyingToMessage.senderId;
         messageData.replyToTextSnippet = (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : '');
     }
-    
+
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-      await addDoc(messagesRef, messageData); 
+      await addDoc(messagesRef, messageData);
       setNewMessage("");
       setReplyingToMessage(null);
       setShowMentionSuggestions(false);
@@ -563,7 +571,7 @@ export default function CommunitiesPage() {
       messageType = 'voice_message';
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; fileUrl: string; fileName: string; fileType: string; } = {
+    const messageData: Partial<ChatMessage> = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || undefined,
@@ -571,18 +579,17 @@ export default function CommunitiesPage() {
         type: messageType,
         fileUrl: fileUrl,
         fileName: fileName,
-        fileType: fileType,
+        fileType: fileType, // Added this field
         reactions: {},
         isPinned: false,
     };
-    
+
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
         messageData.replyToSenderName = replyingToMessage.senderName;
         messageData.replyToSenderId = replyingToMessage.senderId;
         messageData.replyToTextSnippet = (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : '');
     }
-
 
     try {
       const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
@@ -607,7 +614,7 @@ export default function CommunitiesPage() {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
     formData.append('api_key', CLOUDINARY_API_KEY);
-    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto'); 
+    formData.append('resource_type', isVoiceMessage ? 'video' : 'auto');
 
     try {
       const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${isVoiceMessage ? 'video' : 'auto'}/upload`, {
@@ -660,7 +667,7 @@ export default function CommunitiesPage() {
       return;
     }
 
-    if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/') && !file.type.startsWith('audio/')) { 
+    if (!ALLOWED_FILE_TYPES.includes(file.type) && !file.type.startsWith('image/') && !file.type.startsWith('audio/')) {
         toast({
             variant: 'destructive',
             title: 'Invalid File Type',
@@ -678,16 +685,16 @@ export default function CommunitiesPage() {
       return;
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: 'gif'; gifUrl: string; gifId: string; gifTinyUrl: string; gifContentDescription: string; } = {
+    const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
       senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
       senderAvatarUrl: currentUser.photoURL || undefined,
-      timestamp: serverTimestamp(), 
+      timestamp: serverTimestamp(),
       type: 'gif' as const,
       gifUrl: gif.media_formats.gif.url,
-      gifId: gif.id,
-      gifTinyUrl: gif.media_formats.tinygif.url,
-      gifContentDescription: gif.content_description,
+      gifId: gif.id, // Save GIF ID
+      gifTinyUrl: gif.media_formats.tinygif.url, // Save tiny GIF URL
+      gifContentDescription: gif.content_description, // Save content description
       reactions: {},
       isPinned: false,
     };
@@ -723,21 +730,11 @@ export default function CommunitiesPage() {
     const gifToFavorite: TenorGifType = {
         id: message.gifId,
         media_formats: {
-            tinygif: { url: message.gifTinyUrl, dims: [] as number[], preview: '', duration: 0, size:0 }, 
-            gif: { url: message.gifUrl || '', dims: [] as number[], preview: '', duration: 0, size:0 }
+            tinygif: { url: message.gifTinyUrl, dims: [0,0], preview: '', duration: 0, size:0 }, // Dims and other details are placeholders
+            gif: { url: message.gifUrl || '', dims: [0,0], preview: '', duration: 0, size:0 }
         },
         content_description: message.gifContentDescription,
-        created: 0, 
-        hasaudio: false,
-        itemurl: '',
-        shares: 0,
-        source_id: '',
-        tags: [],
-        url: '',
-        composite: null,
-        hascaption: false,
-        title: '',
-        flags: [],
+        created: 0, hasaudio: false, itemurl: '', shares: 0, source_id: '', tags: [], url: '', composite: null, hascaption: false, title: '', flags: []
     };
     handleToggleFavoriteGif(gifToFavorite);
   };
@@ -801,7 +798,7 @@ export default function CommunitiesPage() {
 
         const currentReactions = (messageDoc.data().reactions || {}) as Record<string, string[]>;
         const usersReactedWithEmoji = currentReactions[emoji] || [];
-        
+
         let newUsersReactedWithEmoji;
         if (usersReactedWithEmoji.includes(currentUser.uid)) {
           newUsersReactedWithEmoji = usersReactedWithEmoji.filter(uid => uid !== currentUser.uid);
@@ -817,7 +814,7 @@ export default function CommunitiesPage() {
         }
         transaction.update(messageRef, { reactions: newReactionsData });
       });
-    setReactionPickerOpenForMessageId(null); 
+    setReactionPickerOpenForMessageId(null);
     } catch (error) {
       console.error("Error toggling reaction: ", error);
       toast({
@@ -850,7 +847,7 @@ export default function CommunitiesPage() {
         return;
     }
 
-    const messageData: Partial<ChatMessage> & { senderId: string; senderName: string; timestamp: any; type: ChatMessage['type']; isForwarded: boolean; forwardedFromSenderName: string; } = {
+    const messageData: Partial<ChatMessage> = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
         senderAvatarUrl: currentUser.photoURL || undefined,
@@ -869,10 +866,10 @@ export default function CommunitiesPage() {
     if (forwardingMessage.gifId) messageData.gifId = forwardingMessage.gifId;
     if (forwardingMessage.gifTinyUrl) messageData.gifTinyUrl = forwardingMessage.gifTinyUrl;
     if (forwardingMessage.gifContentDescription) messageData.gifContentDescription = forwardingMessage.gifContentDescription;
-    
+
     try {
         const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${targetChannel.id}/messages`);
-        await addDoc(messagesRef, messageData); 
+        await addDoc(messagesRef, messageData);
         toast({ title: "Message Forwarded", description: `Message forwarded to #${targetChannel.name}.` });
     } catch (error) {
         console.error("Error forwarding message:", error);
@@ -895,7 +892,7 @@ export default function CommunitiesPage() {
   };
 
   const fetchTrendingGifs = async () => {
-    if (!TENOR_API_KEY) { 
+    if (!TENOR_API_KEY) {
         toast({ variant: "destructive", title: "Tenor API Key Missing", description: "A Tenor API key is required for GIFs."});
         setLoadingGifs(false);
         return;
@@ -959,7 +956,7 @@ export default function CommunitiesPage() {
 
 
   const requestMicPermission = async (): Promise<boolean> => {
-    if (hasMicPermission === true) return true; 
+    if (hasMicPermission === true) return true;
     if (hasMicPermission === false) {
         toast({ variant: "destructive", title: "Microphone Access Denied", description: "Please allow microphone access in your browser settings to use this feature." });
         return false;
@@ -968,7 +965,7 @@ export default function CommunitiesPage() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setHasMicPermission(true);
-        stream.getTracks().forEach(track => track.stop()); 
+        stream.getTracks().forEach(track => track.stop());
         return true;
     } catch (error) {
         console.error("Error requesting mic permission:", error);
@@ -983,16 +980,16 @@ export default function CommunitiesPage() {
         navigator.permissions.query({ name: 'microphone' as PermissionName }).then(status => {
             if (status.state === 'granted') setHasMicPermission(true);
             else if (status.state === 'denied') setHasMicPermission(false);
-            status.onchange = () => { 
+            status.onchange = () => {
                 if (status.state === 'granted') setHasMicPermission(true);
                 else if (status.state === 'denied') setHasMicPermission(false);
-                else setHasMicPermission(null); 
+                else setHasMicPermission(null);
             };
         }).catch(() => {
-            setHasMicPermission(null); 
+            setHasMicPermission(null);
         });
     } else {
-        setHasMicPermission(null); 
+        setHasMicPermission(null);
     }
   }, []);
 
@@ -1009,7 +1006,7 @@ export default function CommunitiesPage() {
     } else {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' }); 
+            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
             audioChunksRef.current = [];
 
             mediaRecorderRef.current.ondataavailable = (event) => {
@@ -1017,14 +1014,14 @@ export default function CommunitiesPage() {
             };
 
             mediaRecorderRef.current.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); 
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 const audioFile = new File([audioBlob], `voice_message_${Date.now()}.webm`, { type: 'audio/webm' });
-                
-                toast({ title: "Voice Message Recorded", description: "Uploading..." });
-                await uploadFileToCloudinaryAndSend(audioFile, true); 
 
-                stream.getTracks().forEach(track => track.stop()); 
-                setReplyingToMessage(null); 
+                toast({ title: "Voice Message Recorded", description: "Uploading..." });
+                await uploadFileToCloudinaryAndSend(audioFile, true);
+
+                stream.getTracks().forEach(track => track.stop());
+                setReplyingToMessage(null);
             };
 
             mediaRecorderRef.current.start();
@@ -1036,7 +1033,7 @@ export default function CommunitiesPage() {
         }
     }
   };
-  
+
   const handleJoinVoiceChannel = async () => {
     if (!selectedChannel || (selectedChannel.type !== 'voice' && selectedChannel.type !== 'video') || isJoiningVoice || !currentUser || !AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") {
         if (!AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") {
@@ -1063,10 +1060,10 @@ export default function CommunitiesPage() {
             videoStream.getTracks().forEach(track => track.stop()); // Stop after permission check
         } catch (error) {
             toast({ variant: "destructive", title: "Camera Access Denied", description: "Proceeding with audio-only. Please allow camera access for video." });
-            cameraPermission = false; 
+            cameraPermission = false;
         }
     }
-    
+
     toast({
         title: `Joining ${selectedChannel.type} channel...`,
         description: `Attempting to join ${selectedChannel.name}.`,
@@ -1079,7 +1076,7 @@ export default function CommunitiesPage() {
         client.on("user-published", async (user, mediaType) => {
             await client.subscribe(user, mediaType);
             console.log("subscribe success", user, mediaType);
-            setRemoteUsers(prev => [...prev.filter(u => u.uid !== user.uid), user]); 
+            setRemoteUsers(prev => [...prev.filter(u => u.uid !== user.uid), user]);
 
             if (mediaType === "video" && user.videoTrack) {
                 if (remoteVideoPlayersContainerRef.current) {
@@ -1104,7 +1101,7 @@ export default function CommunitiesPage() {
                 }
             }
         });
-        
+
         client.on("user-left", (user) => {
            setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
            const playerContainer = document.getElementById(`remote-player-${user.uid}`);
@@ -1118,9 +1115,9 @@ export default function CommunitiesPage() {
         // const token = await fetchTokenFromServer(currentUser.uid, selectedChannel.id);
         const token = null; // Using null for testing (only if your Agora project allows it without token)
 
-        const uid: UID = currentUser.uid; 
+        const uid: UID = currentUser.uid;
         await client.join(AGORA_APP_ID, selectedChannel.id, token, uid);
-        
+
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
         setLocalAudioTrack(audioTrack);
 
@@ -1132,13 +1129,13 @@ export default function CommunitiesPage() {
                  videoTrack.play(localVideoPlayerContainerRef.current);
             }
         }
-        
+
         const tracksToPublish: (ILocalAudioTrack | ILocalVideoTrack)[] = [audioTrack];
         if (videoTrack) {
             tracksToPublish.push(videoTrack);
         }
         await client.publish(tracksToPublish);
-        
+
         toast({ title: "Connected!", description: `Joined ${selectedChannel.name}.`});
 
     } catch (error) {
@@ -1147,8 +1144,8 @@ export default function CommunitiesPage() {
         if (localAudioTrack) { localAudioTrack.close(); setLocalAudioTrack(null); }
         if (localVideoTrack) { localVideoTrack.close(); setLocalVideoTrack(null); }
         if (agoraClientRef.current) { await agoraClientRef.current.leave(); agoraClientRef.current = null; }
-         setRemoteUsers([]); 
-         if(remoteVideoPlayersContainerRef.current) remoteVideoPlayersContainerRef.current.innerHTML = ''; 
+         setRemoteUsers([]);
+         if(remoteVideoPlayersContainerRef.current) remoteVideoPlayersContainerRef.current.innerHTML = '';
          if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = '';
     } finally {
       setIsJoiningVoice(false);
@@ -1174,7 +1171,7 @@ export default function CommunitiesPage() {
         if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; // Clear local video player
         toast({ title: "Disconnected", description: "You have left the channel."});
     }
-    setIsJoiningVoice(false); 
+    setIsJoiningVoice(false);
   };
 
   useEffect(() => {
@@ -1190,10 +1187,10 @@ export default function CommunitiesPage() {
     if (!isChatSearchOpen && chatSearchInputRef.current) {
         setTimeout(() => chatSearchInputRef.current?.focus(), 0);
     } else {
-        setChatSearchTerm(""); 
+        setChatSearchTerm("");
     }
   };
-  
+
   const currentChannels = selectedCommunity ? placeholderChannels[selectedCommunity.id] || [] : [];
   const currentMembers = selectedCommunity ? placeholderMembers[selectedCommunity.id] || [] : [];
 
@@ -1220,7 +1217,7 @@ export default function CommunitiesPage() {
   const handleMentionInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setNewMessage(value);
-    if (value.match(/@\S*$/) && selectedChannel?.type === 'text') { 
+    if (value.match(/@\S*$/) && selectedChannel?.type === 'text') {
         setShowMentionSuggestions(true);
     } else {
         setShowMentionSuggestions(false);
@@ -1237,15 +1234,15 @@ export default function CommunitiesPage() {
   return (
     <div className="flex h-full overflow-hidden bg-background">
       {/* Column 1: Community Server List */}
-      <div className="h-full w-20 bg-muted/20 border-r border-border/30 overflow-hidden">
-        <ScrollArea className="h-full"> 
+      <div className="h-full w-16 sm:w-20 bg-muted/20 border-r border-border/30 overflow-hidden">
+        <ScrollArea className="h-full">
           <div className="p-2 space-y-3">
             {placeholderCommunities.map((community) => (
               <button
                 key={community.id}
                 onClick={() => handleSelectCommunity(community)}
                 className={cn(
-                  "block w-14 h-14 rounded-full overflow-hidden focus:outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150 ease-in-out",
+                  "block w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden focus:outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150 ease-in-out",
                   selectedCommunity?.id === community.id ? 'ring-2 ring-primary scale-110 rounded-xl' : 'hover:rounded-xl hover:scale-105'
                 )}
                 title={community.name}
@@ -1258,25 +1255,25 @@ export default function CommunitiesPage() {
       </div>
 
       {/* Column 2: Channel List */}
-      <div className="h-full w-64 bg-card flex flex-col border-r border-border/40 overflow-hidden">
+      <div className="h-full w-56 sm:w-64 bg-card flex flex-col border-r border-border/40 overflow-hidden">
         {selectedCommunity ? (
           <>
             <div className="p-3 border-b border-border/40 shadow-sm shrink-0">
-              <h2 className="text-lg font-semibold text-foreground truncate">{selectedCommunity.name}</h2>
+              <h2 className="text-base sm:text-lg font-semibold text-foreground truncate">{selectedCommunity.name}</h2>
             </div>
-            <ScrollArea className="flex-1 min-h-0"> 
-              <div className="p-3 space-y-1">
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="p-2 sm:p-3 space-y-1">
                 {currentChannels.map((channel) => (
                   <Button
                     key={channel.id}
                     variant="ghost"
                     onClick={() => handleSelectChannel(channel)}
                     className={cn(
-                      "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted",
+                      "w-full justify-start text-xs sm:text-sm text-muted-foreground hover:text-foreground hover:bg-muted py-1.5 sm:py-2",
                       selectedChannel?.id === channel.id && 'bg-accent text-accent-foreground'
                     )}
                   >
-                    <channel.icon className="mr-2 h-4 w-4" />
+                    <channel.icon className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     {channel.name}
                   </Button>
                 ))}
@@ -1286,17 +1283,17 @@ export default function CommunitiesPage() {
               {currentUser ? (
                 <Button
                   variant="ghost"
-                  className="w-full justify-start text-sm text-foreground hover:bg-muted py-2 h-auto"
+                  className="w-full justify-start text-xs sm:text-sm text-foreground hover:bg-muted py-1.5 sm:py-2 h-auto"
                   onClick={handleCommunityProfileEdit}
                 >
-                  <Avatar className="mr-2 h-8 w-8">
+                  <Avatar className="mr-2 h-7 w-7 sm:h-8 sm:w-8">
                     <AvatarImage src={userAvatar || undefined} alt={userName} />
                     <AvatarFallback className="bg-muted-foreground/30 text-xs">
                       {userName.substring(0,1).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <span className="truncate flex-1">{userName}</span>
-                  <ChevronDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                  <ChevronDown className="ml-1 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </Button>
               ) : (
                 <div className="flex items-center p-2 text-xs text-muted-foreground">
@@ -1306,7 +1303,7 @@ export default function CommunitiesPage() {
             </div>
           </>
         ) : (
-          <div className="p-4 text-center text-muted-foreground flex-1 flex items-center justify-center">Select a community</div>
+          <div className="p-4 text-center text-muted-foreground flex-1 flex items-center justify-center text-sm sm:text-base">Select a community</div>
         )}
       </div>
 
@@ -1315,11 +1312,11 @@ export default function CommunitiesPage() {
         {selectedCommunity && selectedChannel ? (
           <>
             <div className="p-3 border-b border-border/40 shadow-sm flex items-center justify-between shrink-0">
-              <div className="flex items-center">
-                <selectedChannel.icon className="mr-2 h-5 w-5 text-muted-foreground" />
-                <h3 className="text-lg font-semibold text-foreground">{selectedChannel.name}</h3>
+              <div className="flex items-center min-w-0">
+                <selectedChannel.icon className="mr-2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
+                <h3 className="text-base sm:text-lg font-semibold text-foreground truncate">{selectedChannel.name}</h3>
               </div>
-              <div className={cn("flex items-center space-x-1 sm:space-x-2", isChatSearchOpen && "w-full sm:max-w-xs")}>
+              <div className={cn("flex items-center space-x-1", isChatSearchOpen && "w-full sm:max-w-xs")}>
                 {isChatSearchOpen && selectedChannel.type === 'text' ? (
                     <div className="flex items-center w-full bg-muted rounded-md px-2">
                         <Search className="h-4 w-4 text-muted-foreground mr-2"/>
@@ -1341,11 +1338,11 @@ export default function CommunitiesPage() {
                              <Button
                                 variant="ghost"
                                 size="icon"
-                                className="text-muted-foreground hover:text-foreground"
+                                className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9"
                                 onClick={handleChatSearchToggle}
                                 title="Search Messages in Channel"
                             >
-                                <Search className="h-5 w-5" />
+                                <Search className="h-4 w-4 sm:h-5 sm:w-5" />
                             </Button>
                         )}
                         {selectedChannel.type === 'text' && (
@@ -1353,23 +1350,23 @@ export default function CommunitiesPage() {
                                 variant="ghost"
                                 size="icon"
                                 className={cn(
-                                    "text-muted-foreground hover:text-foreground",
+                                    "text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9",
                                     showPinnedMessages && "text-primary bg-primary/10 hover:text-primary/90 hover:bg-primary/20"
                                 )}
                                 onClick={() => setShowPinnedMessages(!showPinnedMessages)}
                                 title={showPinnedMessages ? "Show All Messages" : "Show Pinned Messages"}
                             >
-                                {showPinnedMessages ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
+                                {showPinnedMessages ? <PinOff className="h-4 w-4 sm:h-5 sm:w-5" /> : <Pin className="h-4 w-4 sm:h-5 sm:w-5" />}
                             </Button>
                         )}
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className={cn("text-muted-foreground hover:text-foreground", isRightBarOpen && "bg-accent/20 text-accent")}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn("text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9", isRightBarOpen && "bg-accent/20 text-accent")}
                           onClick={() => setIsRightBarOpen(!isRightBarOpen)}
                           title={isRightBarOpen ? "Hide Server Info" : "Show Server Info"}
                         >
-                          <Users className="h-5 w-5" />
+                          <Users className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                     </>
                 )}
@@ -1378,12 +1375,12 @@ export default function CommunitiesPage() {
 
             {/* Main content: Text chat or Voice/Video UI */}
             {selectedChannel.type === 'text' ? (
-              <ScrollArea className="flex-1 min-h-0 bg-card/30"> 
-                <div className="p-4 space-y-0.5">
+              <ScrollArea className="flex-1 min-h-0 bg-card/30">
+                <div className="p-2 sm:p-4 space-y-0.5">
                   {displayedMessages.length === 0 && (
-                    <div className="text-center text-muted-foreground py-4">
-                      {chatSearchTerm.trim() ? "No messages found matching your search." : 
-                      (showPinnedMessages ? "No pinned messages in this channel." : 
+                    <div className="text-center text-muted-foreground py-4 text-sm">
+                      {chatSearchTerm.trim() ? "No messages found matching your search." :
+                      (showPinnedMessages ? "No pinned messages in this channel." :
                       (messages.length === 0 && !currentUser ? "Loading messages..." : "No messages yet. Be the first to say something!"))}
                     </div>
                   )}
@@ -1392,7 +1389,7 @@ export default function CommunitiesPage() {
                     const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
                     const isCurrentUserMsg = currentUser?.uid === msg.senderId;
                     let hasBeenRepliedTo = false;
-                    if (isCurrentUserMsg && currentUser) { 
+                    if (isCurrentUserMsg && currentUser) {
                       hasBeenRepliedTo = displayedMessages.some(
                         (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
                       );
@@ -1402,8 +1399,8 @@ export default function CommunitiesPage() {
                       <div
                         key={msg.id}
                         className={cn(
-                          "flex items-start space-x-2 group relative hover:bg-muted/30 px-2 py-1 rounded-md", // Reduced space-x-3 to space-x-2
-                          isCurrentUserMsg && "flex-row-reverse space-x-reverse" 
+                          "flex items-start space-x-2 group relative hover:bg-muted/30 px-2 py-1 rounded-md",
+                          isCurrentUserMsg && "flex-row-reverse space-x-reverse"
                         )}
                       >
                         {!isCurrentUserMsg && showHeader ? (
@@ -1412,9 +1409,9 @@ export default function CommunitiesPage() {
                             <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                           </Avatar>
                         ) : (
-                          !isCurrentUserMsg && !showHeader && null // Removed the spacer div
+                          !isCurrentUserMsg && !showHeader && null
                         )}
-                        <div className={cn("flex-1 min-w-0 max-w-[calc(100%-2.5rem)]", isCurrentUserMsg && "text-right")}> {/* Adjusted max-width */}
+                        <div className={cn("flex-1 min-w-0", isCurrentUserMsg ? "text-right pr-10 sm:pr-12" : "pl-0", showHeader ? "" : (isCurrentUserMsg ? "" : "pl-0"))}>
                           {showHeader && (
                             <div className={cn("flex items-baseline space-x-1.5", isCurrentUserMsg && "flex-row-reverse")}>
                               <p className="font-semibold text-sm text-foreground">
@@ -1425,7 +1422,7 @@ export default function CommunitiesPage() {
                                   {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
                                   </p>
                                   {msg.timestamp && (
-                                  <p className="ml-1.5 mr-1.5"> {/* Added mr-1.5 for spacing */}
+                                  <p className="ml-1.5 mr-0.5">
                                       ({format(msg.timestamp, 'p')})
                                   </p>
                                   )}
@@ -1438,7 +1435,7 @@ export default function CommunitiesPage() {
                               <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max", isCurrentUserMsg ? "ml-auto text-left" : "mr-auto text-left")}>
                                   <div className="flex items-center">
                                     <CornerUpRight className="h-3 w-3 mr-1.5 text-primary/70" />
-                                    <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>: 
+                                    <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>:
                                     <span className="italic ml-1 truncate">"{msg.replyToTextSnippet}"</span></span>
                                   </div>
                               </div>
@@ -1456,13 +1453,13 @@ export default function CommunitiesPage() {
                             />
                           )}
                           {msg.type === 'gif' && msg.gifUrl && (
-                            <div className="relative max-w-[300px] mt-1 group/gif">
+                            <div className="relative max-w-[250px] sm:max-w-[300px] mt-1 group/gif">
                                   <Image
                                       src={msg.gifUrl}
                                       alt={msg.gifContentDescription || "GIF"}
                                       width={0}
                                       height={0}
-                                      style={{ width: 'auto', height: 'auto', maxWidth: '300px', maxHeight: '200px', borderRadius: '0.375rem' }}
+                                      style={{ width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '200px', borderRadius: '0.375rem' }}
                                       unoptimized
                                       priority={false}
                                       data-ai-hint="animated gif"
@@ -1489,14 +1486,14 @@ export default function CommunitiesPage() {
                               <Image
                                   src={msg.fileUrl}
                                   alt={msg.fileName || "Uploaded image"}
-                                  width={300} 
-                                  height={300} 
+                                  width={300}
+                                  height={300}
                                   style={{
                                     width: 'auto',
                                     height: 'auto',
-                                    maxWidth: '100%', 
-                                    maxHeight: '300px', 
-                                    objectFit: 'contain', 
+                                    maxWidth: '100%',
+                                    maxHeight: '300px',
+                                    objectFit: 'contain',
                                     borderRadius: '0.375rem',
                                     marginTop: '0.25rem',
                                   }}
@@ -1524,7 +1521,7 @@ export default function CommunitiesPage() {
                                                   "h-auto px-2 py-0.5 text-xs rounded-full bg-muted/50 hover:bg-muted/80 border-border/50",
                                                   currentUser && userIds.includes(currentUser.uid) && "bg-primary/20 border-primary text-primary hover:bg-primary/30"
                                               )}
-                                              title={userIds.map(uid => placeholderMembers[selectedCommunity?.id || '']?.find(m => m.id === uid)?.name || uid).join(', ')} 
+                                              title={userIds.map(uid => placeholderMembers[selectedCommunity?.id || '']?.find(m => m.id === uid)?.name || uid).join(', ')}
                                           >
                                               {emoji} <span className="ml-1 text-muted-foreground">{userIds.length}</span>
                                           </Button>
@@ -1539,14 +1536,14 @@ export default function CommunitiesPage() {
                             <AvatarFallback>{msg.senderName.substring(0, 1).toUpperCase()}</AvatarFallback>
                           </Avatar>
                         ) : (
-                           isCurrentUserMsg && null // Removed the spacer div
+                           isCurrentUserMsg && !showHeader && null
                         )}
                         <div className={cn("absolute top-1 right-1 flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card p-0.5 rounded-md shadow-sm border border-border/50 z-10")}>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward" 
+                          <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground" title="Forward"
                               onClick={() => {
                                   setForwardingMessage(msg);
                                   setIsForwardDialogOpen(true);
-                                  setForwardSearchTerm(""); 
+                                  setForwardSearchTerm("");
                               }}>
                             <Share2 className="h-4 w-4" />
                           </Button>
@@ -1560,14 +1557,15 @@ export default function CommunitiesPage() {
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0">
-                                <EmojiPicker 
-                                    onEmojiClick={(emojiData: EmojiClickData) => { 
-                                        handleToggleReaction(msg.id, emojiData.emoji); 
-                                        setReactionPickerOpenForMessageId(null); 
-                                    }} 
+                                <EmojiPicker
+                                    data={data}
+                                    onEmojiSelect={(emojiData: EmojiClickData) => {
+                                        handleToggleReaction(msg.id, emojiData.native);
+                                        setReactionPickerOpenForMessageId(null);
+                                    }}
                                     theme={currentThemeMode === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
                                     emojiStyle={EmojiStyle.NATIVE}
-                                    searchPlaceholder="Search emoji..."
+                                    searchPlaceholder="Search reaction..."
                                     previewConfig={{showPreview: false}}
                                 />
                             </PopoverContent>
@@ -1587,21 +1585,21 @@ export default function CommunitiesPage() {
                   <div ref={messagesEndRef} />
                 </div>
               </ScrollArea>
-            ) : ( 
+            ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4 bg-card/30">
-                <selectedChannel.icon className="h-16 w-16 mb-4 text-primary/70"/>
-                <p className="text-lg font-medium">This is a {selectedChannel.type} channel.</p>
-                
+                <selectedChannel.icon className="h-12 w-12 sm:h-16 sm:w-16 mb-4 text-primary/70"/>
+                <p className="text-base sm:text-lg font-medium">This is a {selectedChannel.type} channel.</p>
+
                 {agoraClientRef.current ? (
-                     <div className="mt-4 w-full max-w-2xl flex flex-col items-center">
+                     <div className="mt-4 w-full max-w-md sm:max-w-2xl flex flex-col items-center">
                         {/* Local Video Player Container */}
                         {localVideoTrack && selectedChannel.type === 'video' && (
-                            <div id="local-video-player-container" ref={localVideoPlayerContainerRef} className="w-48 h-36 bg-black my-2 rounded-md shadow relative self-start">
+                            <div id="local-video-player-container" ref={localVideoPlayerContainerRef} className="w-36 h-28 sm:w-48 sm:h-36 bg-black my-2 rounded-md shadow relative self-start">
                                 <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">You</p>
                             </div>
                         )}
                         {/* Remote Video Players Container */}
-                        <div id="remote-video-players-container" ref={remoteVideoPlayersContainerRef} className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mt-2">
+                        <div id="remote-video-players-container" ref={remoteVideoPlayersContainerRef} className="w-full grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                             {/* Remote video players will be dynamically added here */}
                         </div>
                         {remoteUsers.length > 0 && selectedChannel.type === 'video' && (
@@ -1611,8 +1609,8 @@ export default function CommunitiesPage() {
                             <p className="text-sm text-muted-foreground mt-2">Waiting for others to join...</p>
                         )}
 
-                        <Button 
-                            onClick={handleLeaveVoiceChannel} 
+                        <Button
+                            onClick={handleLeaveVoiceChannel}
                             variant="destructive"
                             className="mt-6"
                         >
@@ -1621,20 +1619,20 @@ export default function CommunitiesPage() {
                     </div>
                 ) : (
                     <>
-                        <p className="text-sm mt-1">Voice and video features use Agora SDK.</p>
-                        <Button 
-                            onClick={handleJoinVoiceChannel} 
+                        <p className="text-xs sm:text-sm mt-1">Voice and video features use Agora SDK.</p>
+                        <Button
+                            onClick={handleJoinVoiceChannel}
                             disabled={isJoiningVoice || !AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER"}
                             className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
                         >
                             {isJoiningVoice ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <selectedChannel.icon className="mr-2 h-4 w-4"/>}
                             {isJoiningVoice ? "Connecting..." : `Join ${selectedChannel.type.charAt(0).toUpperCase() + selectedChannel.type.slice(1)} Channel`}
                         </Button>
+                         {(!AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") && (
+                             <p className="text-xs text-destructive mt-2">Agora App ID not configured. Voice/Video chat is disabled.</p>
+                         )}
                     </>
                 )}
-                 {(!AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") && (
-                     <p className="text-xs text-destructive mt-2">Agora App ID not configured. Voice/Video chat is disabled.</p>
-                 )}
                 <p className="text-xs text-muted-foreground mt-2">
                   Note: For production, use a token server for Agora authentication.
                 </p>
@@ -1644,18 +1642,18 @@ export default function CommunitiesPage() {
 
             {/* Chat Input Area for Text Channels */}
             {selectedChannel.type === 'text' ? (
-              <div className="p-3 border-t border-border/40 shrink-0 relative">
+              <div className="p-2 sm:p-3 border-t border-border/40 shrink-0 relative">
                 {replyingToMessage && (
                     <div className="mb-2 p-2 text-sm bg-muted rounded-md flex justify-between items-center">
                         <div>
-                            Replying to <span className="font-semibold text-foreground">{replyingToMessage.senderName}</span>: 
+                            Replying to <span className="font-semibold text-foreground">{replyingToMessage.senderName}</span>:
                             <em className="ml-1 text-muted-foreground truncate">
-                                "{replyingToMessage.text?.substring(0,50) || 
+                                "{replyingToMessage.text?.substring(0,50) ||
                                  (replyingToMessage.type === 'image' && "Image") ||
                                  (replyingToMessage.type === 'file' && `File: ${replyingToMessage.fileName || 'attachment'}`) ||
                                  (replyingToMessage.type === 'gif' && "GIF") ||
                                  (replyingToMessage.type === 'voice_message' && "Voice Message") || "..."}"
-                                {(replyingToMessage.text && replyingToMessage.text.length > 50) || 
+                                {(replyingToMessage.text && replyingToMessage.text.length > 50) ||
                                  (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : ''}
                             </em>
                         </div>
@@ -1669,11 +1667,11 @@ export default function CommunitiesPage() {
                          <PopoverTrigger asChild>
                             <div ref={mentionSuggestionsRef} className="absolute bottom-full left-0 mb-1 w-full max-w-sm"></div>
                         </PopoverTrigger>
-                        <PopoverContent 
+                        <PopoverContent
                             className="p-1 w-64 max-h-48 overflow-y-auto z-20 shadow-lg rounded-md border bg-popover"
                             side="top"
                             align="start"
-                            avoidCollisions={false} 
+                            avoidCollisions={false}
                         >
                             {currentMembers.filter(member => member.name.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase())).length > 0 ? (
                                 currentMembers
@@ -1693,7 +1691,7 @@ export default function CommunitiesPage() {
                         </PopoverContent>
                     </Popover>
                 )}
-                <form onSubmit={handleSendMessage} className="flex items-center p-1.5 rounded-lg bg-muted space-x-1.5">
+                <form onSubmit={handleSendMessage} className="flex items-center p-1.5 rounded-lg bg-muted space-x-1 sm:space-x-1.5">
                     <input
                         type="file"
                         ref={attachmentInputRef}
@@ -1703,25 +1701,25 @@ export default function CommunitiesPage() {
                         disabled={isUploadingFile || !currentUser || selectedChannel.type !== 'text' || isRecording}
                     />
                     {isUploadingFile ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" />
+                    <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin text-primary shrink-0" />
                     ) : (
                     <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="text-muted-foreground hover:text-foreground shrink-0"
+                        className="text-muted-foreground hover:text-foreground shrink-0 h-8 w-8 sm:h-9 sm:w-9"
                         title="Attach File/Image"
                         onClick={() => attachmentInputRef.current?.click()}
                         disabled={isUploadingFile || !currentUser || selectedChannel.type !== 'text' || isRecording}
                     >
-                        <Paperclip className="h-5 w-5" />
+                        <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
                     </Button>
                     )}
                     <Input
                         ref={chatInputRef}
                         type="text"
                         placeholder={isRecording ? "Recording voice message..." : `Message #${selectedChannel.name} (@mention, **bold**)`}
-                        className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-9 px-2"
+                        className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 text-foreground border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-8 sm:h-9 px-2"
                         value={newMessage}
                         onChange={handleMentionInputChange}
                         onKeyPress={(e) => {
@@ -1735,26 +1733,27 @@ export default function CommunitiesPage() {
                         type="button"
                         variant={isRecording ? "destructive" : "ghost"}
                         size="icon"
-                        className={cn("shrink-0", isRecording ? "text-destructive-foreground hover:bg-destructive/90" : "text-muted-foreground hover:text-foreground")}
+                        className={cn("shrink-0 h-8 w-8 sm:h-9 sm:w-9", isRecording ? "text-destructive-foreground hover:bg-destructive/90" : "text-muted-foreground hover:text-foreground")}
                         title={isRecording ? "Stop Recording" : "Send Voice Message"}
                         onClick={handleToggleRecording}
                         disabled={hasMicPermission === false || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}
                     >
-                        {isRecording ? <StopCircle className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                        {isRecording ? <StopCircle className="h-4 w-4 sm:h-5 sm:w-5" /> : <Mic className="h-4 w-4 sm:h-5 sm:w-5" />}
                     </Button>
                     {hasMicPermission === false && (
-                        <AlertTriangle className="h-5 w-5 text-destructive" title="Microphone permission denied"/>
+                        <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-destructive" title="Microphone permission denied"/>
                     )}
 
                     <Popover open={chatEmojiPickerOpen} onOpenChange={setChatEmojiPickerOpen}>
                     <PopoverTrigger asChild>
-                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Open Emoji Picker" disabled={isRecording || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}>
-                            <Smile className="h-5 w-5" />
+                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0 h-8 w-8 sm:h-9 sm:w-9" title="Open Emoji Picker" disabled={isRecording || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}>
+                            <Smile className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
                         <EmojiPicker
-                            onEmojiClick={(emojiData: EmojiClickData) => { 
+                            data={data}
+                            onEmojiSelect={(emojiData: EmojiClickData) => {
                                 setNewMessage(prev => prev + emojiData.native);
                                 setChatEmojiPickerOpen(false);
                                 chatInputRef.current?.focus();
@@ -1769,8 +1768,8 @@ export default function CommunitiesPage() {
 
                     <Dialog open={showGifPicker} onOpenChange={setShowGifPicker}>
                     <DialogTrigger asChild>
-                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" title="Send GIF (Tenor)" disabled={isRecording || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}>
-                            <Film className="h-5 w-5" />
+                        <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0 h-8 w-8 sm:h-9 sm:w-9" title="Send GIF (Tenor)" disabled={isRecording || isUploadingFile || !currentUser || selectedChannel.type !== 'text'}>
+                            <Film className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[425px] md:max-w-[600px] lg:max-w-[800px] h-[70vh] flex flex-col">
@@ -1796,8 +1795,8 @@ export default function CommunitiesPage() {
                                     onChange={handleGifSearchChange}
                                     className="my-2"
                                 />
-                                <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]"> 
-                                    <div className="p-1"> 
+                                <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]">
+                                    <div className="p-1">
                                     {loadingGifs ? (
                                         <div className="flex justify-center items-center h-full">
                                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -1840,8 +1839,8 @@ export default function CommunitiesPage() {
                                 </ScrollArea>
                             </TabsContent>
                             <TabsContent value="favorites">
-                                <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]"> 
-                                    <div className="p-1"> 
+                                <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]">
+                                    <div className="p-1">
                                     {favoritedGifs.length > 0 ? (
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                         {favoritedGifs.map((gif) => (
@@ -1886,18 +1885,19 @@ export default function CommunitiesPage() {
                     </DialogContent>
                     </Dialog>
 
-                    <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0" title="Send Message" disabled={!newMessage.trim() || !currentUser || selectedChannel.type !== 'text' || isRecording || isUploadingFile}>
-                        <Send className="h-5 w-5" />
+                    <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0 h-8 w-8 sm:h-9 sm:w-9" title="Send Message" disabled={!newMessage.trim() || !currentUser || selectedChannel.type !== 'text' || isRecording || isUploadingFile}>
+                        <Send className="h-4 w-4 sm:h-5 sm:w-5" />
                     </Button>
                 </form>
               </div>
             ) : (
-              <div className="p-3 border-t border-border/40 shrink-0 flex items-center justify-center h-16"> 
+              <div className="p-2 sm:p-3 border-t border-border/40 shrink-0 flex items-center justify-center h-14 sm:h-16">
+                 {/* Placeholder for non-text channel footers, e.g., voice/video controls */}
               </div>
             )}
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground text-lg p-4">
+          <div className="flex-1 flex items-center justify-center text-muted-foreground text-base sm:text-lg p-4">
             {selectedCommunity ? "Select a channel to start." : "Select a community to see its channels."}
           </div>
         )}
@@ -1905,8 +1905,8 @@ export default function CommunitiesPage() {
 
       {/* Column 4: Right-Hand Info Bar */}
       {isRightBarOpen && selectedCommunity && (
-        <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden">
-            <div className="relative h-32 w-full shrink-0">
+        <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col overflow-hidden hidden md:flex"> {/* Hidden on small screens, flex on md+ */}
+            <div className="relative h-24 sm:h-32 w-full shrink-0">
                <Image
                 src={selectedCommunity.bannerUrl}
                 alt={`${selectedCommunity.name} banner`}
@@ -1917,22 +1917,22 @@ export default function CommunitiesPage() {
               />
             </div>
 
-            <div className="flex flex-col flex-1 min-h-0"> 
-                <div className="p-4 space-y-3 shrink-0 border-b border-border/40">
-                    <div className="flex items-center space-x-3">
-                        <Avatar className="h-16 w-16 border-2 border-background shadow-md">
+            <div className="flex flex-col flex-1 min-h-0">
+                <div className="p-3 sm:p-4 space-y-2 sm:space-y-3 shrink-0 border-b border-border/40">
+                    <div className="flex items-center space-x-2 sm:space-x-3">
+                        <Avatar className="h-12 w-12 sm:h-16 sm:w-16 border-2 border-background shadow-md">
                         <AvatarImage src={selectedCommunity.iconUrl} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint}/>
                         <AvatarFallback>{selectedCommunity.name.substring(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
                         <div>
-                        <CardTitle className="text-xl">{selectedCommunity.name}</CardTitle>
+                        <CardTitle className="text-lg sm:text-xl">{selectedCommunity.name}</CardTitle>
                         </div>
                     </div>
-                    <CardDescription className="text-sm">{selectedCommunity.description}</CardDescription>
+                    <CardDescription className="text-xs sm:text-sm">{selectedCommunity.description}</CardDescription>
                     {selectedCommunity.tags && selectedCommunity.tags.length > 0 && (
-                        <div className="mt-3">
-                        <h5 className="text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Tags</h5>
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="mt-2 sm:mt-3">
+                        <h5 className="text-xs font-semibold text-muted-foreground mb-1 sm:mb-1.5 uppercase tracking-wide">Tags</h5>
+                        <div className="flex flex-wrap gap-1 sm:gap-1.5">
                             {selectedCommunity.tags.map((tag) => (
                             <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
                             ))}
@@ -1941,19 +1941,19 @@ export default function CommunitiesPage() {
                     )}
                 </div>
 
-                <ScrollArea className="flex-1 min-h-0"> 
-                   <div className="px-4 pb-4 pt-0">
-                        <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-4 px-4">
+                <ScrollArea className="flex-1 min-h-0">
+                   <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-0">
+                        <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-3 sm:-mx-4 px-3 sm:px-4">
                         Members ({currentMembers.length})
                         </h4>
-                        <div className="space-y-2 pt-2">
+                        <div className="space-y-1.5 sm:space-y-2 pt-2">
                         {currentMembers.map((member) => (
-                            <div key={member.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
-                            <Avatar className="h-8 w-8">
+                            <div key={member.id} className="flex items-center space-x-2 p-1 sm:p-1.5 rounded-md hover:bg-muted/50">
+                            <Avatar className="h-7 w-7 sm:h-8 sm:w-8">
                                 <AvatarImage src={member.avatarUrl} alt={member.name} data-ai-hint={member.dataAiHint}/>
                                 <AvatarFallback>{member.name.substring(0, 1).toUpperCase()}</AvatarFallback>
                             </Avatar>
-                            <span className="text-sm text-foreground truncate">{member.name}</span>
+                            <span className="text-xs sm:text-sm text-foreground truncate">{member.name}</span>
                             </div>
                         ))}
                         </div>
@@ -1962,14 +1962,14 @@ export default function CommunitiesPage() {
             </div>
 
              <div className="p-3 border-t border-border/40 mt-auto shrink-0">
-                <Button variant="outline" className="w-full text-muted-foreground" onClick={() => toast({title: "Feature Coming Soon", description: "Community settings will be implemented."})}>
+                <Button variant="outline" className="w-full text-muted-foreground text-xs sm:text-sm" onClick={() => toast({title: "Feature Coming Soon", description: "Community settings will be implemented."})}>
                     <Settings className="mr-2 h-4 w-4" /> Community Settings
                 </Button>
             </div>
         </div>
       )}
       {!selectedCommunity && isRightBarOpen && (
-        <div className="h-full w-72 bg-card border-l border-border/40 flex flex-col items-center justify-center text-muted-foreground p-4 text-center overflow-hidden">
+        <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col items-center justify-center text-muted-foreground p-4 text-center overflow-hidden hidden md:flex">
             No community selected.
         </div>
       )}
@@ -2014,10 +2014,11 @@ export default function CommunitiesPage() {
                  </div>
             )}
             <div className="grid gap-4 py-4">
-                <Input 
-                    placeholder="Search channels or users..." 
+                <Input
+                    placeholder="Search channels or users (coming soon)..."
                     value={forwardSearchTerm}
                     onChange={(e) => setForwardSearchTerm(e.target.value)}
+                    disabled
                 />
             </div>
             <DialogFooter>
@@ -2031,5 +2032,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
-    
