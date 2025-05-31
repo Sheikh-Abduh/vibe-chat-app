@@ -1246,7 +1246,7 @@ export default function MessagesPage() {
                       <div className={cn("flex-1 min-w-0", isCurrentUserMsg ? "text-right pr-10 sm:pr-12" : "pl-0", showHeader ? "" : (isCurrentUserMsg ? "" : ""))}>
                         {showHeader && (
                           <div className={cn("flex items-baseline space-x-1.5", isCurrentUserMsg && "flex-row-reverse")}>
-                            <p className="font-semibold text-sm text-foreground">{isCurrentUserMsg ? "You" : msg.senderName}</p>
+                            <p className="font-semibold text-sm text-foreground">{msg.senderName}</p>
                             <div className="flex items-baseline text-xs text-muted-foreground">
                               <p title={msg.timestamp ? format(msg.timestamp, 'PPpp') : undefined}>
                                 {msg.timestamp ? formatDistanceToNowStrict(msg.timestamp, { addSuffix: true }) : 'Sending...'}
@@ -1507,7 +1507,17 @@ export default function MessagesPage() {
 
       {/* Column 3: DM Partner Info Bar */}
       {isMessagesRightBarOpen && selectedConversation && dmPartnerProfile && (
-          <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col overflow-hidden hidden md:flex"> 
+          <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col overflow-hidden hidden md:flex relative"> 
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="absolute top-2 right-2 text-muted-foreground hover:text-foreground z-20 h-8 w-8"
+                  onClick={() => setIsMessagesRightBarOpen(false)}
+                  title="Close User Info"
+                  aria-label="Close user info panel"
+                >
+                  <X className="h-5 w-5"/>
+                </Button>
                 <div className="p-3 sm:p-4 border-b border-border/40 shadow-sm shrink-0">
                     <div className="flex flex-col items-center text-center">
                         <Avatar className="h-20 w-20 sm:h-24 sm:w-24 mb-3 border-2 border-primary shadow-md">

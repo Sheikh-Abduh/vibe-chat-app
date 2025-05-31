@@ -1383,7 +1383,7 @@ export default function CommunitiesPage() {
                           {showHeader && (
                             <div className={cn("flex items-baseline space-x-1.5", isCurrentUserMsg && "flex-row-reverse")}>
                               <p className="font-semibold text-sm text-foreground">
-                                {isCurrentUserMsg ? "You" : msg.senderName}
+                                {msg.senderName}
                               </p>
                               <div className="flex items-baseline text-xs text-muted-foreground">
                                   <p title={msg.timestamp ? format(msg.timestamp, 'PPpp') : undefined}>
@@ -1870,7 +1870,17 @@ export default function CommunitiesPage() {
 
       {/* Column 4: Right-Hand Info Bar */}
       {isRightBarOpen && selectedCommunity && (
-        <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col overflow-hidden hidden md:flex"> 
+        <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col overflow-hidden hidden md:flex relative"> 
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="absolute top-2 right-2 text-muted-foreground hover:text-foreground z-20 h-8 w-8"
+              onClick={() => setIsRightBarOpen(false)}
+              title="Close Server Info"
+              aria-label="Close server info panel"
+            >
+              <X className="h-5 w-5"/>
+            </Button>
             <div className="relative h-24 sm:h-32 w-full shrink-0">
                <Image
                 src={selectedCommunity.bannerUrl}
