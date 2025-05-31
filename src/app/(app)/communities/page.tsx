@@ -1379,9 +1379,9 @@ export default function CommunitiesPage() {
                         )}
                          {!isCurrentUserMsg && !showHeader && ( <div className="w-8 shrink-0"></div> )}
 
-                        <div className={cn("flex-1 min-w-0", isCurrentUserMsg ? "text-right pr-10 sm:pr-12" : "pl-0", showHeader ? "" : (isCurrentUserMsg ? "" : ""))}>
+                        <div className={cn("flex-1 min-w-0 text-left", isCurrentUserMsg ? "pr-10 sm:pr-12" : "pl-0", showHeader ? "" : (isCurrentUserMsg ? "" : ""))}>
                           {showHeader && (
-                            <div className={cn("flex items-baseline space-x-1.5", isCurrentUserMsg && "flex-row-reverse")}>
+                            <div className={cn("flex items-baseline space-x-1.5")}>
                               <p className="font-semibold text-sm text-foreground">
                                 {msg.senderName}
                               </p>
@@ -1400,7 +1400,7 @@ export default function CommunitiesPage() {
                             </div>
                           )}
                           {msg.replyToMessageId && msg.replyToSenderName && msg.replyToTextSnippet && (
-                              <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max", isCurrentUserMsg ? "ml-auto text-left" : "mr-auto text-left")}>
+                              <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max text-left", isCurrentUserMsg ? "ml-auto" : "mr-auto")}>
                                   <div className="flex items-center">
                                     <CornerUpRight className="h-3 w-3 mr-1.5 text-primary/70" />
                                     <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>:
@@ -1416,7 +1416,7 @@ export default function CommunitiesPage() {
                           )}
                           {msg.type === 'text' && msg.text && (
                             <p
-                              className={cn("text-sm text-foreground/90 whitespace-pre-wrap break-words", isCurrentUserMsg ? "text-left" : "text-left")}
+                              className={cn("text-sm text-foreground/90 whitespace-pre-wrap break-words text-left")}
                               dangerouslySetInnerHTML={{ __html: formatChatMessage(msg.text) }}
                             />
                           )}

@@ -1243,9 +1243,9 @@ export default function MessagesPage() {
                       )}
                        {!isCurrentUserMsg && !showHeader && ( <div className="w-8 shrink-0"></div> )}
 
-                      <div className={cn("flex-1 min-w-0", isCurrentUserMsg ? "text-right pr-10 sm:pr-12" : "pl-0", showHeader ? "" : (isCurrentUserMsg ? "" : ""))}>
+                      <div className={cn("flex-1 min-w-0 text-left", isCurrentUserMsg ? "pr-10 sm:pr-12" : "pl-0", showHeader ? "" : (isCurrentUserMsg ? "" : ""))}>
                         {showHeader && (
-                          <div className={cn("flex items-baseline space-x-1.5", isCurrentUserMsg && "flex-row-reverse")}>
+                          <div className={cn("flex items-baseline space-x-1.5")}>
                             <p className="font-semibold text-sm text-foreground">{msg.senderName}</p>
                             <div className="flex items-baseline text-xs text-muted-foreground">
                               <p title={msg.timestamp ? format(msg.timestamp, 'PPpp') : undefined}>
@@ -1258,7 +1258,7 @@ export default function MessagesPage() {
                           </div>
                         )}
                          {msg.replyToMessageId && msg.replyToSenderName && msg.replyToTextSnippet && (
-                            <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max", isCurrentUserMsg ? "ml-auto text-left" : "mr-auto text-left")}>
+                            <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max text-left", isCurrentUserMsg ? "ml-auto" : "mr-auto")}>
                                  <div className="flex items-center">
                                   <CornerUpRight className="h-3 w-3 mr-1.5 text-primary/70" />
                                   <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>:
@@ -1267,13 +1267,13 @@ export default function MessagesPage() {
                             </div>
                         )}
                         {msg.isForwarded && msg.forwardedFromSenderName && (
-                          <div className={cn("text-xs text-muted-foreground italic mb-0.5 flex items-center", isCurrentUserMsg ? "justify-end" : "justify-start")}>
+                          <div className={cn("text-xs text-muted-foreground italic mb-0.5 flex items-center text-left", isCurrentUserMsg ? "justify-start" : "justify-start")}> {/* Ensure left align for forwarded text too */}
                             <Share2 className="h-3 w-3 mr-1.5 text-muted-foreground/80" />
                             Forwarded from {msg.forwardedFromSenderName}
                           </div>
                         )}
                          {msg.type === 'text' && msg.text && (
-                            <p className={cn("text-sm text-foreground/90 whitespace-pre-wrap break-words", isCurrentUserMsg ? "text-left" : "text-left")}
+                            <p className={cn("text-sm text-foreground/90 whitespace-pre-wrap break-words text-left")}
                             dangerouslySetInnerHTML={{ __html: formatChatMessage(msg.text) }} />
                         )}
                         {msg.type === 'gif' && msg.gifUrl && (
