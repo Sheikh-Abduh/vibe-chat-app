@@ -752,7 +752,11 @@ export default function MessagesPage() {
     setLoadingGifs(true);
     try {
       const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
-      if (!response.ok) throw new Error('Failed to fetch trending GIFs');
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error("Tenor API Error (Trending):", response.status, errorBody);
+        throw new Error(`Failed to fetch trending GIFs. Status: ${response.status}`);
+      }
       const data = await response.json(); setGifs(data.results || []);
     } catch (error) { console.error("Error fetching trending GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: "Could not load trending GIFs." });}
     finally { setLoadingGifs(false); }
@@ -764,7 +768,11 @@ export default function MessagesPage() {
     setLoadingGifs(true);
     try {
       const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
-      if (!response.ok) throw new Error('Failed to search GIFs');
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error("Tenor API Error (Search):", response.status, errorBody);
+        throw new Error(`Failed to search GIFs. Status: ${response.status}`);
+      }
       const data = await response.json(); setGifs(data.results || []);
     } catch (error) { console.error("Error searching GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: "Could not search GIFs." });}
     finally { setLoadingGifs(false); }
