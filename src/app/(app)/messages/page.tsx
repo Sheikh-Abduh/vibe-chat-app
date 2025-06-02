@@ -55,7 +55,7 @@ interface TenorGif extends TenorGifType {}
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
-const TENOR_API_KEY = "LIVDSRZULELA"; // Standard Tenor SDK key for testing - limited requests
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
 const TENOR_CLIENT_KEY = "vibe_app_prototype";
 
 // Agora Configuration
@@ -758,7 +758,7 @@ export default function MessagesPage() {
         throw new Error(`Failed to fetch trending GIFs. Status: ${response.status}`);
       }
       const data = await response.json(); setGifs(data.results || []);
-    } catch (error) { console.error("Error fetching trending GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: "Could not load trending GIFs." });}
+    } catch (error) { console.error("Error fetching trending GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: (error as Error).message || "Could not load trending GIFs." });}
     finally { setLoadingGifs(false); }
   };
 
@@ -774,7 +774,7 @@ export default function MessagesPage() {
         throw new Error(`Failed to search GIFs. Status: ${response.status}`);
       }
       const data = await response.json(); setGifs(data.results || []);
-    } catch (error) { console.error("Error searching GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: "Could not search GIFs." });}
+    } catch (error) { console.error("Error searching GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: (error as Error).message || "Could not search GIFs." });}
     finally { setLoadingGifs(false); }
   };
 

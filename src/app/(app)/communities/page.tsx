@@ -208,7 +208,7 @@ interface TenorGif extends TenorGifType {}
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
-const TENOR_API_KEY = "LIVDSRZULELA"; // Standard Tenor SDK key for testing - limited requests
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // Standard Tenor SDK key for testing - limited requests
 const TENOR_CLIENT_KEY = "vibe_app_prototype"; // Replace with your actual client key if you have one
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -877,7 +877,7 @@ export default function CommunitiesPage() {
       setGifs(data.results || []);
     } catch (error) {
       console.error("Error fetching trending GIFs:", error);
-      toast({ variant: "destructive", title: "Error Fetching GIFs", description: "Could not load trending GIFs." });
+      toast({ variant: "destructive", title: "Error Fetching GIFs", description: (error as Error).message || "Could not load trending GIFs." });
       setGifs([]);
     } finally {
       setLoadingGifs(false);
@@ -906,7 +906,7 @@ export default function CommunitiesPage() {
       setGifs(data.results || []);
     } catch (error) {
       console.error("Error searching GIFs:", error);
-      toast({ variant: "destructive", title: "Error Fetching GIFs", description: "Could not load GIFs for your search." });
+      toast({ variant: "destructive", title: "Error Fetching GIFs", description: (error as Error).message || "Could not load GIFs for your search." });
       setGifs([]);
     } finally {
       setLoadingGifs(false);
