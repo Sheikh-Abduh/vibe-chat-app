@@ -208,7 +208,7 @@ interface TenorGif extends TenorGifType {}
 // SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // Standard Tenor SDK key for testing - limited requests
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
 const TENOR_CLIENT_KEY = "vibe_app_prototype"; // Replace with your actual client key if you have one
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -871,7 +871,7 @@ export default function CommunitiesPage() {
       if (!response.ok) {
         const errorBody = await response.text();
         console.error("Tenor API Error (Trending):", response.status, errorBody);
-        throw new Error(`Failed to fetch trending GIFs. Status: ${response.status}`);
+        throw new Error(`Failed to fetch trending GIFs. Status: ${response.status}. Body: ${errorBody}`);
       }
       const data = await response.json();
       setGifs(data.results || []);
@@ -900,7 +900,7 @@ export default function CommunitiesPage() {
       if (!response.ok) {
         const errorBody = await response.text();
         console.error("Tenor API Error (Search):", response.status, errorBody);
-        throw new Error(`Failed to fetch GIFs. Status: ${response.status}`);
+        throw new Error(`Failed to fetch GIFs. Status: ${response.status}. Body: ${errorBody}`);
       }
       const data = await response.json();
       setGifs(data.results || []);
@@ -1755,20 +1755,20 @@ export default function CommunitiesPage() {
                                 </span>
                             </DialogDescription>
                         </DialogHeader>
-                            <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="mt-2">
-                            <TabsList className="grid w-full grid-cols-2">
+                        <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="mt-2 flex-1 flex flex-col min-h-0">
+                            <TabsList className="grid w-full grid-cols-2 shrink-0">
                                 <TabsTrigger value="search">Search/Trending</TabsTrigger>
                                 <TabsTrigger value="favorites">Favorites</TabsTrigger>
                             </TabsList>
-                            <TabsContent value="search">
+                            <TabsContent value="search" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2">
                                 <Input
                                     type="text"
                                     placeholder="Search Tenor GIFs..."
                                     value={gifSearchTerm}
                                     onChange={handleGifSearchChange}
-                                    className="my-2"
+                                    className="my-2 shrink-0"
                                 />
-                                <ScrollArea className="flex-1 max-h-[calc(70vh-200px)]">
+                                <ScrollArea className="flex-1 min-h-0">
                                     <div className="p-1">
                                     {loadingGifs ? (
                                         <div className="flex justify-center items-center h-full">
@@ -1811,8 +1811,8 @@ export default function CommunitiesPage() {
                                     </div>
                                 </ScrollArea>
                             </TabsContent>
-                            <TabsContent value="favorites">
-                                <ScrollArea className="flex-1 max-h-[calc(70vh-150px)]">
+                            <TabsContent value="favorites" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2">
+                                <ScrollArea className="flex-1 min-h-0">
                                     <div className="p-1">
                                     {favoritedGifs.length > 0 ? (
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
@@ -1852,7 +1852,7 @@ export default function CommunitiesPage() {
                                 </ScrollArea>
                             </TabsContent>
                         </Tabs>
-                        <DialogFooter className="mt-auto pt-2">
+                        <DialogFooter className="mt-auto pt-2 shrink-0">
                             <p className="text-xs text-muted-foreground">Powered by Tenor</p>
                         </DialogFooter>
                     </DialogContent>

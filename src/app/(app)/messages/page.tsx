@@ -755,7 +755,7 @@ export default function MessagesPage() {
       if (!response.ok) {
         const errorBody = await response.text();
         console.error("Tenor API Error (Trending):", response.status, errorBody);
-        throw new Error(`Failed to fetch trending GIFs. Status: ${response.status}`);
+        throw new Error(`Failed to fetch trending GIFs. Status: ${response.status}. Body: ${errorBody}`);
       }
       const data = await response.json(); setGifs(data.results || []);
     } catch (error) { console.error("Error fetching trending GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: (error as Error).message || "Could not load trending GIFs." });}
@@ -771,7 +771,7 @@ export default function MessagesPage() {
       if (!response.ok) {
         const errorBody = await response.text();
         console.error("Tenor API Error (Search):", response.status, errorBody);
-        throw new Error(`Failed to search GIFs. Status: ${response.status}`);
+        throw new Error(`Failed to search GIFs. Status: ${response.status}. Body: ${errorBody}`);
       }
       const data = await response.json(); setGifs(data.results || []);
     } catch (error) { console.error("Error searching GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: (error as Error).message || "Could not search GIFs." });}
@@ -1468,36 +1468,36 @@ export default function MessagesPage() {
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[425px] md:max-w-[600px] lg:max-w-[800px] h-[70vh] flex flex-col">
                         <DialogHeader><DialogTitle>Send a GIF</DialogTitle><DialogDescription>Search Tenor or browse favorites. <span className="block text-xs text-destructive/80 mt-1">SECURITY WARNING: Tenor API key is client-side.</span></DialogDescription></DialogHeader>
-                        <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="mt-2">
-                        <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="search">Search</TabsTrigger><TabsTrigger value="favorites">Favorites</TabsTrigger></TabsList>
-                        <TabsContent value="search">
-                            <Input type="text" placeholder="Search Tenor GIFs..." value={gifSearchTerm} onChange={handleGifSearchChange} className="my-2"/>
-                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-200px)]">
-                            <div className="p-1">
-                            {loadingGifs ? <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                                : gifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {gifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
-                                    <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, 33vw" className="object-cover group-hover:scale-105" unoptimized/></button>
-                                    <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleToggleFavoriteGif(gif)} title={isGifFavorited(gif.id) ? "Unfavorite" : "Favorite"}><Star className={cn("h-4 w-4", isGifFavorited(gif.id) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/></Button>
-                                </div>))}</div>)
-                                : <p className="text-center text-muted-foreground py-4">{gifSearchTerm ? "No GIFs found." : "No trending GIFs."}</p>}
-                            </div>
-                            </ScrollArea>
-                        </TabsContent>
-                        <TabsContent value="favorites">
-                            <ScrollArea className="flex-1 min-h-0 max-h-[calc(70vh-150px)]">
-                            <div className="p-1">
-                            {favoritedGifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {favoritedGifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
-                                <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, 33vw" className="object-cover group-hover:scale-105" unoptimized/></button>
-                                <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleToggleFavoriteGif(gif)} title="Unfavorite"><Star className="h-4 w-4 fill-yellow-400 text-yellow-400"/></Button>
-                                </div>))}</div>)
-                                : <p className="text-center text-muted-foreground py-4">No favorited GIFs.</p>}
-                            </div>
-                            </ScrollArea>
-                        </TabsContent>
+                        <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="mt-2 flex-1 flex flex-col min-h-0">
+                            <TabsList className="grid w-full grid-cols-2 shrink-0"><TabsTrigger value="search">Search</TabsTrigger><TabsTrigger value="favorites">Favorites</TabsTrigger></TabsList>
+                            <TabsContent value="search" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2">
+                                <Input type="text" placeholder="Search Tenor GIFs..." value={gifSearchTerm} onChange={handleGifSearchChange} className="my-2 shrink-0"/>
+                                <ScrollArea className="flex-1 min-h-0">
+                                    <div className="p-1">
+                                    {loadingGifs ? <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                                        : gifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                        {gifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
+                                            <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, 33vw" className="object-cover group-hover:scale-105" unoptimized/></button>
+                                            <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleToggleFavoriteGif(gif)} title={isGifFavorited(gif.id) ? "Unfavorite" : "Favorite"}><Star className={cn("h-4 w-4", isGifFavorited(gif.id) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/></Button>
+                                        </div>))}</div>)
+                                        : <p className="text-center text-muted-foreground py-4">{gifSearchTerm ? "No GIFs found." : "No trending GIFs."}</p>}
+                                    </div>
+                                </ScrollArea>
+                            </TabsContent>
+                            <TabsContent value="favorites" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2">
+                                <ScrollArea className="flex-1 min-h-0">
+                                    <div className="p-1">
+                                    {favoritedGifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                        {favoritedGifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
+                                        <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, 33vw" className="object-cover group-hover:scale-105" unoptimized/></button>
+                                        <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleToggleFavoriteGif(gif)} title="Unfavorite"><Star className="h-4 w-4 fill-yellow-400 text-yellow-400"/></Button>
+                                        </div>))}</div>)
+                                        : <p className="text-center text-muted-foreground py-4">No favorited GIFs.</p>}
+                                    </div>
+                                </ScrollArea>
+                            </TabsContent>
                         </Tabs>
-                        <DialogFooter className="mt-auto pt-2"><p className="text-xs text-muted-foreground">Powered by Tenor</p></DialogFooter>
+                        <DialogFooter className="mt-auto pt-2 shrink-0"><p className="text-xs text-muted-foreground">Powered by Tenor</p></DialogFooter>
                     </DialogContent>
                     </Dialog>
                     <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0 h-8 w-8 sm:h-9 sm:w-9" title="Send" disabled={!newMessage.trim() || isRecording || isUploadingFile || agoraClientRef.current !==null}>
