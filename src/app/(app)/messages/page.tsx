@@ -121,7 +121,7 @@ const formatChatMessage = (text?: string): string => {
 
 export default function MessagesPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(isCheckingAuth);
   const { toast } = useToast();
   const router = useRouter();
 
@@ -196,13 +196,13 @@ export default function MessagesPage() {
         setSelectedConversation(savedMessagesConvo);
         setOtherUserId(user.uid);
         setOtherUserName('Saved Messages');
-        setDmPartnerProfile({
+        setDmPartnerProfile({ // Set partner profile for "Saved Messages"
             uid: user.uid,
             displayName: user.displayName || "You",
             photoURL: user.photoURL,
             email: user.email,
-            bio: "This is your personal space to save messages.", // Placeholder bio
-            mutualInterests: ["Notes", "Reminders"] // Placeholder interests
+            bio: "This is your personal space to save messages.",
+            mutualInterests: ["Notes", "Reminders"]
         });
 
         const modeFromStorage = localStorage.getItem(`appSettings_${user.uid}`);
@@ -234,9 +234,46 @@ export default function MessagesPage() {
     }
   }, [currentUser, otherUserId]);
 
+  const ensureConversationDocument = useCallback(async (): Promise<boolean> => {
+    if (!currentUser || !otherUserId || !conversationId) {
+        // Don't toast here, might be called preemptively
+        // toast({ variant: "destructive", title: "Error", description: "User or conversation not identified for ensuring doc." });
+        return false;
+    }
+    const convoDocRef = doc(db, `direct_messages/${conversationId}`);
+    try {
+        const convoSnap = await getDoc(convoDocRef);
+        if (!convoSnap.exists()) {
+            let participants = [currentUser.uid, otherUserId].sort();
+             if (currentUser.uid === otherUserId) { 
+                 participants = [currentUser.uid, currentUser.uid];
+             }
+
+            await setDoc(convoDocRef, {
+                participants: participants,
+                createdAt: serverTimestamp(),
+                lastMessageTimestamp: serverTimestamp(),
+                [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+                [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
+                [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"),
+                [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || (otherUserId === currentUser.uid ? currentUser.photoURL : null),
+            });
+        }
+        return true;
+    } catch (error) {
+        console.error("Error ensuring conversation document:", error);
+        toast({ variant: "destructive", title: "Conversation Setup Error", description: "Could not initiate or verify conversation structure." });
+        return false;
+    }
+  }, [currentUser, otherUserId, conversationId, dmPartnerProfile, toast]);
+
 
   useEffect(() => {
-    if (conversationId && currentUser) {
+    if (conversationId && currentUser && otherUserId && dmPartnerProfile) {
+      if (currentUser.uid === otherUserId && conversationId === `${currentUser.uid}_${currentUser.uid}`) {
+        ensureConversationDocument(); 
+      }
+      
       setMessages([]);
       const messagesQueryRef = collection(db, `direct_messages/${conversationId}/messages`);
       const q = query(messagesQueryRef, orderBy('timestamp', 'asc'));
@@ -289,7 +326,7 @@ export default function MessagesPage() {
     } else {
       setMessages([]);
     }
-  }, [conversationId, currentUser, toast]);
+  }, [conversationId, currentUser, otherUserId, dmPartnerProfile, toast, ensureConversationDocument]);
 
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -315,38 +352,6 @@ export default function MessagesPage() {
 
   const isGifFavorited = (gifId: string): boolean => !!favoritedGifs.find(fav => fav.id === gifId);
 
-  const ensureConversationDocument = async (): Promise<boolean> => {
-    if (!currentUser || !otherUserId || !conversationId) {
-        toast({ variant: "destructive", title: "Error", description: "User or conversation not identified." });
-        return false;
-    }
-    const convoDocRef = doc(db, `direct_messages/${conversationId}`);
-    try {
-        const convoSnap = await getDoc(convoDocRef);
-        if (!convoSnap.exists()) {
-            let participants = [currentUser.uid, otherUserId].sort();
-             if (currentUser.uid === otherUserId) { // Ensure "Saved Messages" self-chat has two participant entries
-                 participants = [currentUser.uid, currentUser.uid];
-             }
-
-            await setDoc(convoDocRef, {
-                participants: participants,
-                createdAt: serverTimestamp(),
-                lastMessageTimestamp: serverTimestamp(),
-                [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-                [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
-                [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"),
-                [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || (otherUserId === currentUser.uid ? currentUser.photoURL : null),
-            });
-        }
-        return true;
-    } catch (error) {
-        console.error("Error ensuring conversation document:", error);
-        toast({ variant: "destructive", title: "Conversation Error", description: "Could not initiate or verify conversation." });
-        return false;
-    }
-  };
-
 
   const handleSendMessage = async (e?: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLInputElement>) => {
     if (e && 'preventDefault' in e) e.preventDefault();
@@ -362,8 +367,7 @@ export default function MessagesPage() {
     while ((match = mentionRegex.exec(messageText)) !== null) {
       mentionedUserDisplayNames.push(match[1]);
     }
-    // In a real app, resolve display names to UIDs here for messageData.mentionedUserIds
-    const resolvedMentionedUserIds = mentionedUserDisplayNames; // Placeholder
+    const resolvedMentionedUserIds = mentionedUserDisplayNames; 
 
     const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
@@ -373,7 +377,6 @@ export default function MessagesPage() {
       type: 'text' as const,
       text: messageText,
     };
-    // Fields to omit if not applicable
     if (resolvedMentionedUserIds.length > 0) messageData.mentionedUserIds = resolvedMentionedUserIds;
     if (replyingToMessage) {
         messageData.replyToMessageId = replyingToMessage.id;
@@ -681,7 +684,7 @@ export default function MessagesPage() {
     try {
         const savedMessagesConvoSnap = await getDoc(savedMessagesConvoDocRef);
         if (!savedMessagesConvoSnap.exists()) {
-            const participants = [currentUser.uid, currentUser.uid]; // Ensure Saved Messages has two participant entries
+            const participants = [currentUser.uid, currentUser.uid]; 
             await setDoc(savedMessagesConvoDocRef, {
                 participants: participants,
                 createdAt: serverTimestamp(),
@@ -1108,7 +1111,7 @@ export default function MessagesPage() {
         {selectedConversation && otherUserId && conversationId ? (
           <>
             <div className="p-3 border-b border-border/40 shadow-sm flex items-center justify-between shrink-0">
-              <div className="flex items-center min-w-0"> {/* Added min-w-0 for better truncation */}
+              <div className="flex items-center min-w-0"> 
                  <Avatar className="h-7 w-7 sm:h-8 sm:w-8 mr-2 sm:mr-3">
                     <AvatarImage src={selectedConversation.avatarUrl || dmPartnerProfile?.photoURL || undefined} alt={otherUserName || ''} data-ai-hint={selectedConversation.dataAiHint}/>
                     <AvatarFallback>{(otherUserName || 'U').substring(0,1)}</AvatarFallback>
@@ -1275,7 +1278,7 @@ export default function MessagesPage() {
                             </div>
                         )}
                         {msg.isForwarded && msg.forwardedFromSenderName && (
-                          <div className={cn("text-xs text-muted-foreground italic mb-0.5 flex items-center text-left", isCurrentUserMsg ? "justify-start" : "justify-start")}> {/* Ensure left align for forwarded text too */}
+                          <div className={cn("text-xs text-muted-foreground italic mb-0.5 flex items-center text-left", isCurrentUserMsg ? "justify-start" : "justify-start")}>
                             <Share2 className="h-3 w-3 mr-1.5 text-muted-foreground/80" />
                             Forwarded from {msg.forwardedFromSenderName}
                           </div>
@@ -1616,3 +1619,5 @@ export default function MessagesPage() {
     </div>
   );
 }
+
+    
