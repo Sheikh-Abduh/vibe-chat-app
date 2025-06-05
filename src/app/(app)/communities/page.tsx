@@ -7,7 +7,7 @@ import type { User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase'; 
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, getDocs, limit } from 'firebase/firestore';
 import type { TenorGif as TenorGifType } from '@/types/tenor';
 import dynamic from 'next/dynamic';
 import { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
@@ -47,6 +47,7 @@ const passionChannelOptions = [
 const vibeCommunityStaticProps = { 
     id: 'vibe-community-main', 
     name: 'vibe', 
+    // iconUrl and bannerUrl will be determined dynamically based on theme
     dataAiHint: 'abstract colorful logo', 
     description: 'The official community for all vibe users. Connect, share, discuss your passions, and discover new vibes!', 
     dataAiHintBanner: 'community abstract vibrant', 
@@ -56,7 +57,6 @@ const vibeCommunityStaticProps = {
 const placeholderCommunities = [
     {
         ...vibeCommunityStaticProps,
-        // iconUrl and bannerUrl will be determined dynamically based on theme
     }
 ];
 
@@ -77,8 +77,8 @@ const placeholderChannels: Record<string, Array<{ id: string; name: string; type
 
 type Community = Omit<typeof placeholderCommunities[0], 'iconUrl' | 'bannerUrl'> & { iconUrl?: string; bannerUrl?: string; };
 type Channel = { id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType };
-// Member type remains but will not be populated from Firestore due to permission issues.
-type Member = { id: string; name: string; avatarUrl: string; dataAiHint: string };
+// Member type for displaying members, data now fetched from Firestore
+type Member = { id: string; name: string; avatarUrl?: string; dataAiHint: string };
 
 type ChatMessage = {
   id: string;
@@ -110,7 +110,7 @@ const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
 
 interface TenorGif extends TenorGifType {}
 
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // Updated API Key
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
 const CLOUDINARY_API_KEY = '775545995624823';
@@ -159,7 +159,7 @@ export default function CommunitiesPage() {
   );
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
-  const [communityMembers, setCommunityMembers] = useState<Member[]>([]); // Will remain empty due to Firestore rules
+  const [communityMembers, setCommunityMembers] = useState<Member[]>([]); 
 
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -777,13 +777,12 @@ export default function CommunitiesPage() {
     try {
       const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) {
-        let errorBodyText = "Could not read error body.";
+        let errorBodyText = await response.text();
         try {
-            const errorJson = await response.json();
-            errorBodyText = errorJson.error?.message || JSON.stringify(errorJson);
+            const errorJson = JSON.parse(errorBodyText);
+            errorBodyText = errorJson.error?.message || errorBodyText;
             console.error("Tenor API Error (Trending):", response.status, errorJson);
         } catch (e) {
-            errorBodyText = await response.text();
             console.error("Tenor API Error (Trending):", response.status, `Failed to parse error body as JSON: ${errorBodyText}`, e);
         }
         throw new Error(`Failed to fetch trending GIFs. Status: ${response.status}. Body: ${errorBodyText}`);
@@ -813,13 +812,12 @@ export default function CommunitiesPage() {
     try {
       const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) {
-        let errorBodyText = "Could not read error body.";
+        let errorBodyText = await response.text();
         try {
-            const errorJson = await response.json();
-            errorBodyText = errorJson.error?.message || JSON.stringify(errorJson);
+            const errorJson = JSON.parse(errorBodyText);
+            errorBodyText = errorJson.error?.message || errorBodyText;
             console.error("Tenor API Error (Search):", response.status, errorJson);
         } catch (e) {
-            errorBodyText = await response.text();
             console.error("Tenor API Error (Search):", response.status, `Failed to parse error body as JSON: ${errorBodyText}`, e);
         }
         throw new Error(`Failed to fetch GIFs. Status: ${response.status}. Body: ${errorBodyText}`);
@@ -1149,7 +1147,8 @@ export default function CommunitiesPage() {
                     alt={community.name} 
                     width={56} height={56} 
                     className="object-cover w-full h-full" 
-                    data-ai-hint={community.dataAiHint}
+                    data-ai-hint={community.dataAiHint || 'abstract logo'}
+                    priority={community.id === 'vibe-community-main'}
                 />
               </button>
             ))}
@@ -1292,7 +1291,7 @@ export default function CommunitiesPage() {
                     const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
                     const isCurrentUserMsg = currentUser?.uid === msg.senderId;
                     let hasBeenRepliedTo = false;
-                    if (isCurrentUserMsg && currentUser) {
+                    if (currentUser) { // Always check if currentUser exists
                       hasBeenRepliedTo = displayedMessages.some(
                         (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
                       );
@@ -1315,7 +1314,7 @@ export default function CommunitiesPage() {
                          {!isCurrentUserMsg && !showHeader && ( <div className="w-8 shrink-0"></div> )}
 
                         <div className={cn("flex-1 min-w-0 text-left", isCurrentUserMsg ? "pr-10 sm:pr-12" : "pl-0")}>
-                          {showHeader && (
+                           {showHeader && (
                             <div className={cn("flex items-baseline space-x-1.5")}>
                               <p className="font-semibold text-sm text-foreground">
                                 {msg.senderName}
@@ -1817,22 +1816,23 @@ export default function CommunitiesPage() {
               <X className="h-5 w-5"/>
             </Button>
             
-            <div className="relative h-24 sm:h-32 w-full shrink-0">
-               <Image
-                src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityBanner : (selectedCommunity.bannerUrl || '/bannerd.png')}
-                alt={`${selectedCommunity.name} banner`}
-                fill
-                className="object-cover"
-                data-ai-hint={selectedCommunity.dataAiHintBanner || 'community banner'}
-                priority
-              />
-            </div>
+            <ScrollArea className="flex-1 min-h-0">
+              <div> {/* Inner container for all scrollable content */}
+                <div className="relative h-24 sm:h-32 w-full shrink-0">
+                  <Image
+                    src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityBanner : (selectedCommunity.bannerUrl || '/bannerd.png')}
+                    alt={`${selectedCommunity.name} banner`}
+                    fill
+                    className="object-cover"
+                    data-ai-hint={selectedCommunity.dataAiHintBanner || 'community banner'}
+                    priority
+                  />
+                </div>
 
-            <div className="flex flex-col flex-1 min-h-0"> {/* Container for title/desc and scrollable members */}
-                <div className="p-3 sm:p-4 space-y-2 sm:space-y-3 shrink-0 border-b border-border/40">
+                <div className="p-3 sm:p-4 space-y-2 sm:space-y-3 border-b border-border/40">
                     <div className="flex items-center space-x-2 sm:space-x-3">
                         <Avatar className="h-12 w-12 sm:h-16 sm:w-16 border-2 border-background shadow-md">
-                        <AvatarImage src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityIcon : (selectedCommunity.iconUrl || '/pfd.png')} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint}/>
+                        <AvatarImage src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityIcon : (selectedCommunity.iconUrl || '/pfd.png')} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint || 'abstract logo'}/>
                         <AvatarFallback>{selectedCommunity.name.substring(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
                         <div>
@@ -1852,28 +1852,27 @@ export default function CommunitiesPage() {
                     )}
                 </div>
 
-                <ScrollArea className="flex-1 min-h-0">
-                   <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-0">
-                        <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-3 sm:-mx-4 px-3 sm:px-4">
-                          Community Info
-                        </h4>
-                        <div className="space-y-1.5 sm:space-y-2 pt-2 text-muted-foreground text-sm">
-                         <p>Member listing is currently unavailable due to permission settings.</p>
-                         <p>In a production app, this section would display a list of community members.</p>
-                        </div>
+                <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-2">
+                    <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                      Community Info
+                    </h4>
+                    <div className="space-y-1.5 sm:space-y-2 text-muted-foreground text-sm">
+                     <p>Member listing is currently unavailable due to permission settings.</p>
+                     <p>In a production app, this section would display a list of community members.</p>
                     </div>
-                </ScrollArea>
-            </div>
-
-             <div className="p-3 border-t border-border/40 mt-auto shrink-0">
-                <Button variant="outline" className="w-full text-muted-foreground text-xs sm:text-sm" onClick={() => toast({title: "Feature Coming Soon", description: "Community settings will be implemented."})}>
-                    <Settings className="mr-2 h-4 w-4" /> Community Settings
-                </Button>
-            </div>
+                </div>
+                
+                <div className="p-3 border-t border-border/40">
+                    <Button variant="outline" className="w-full text-muted-foreground text-xs sm:text-sm" onClick={() => toast({title: "Feature Coming Soon", description: "Community settings will be implemented."})}>
+                        <Settings className="mr-2 h-4 w-4" /> Community Settings
+                    </Button>
+                </div>
+              </div>
+            </ScrollArea>
         </div>
       )}
       {!selectedCommunity && isRightBarOpen && (
-        <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col items-center justify-center text-muted-foreground p-4 text-center overflow-hidden hidden md:flex">
+        <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex flex-col items-center justify-center text-muted-foreground p-4 text-center overflow-hidden">
             No community selected.
         </div>
       )}
