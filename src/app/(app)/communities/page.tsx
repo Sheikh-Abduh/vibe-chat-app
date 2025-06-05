@@ -4,10 +4,10 @@
 import React, { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
 import Image from 'next/image';
 import type { User } from 'firebase/auth';
-import { auth, db } from '@/lib/firebase'; // Ensure db is imported
+import { auth, db } from '@/lib/firebase'; 
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, getDocs, limit } from 'firebase/firestore';
 import type { TenorGif as TenorGifType } from '@/types/tenor';
 import dynamic from 'next/dynamic';
 import { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
@@ -16,7 +16,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -45,8 +44,7 @@ const passionChannelOptions = [
   { value: "other_hobbies", label: "Other Hobbies", icon: Hash },
 ];
 
-const placeholderCommunities = [
-  { 
+const vibeCommunity = { 
     id: 'vibe-community-main', 
     name: 'vibe', 
     iconUrl: 'https://placehold.co/64x64.png', 
@@ -55,15 +53,16 @@ const placeholderCommunities = [
     bannerUrl: 'https://placehold.co/600x200.png', 
     dataAiHintBanner: 'community abstract vibrant', 
     tags: ['General', 'Announcements', ...passionChannelOptions.map(p => p.label)] 
-  },
-];
+  };
+
+const placeholderCommunities = [vibeCommunity];
 
 const placeholderChannels: Record<string, Array<{ id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType }>> = {
   'vibe-community-main': [
     { id: 'vibe-general', name: 'general-chat', type: 'text', icon: Hash },
     { id: 'vibe-announcements', name: 'announcements', type: 'text', icon: ShieldCheck },
     ...passionChannelOptions.map((p, idx) => ({
-      id: `vibe-passion-${idx}`,
+      id: `vibe-passion-${p.value}`,
       name: p.label.toLowerCase().replace(/\s&?\s/g, '-').replace(/[^a-z0-9-]/g, ''),
       type: 'text' as 'text',
       icon: p.icon || Hash
@@ -73,26 +72,9 @@ const placeholderChannels: Record<string, Array<{ id: string; name: string; type
   ],
 };
 
-const placeholderMembers: Record<string, Array<{ id: string; name: string; avatarUrl: string; dataAiHint: string }>> = {
-  'vibe-community-main': [
-    { id: 'vibester1', name: 'AlexV', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man smiling' },
-    { id: 'vibester2', name: 'BriC', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman glasses' },
-    { id: 'vibester3', name: 'CaseyM', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person neutral' },
-    { id: 'vibester4', name: 'DevD', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man tech' },
-    { id: 'vibester5', name: 'EliF', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman nature' },
-    { id: 'vibester6', name: 'FrankieG', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person abstract' },
-    { id: 'vibester7', name: 'GiaH', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman colorful' },
-    { id: 'vibester8', name: 'HenryI', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man outdoor' },
-    { id: 'vibester9', name: 'IslaJ', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman thinking' },
-    { id: 'vibester10', name: 'JackK', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man happy' },
-    { id: 'vibester11', name: 'KaraL', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman artistic' },
-    { id: 'vibester12', name: 'LeoN', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man creative' },
-  ],
-};
-
 type Community = typeof placeholderCommunities[0];
 type Channel = { id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType };
-type Member = typeof placeholderMembers['vibe-community-main'][0];
+type Member = { id: string; name: string; avatarUrl: string; dataAiHint: string };
 
 type ChatMessage = {
   id: string;
@@ -106,18 +88,18 @@ type ChatMessage = {
   fileName?: string;
   fileType?: string;
   gifUrl?: string;
-  gifId?: string; // For favoriting
-  gifTinyUrl?: string; // For favoriting
-  gifContentDescription?: string; // For favoriting & alt text
+  gifId?: string; 
+  gifTinyUrl?: string; 
+  gifContentDescription?: string; 
   isPinned?: boolean;
-  reactions?: Record<string, string[]>; // emoji: [userId1, userId2]
+  reactions?: Record<string, string[]>; 
   replyToMessageId?: string;
   replyToSenderName?: string;
   replyToSenderId?: string;
   replyToTextSnippet?: string;
   isForwarded?: boolean;
   forwardedFromSenderName?: string;
-  mentionedUserIds?: string[]; // For backend notification processing (currently stores @username strings)
+  mentionedUserIds?: string[]; 
 };
 
 const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
@@ -138,7 +120,7 @@ const ALLOWED_FILE_TYPES = [
   'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/aac',
 ];
 
-const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48"; // Your Agora App ID
+const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48";
 
 const formatChatMessage = (text?: string): string => {
   if (!text) return '';
@@ -173,6 +155,8 @@ export default function CommunitiesPage() {
   );
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
+  const [communityMembers, setCommunityMembers] = useState<Member[]>([]);
+
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -216,14 +200,12 @@ export default function CommunitiesPage() {
   const mentionSuggestionsRef = useRef<HTMLDivElement>(null);
   const [isJoiningVoice, setIsJoiningVoice] = useState(false);
 
-  // Agora state variables
   const agoraClientRef = useRef<IAgoraRTCClient | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<ILocalAudioTrack | null>(null);
   const [localVideoTrack, setLocalVideoTrack] = useState<ILocalVideoTrack | null>(null);
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
   const localVideoPlayerContainerRef = useRef<HTMLDivElement>(null);
   const remoteVideoPlayersContainerRef = useRef<HTMLDivElement>(null);
-
 
   useEffect(() => {
     if (currentUser && typeof window !== 'undefined') {
@@ -236,6 +218,39 @@ export default function CommunitiesPage() {
         }
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (selectedCommunity) {
+      const fetchMembers = async () => {
+        try {
+          const usersCollectionRef = collection(db, 'users');
+          // Fetching all users as members of the "vibe" community.
+          // In a real app with multiple communities, you'd have a proper members subcollection or an array of UIDs.
+          const q = query(usersCollectionRef, limit(30)); // Limiting for performance
+          const querySnapshot = await getDocs(q);
+          const fetchedMembers: Member[] = querySnapshot.docs.map(docSnap => {
+            const userData = docSnap.data();
+            return {
+              id: docSnap.id,
+              name: userData.profileDetails?.displayName || userData.email?.split('@')[0] || 'User',
+              avatarUrl: userData.profileDetails?.photoURL || `https://placehold.co/40x40.png?text=${(userData.profileDetails?.displayName || 'U').charAt(0).toUpperCase()}`,
+              dataAiHint: 'person face' // Generic hint for real users
+            };
+          });
+          setCommunityMembers(fetchedMembers);
+        } catch (error) {
+          console.error("Error fetching community members:", error);
+          toast({
+            variant: "destructive",
+            title: "Error Loading Members",
+            description: "Could not load community members.",
+          });
+          setCommunityMembers([]);
+        }
+      };
+      fetchMembers();
+    }
+  }, [selectedCommunity, toast]);
 
 
   const scrollToBottom = () => {
@@ -1096,8 +1111,7 @@ export default function CommunitiesPage() {
   };
 
   const currentChannels = selectedCommunity ? placeholderChannels[selectedCommunity.id] || [] : [];
-  const currentMembers = selectedCommunity ? placeholderMembers[selectedCommunity.id] || [] : [];
-
+  
   const userName = currentUser?.displayName || currentUser?.email?.split('@')[0] || "User";
   const userAvatar = currentUser?.photoURL;
 
@@ -1425,7 +1439,7 @@ export default function CommunitiesPage() {
                                                   "h-auto px-2 py-0.5 text-xs rounded-full bg-muted/50 hover:bg-muted/80 border-border/50",
                                                   currentUser && userIds.includes(currentUser.uid) && "bg-primary/20 border-primary text-primary hover:bg-primary/30"
                                               )}
-                                              title={userIds.map(uid => placeholderMembers[selectedCommunity?.id || '']?.find(m => m.id === uid)?.name || uid).join(', ')}
+                                              title={userIds.map(uid => communityMembers.find(m => m.id === uid)?.name || uid).join(', ')}
                                           >
                                               {emoji} <span className="ml-1 text-muted-foreground">{userIds.length}</span>
                                           </Button>
@@ -1575,8 +1589,8 @@ export default function CommunitiesPage() {
                             align="start"
                             avoidCollisions={false}
                         >
-                            {currentMembers.filter(member => member.name.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase())).length > 0 ? (
-                                currentMembers
+                            {communityMembers.filter(member => member.name.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase())).length > 0 ? (
+                                communityMembers
                                     .filter(member => member.name.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase()))
                                     .map(member => (
                                         <button
@@ -1588,7 +1602,7 @@ export default function CommunitiesPage() {
                                         </button>
                                 ))
                             ) : (
-                                <p className="p-2 text-xs text-muted-foreground">No members match. Search not available yet.</p>
+                                <p className="p-2 text-xs text-muted-foreground">No members match.</p>
                             )}
                         </PopoverContent>
                     </Popover>
@@ -1855,10 +1869,10 @@ export default function CommunitiesPage() {
                 <ScrollArea className="flex-1 min-h-0">
                    <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-0">
                         <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-3 sm:-mx-4 px-3 sm:px-4">
-                        Members ({currentMembers.length})
+                        Members ({communityMembers.length})
                         </h4>
                         <div className="space-y-1.5 sm:space-y-2 pt-2">
-                        {currentMembers.map((member) => (
+                        {communityMembers.map((member) => (
                             <div key={member.id} className="flex items-center space-x-2 p-1 sm:p-1.5 rounded-md hover:bg-muted/50">
                             <Avatar className="h-7 w-7 sm:h-8 sm:w-8">
                                 <AvatarImage src={member.avatarUrl} alt={member.name} data-ai-hint={member.dataAiHint}/>
