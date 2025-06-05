@@ -20,9 +20,11 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AuthFormWrapper } from "@/components/auth/auth-form-wrapper";
 import { Mail, LockKeyhole, User, Eye, EyeOff } from "lucide-react";
-import { auth } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
+import { createUserWithEmailAndPassword, onAuthStateChanged, updateProfile } from "firebase/auth";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import SplashScreenDisplay from "@/components/common/splash-screen-display";
+import type { UiScale } from '@/components/theme/theme-provider';
 
 const createAccountSchema = z.object({
   username: z.string().min(3, { message: "Username must be at least 3 characters." }),
@@ -46,12 +48,18 @@ export default function CreateAccountPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        const onboardingComplete = localStorage.getItem(`onboardingComplete_${user.uid}`);
-        if (onboardingComplete === 'true') {
-          router.replace('/dashboard'); 
-        } else {
+        // Check Firestore for onboarding complete as the source of truth
+        const userDocRef = doc(db, "users", user.uid);
+        getDoc(userDocRef).then(userDocSnap => {
+          if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
+            router.replace('/dashboard');
+          } else {
+            router.replace('/onboarding/avatar');
+          }
+        }).catch(() => {
+          // If error fetching doc, fallback or stay, here we go to onboarding
           router.replace('/onboarding/avatar');
-        }
+        });
       } else {
         setIsCheckingAuth(false);
       }
@@ -72,10 +80,64 @@ export default function CreateAccountPage() {
 
   const onSubmit = async (data: CreateAccountFormValues) => {
     try {
-      await createUserWithEmailAndPassword(auth, data.email, data.password);
-      // const user = userCredential.user;
-      // Optionally, update profile with username
-      // await updateProfile(user, { displayName: data.username });
+      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      const user = userCredential.user;
+
+      await updateProfile(user, { displayName: data.username });
+
+      const userDocRef = doc(db, "users", user.uid);
+
+      const defaultThemePrimaryValue = '289 85% 55%'; // Electric Purple (PRD)
+      const defaultThemePrimaryFgValue = '0 0% 100%';
+      const defaultThemeSecondaryValue = '110 100% 50%'; // Neon Green (PRD)
+      const defaultThemeSecondaryFgValue = '220 3% 10%';
+      const defaultUiScaleValue: UiScale = 'default';
+      const defaultThemeModeValue: 'light' | 'dark' = 'dark';
+
+      const initialAppSettings = {
+        onboardingComplete: false,
+        themeMode: defaultThemeModeValue,
+        themePrimaryAccent: defaultThemePrimaryValue,
+        themePrimaryAccentFg: defaultThemePrimaryFgValue,
+        themeSecondaryAccent: defaultThemeSecondaryValue,
+        themeSecondaryAccentFg: defaultThemeSecondaryFgValue,
+        uiScale: defaultUiScaleValue,
+        communityJoinPreference: 'no',
+      };
+
+      const initialProfileDetails = {
+        displayName: data.username,
+        photoURL: user.photoURL || null,
+        aboutMe: "Tell us about yourself...",
+        status: "What's on your mind?",
+        hobbies: "Not set",
+        age: "Not set",
+        gender: "Not set",
+        tags: "Not set",
+        passion: "Not set",
+      };
+
+      const initialAdvancedSettings = {
+        dmPreference: "anyone",
+        profileVisibility: "public",
+      };
+      
+      const contentNotificationSettingsKeys = ['messages_enabled', 'friendRequests_enabled', 'messageRequests_enabled', 'communityInvites_enabled'];
+      const deliveryMethodSettingsKeys = ['delivery_email_enabled', 'delivery_push_enabled', 'delivery_inApp_enabled', 'delivery_notificationCentre_enabled'];
+      const initialNotificationSettings: Record<string, boolean> = {};
+      [...contentNotificationSettingsKeys, ...deliveryMethodSettingsKeys].forEach(key => {
+        initialNotificationSettings[key] = true;
+      });
+
+      await setDoc(userDocRef, {
+        uid: user.uid,
+        email: user.email,
+        createdAt: serverTimestamp(),
+        profileDetails: initialProfileDetails,
+        appSettings: initialAppSettings,
+        advancedSettings: initialAdvancedSettings,
+        notificationSettings: initialNotificationSettings,
+      });
       
       toast({
         title: "Account Created Successfully!",
@@ -89,12 +151,15 @@ export default function CreateAccountPage() {
         switch (error.code) {
           case 'auth/email-already-in-use':
             errorMessage = "This email address is already registered. Try logging in.";
+            form.setError("email", { type: "manual", message: errorMessage });
             break;
           case 'auth/invalid-email':
             errorMessage = "The email address you entered is not valid.";
+            form.setError("email", { type: "manual", message: errorMessage });
             break;
           case 'auth/weak-password':
             errorMessage = "Your password is too weak. Please choose a stronger one (at least 7 characters).";
+            form.setError("password", { type: "manual", message: errorMessage });
             break;
           default:
             errorMessage = "Account creation failed. Please try again.";

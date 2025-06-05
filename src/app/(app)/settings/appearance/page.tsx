@@ -27,13 +27,14 @@ interface AccentColorOption {
 }
 
 const accentOptions: AccentColorOption[] = [
-  { name: 'Neon Purple', value: '289 85% 45%', foreground: '0 0% 100%', className: 'bg-[hsl(289_85%_45%)]' },
+  { name: 'Neon Purple', value: '289 85% 55%', foreground: '0 0% 100%', className: 'bg-[hsl(289_85%_55%)]' }, // PRD Primary
+  { name: 'Neon Green', value: '110 100% 50%', foreground: '220 3% 10%', className: 'bg-[hsl(110_100%_50%)]' }, // PRD Accent
   { name: 'Crimson Red', value: '348 83% 47%', foreground: '0 0% 100%', className: 'bg-[hsl(348_83%_47%)]' },
   { name: 'Electric Blue', value: '217 91% 59%', foreground: '0 0% 100%', className: 'bg-[hsl(217_91%_59%)]' },
   { name: 'Sunny Yellow', value: '45 100% 51%', foreground: '220 3% 10%', className: 'bg-[hsl(45_100%_51%)]' },
   { name: 'Emerald Green', value: '145 63% 42%', foreground: '0 0% 100%', className: 'bg-[hsl(145_63%_42%)]' },
   { name: 'Vibrant Orange', value: '24 95% 53%', foreground: '0 0% 100%', className: 'bg-[hsl(24_95%_53%)]'},
-  { name: 'Forest Green', value: '127 100% 43%', foreground: '220 3% 10%', className: 'bg-[hsl(127_100%_43%)]' },
+  // Forest Green was here, can be re-added if needed for more options. The PRD defines primary and accent, which are Neon Purple and Neon Green.
 ];
 
 const uiScaleOptions: { label: string; value: UiScale }[] = [
@@ -59,10 +60,13 @@ const defaultLightVars = {
   '--border': '0 0% 85%', '--input': '0 0% 92%',
 };
 
+const prdPrimary = accentOptions.find(opt => opt.value === '289 85% 55%')!;
+const prdAccent = accentOptions.find(opt => opt.value === '110 100% 50%')!;
+
 const appDefaultTheme = {
     mode: 'dark' as ThemeMode,
-    primary: accentOptions[0], // Neon Purple
-    secondary: accentOptions[6], // Forest Green
+    primary: prdPrimary,
+    secondary: prdAccent, // Using PRD Neon Green as the default secondary accent
     scale: 'default' as UiScale,
 };
 
@@ -193,7 +197,6 @@ export default function AppearanceSettingsPage() {
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        // Fetch existing appSettings to merge with
         const userDocSnap = await getDoc(userDocRef);
         let existingAppSettings: Partial<UserAppSettings> = {};
         if (userDocSnap.exists() && userDocSnap.data().appSettings) {
@@ -201,8 +204,8 @@ export default function AppearanceSettingsPage() {
         }
         
         const updatedAppSettings: UserAppSettings = {
-            ...existingAppSettings, // Preserve existing settings like onboardingComplete
-            ...newAppSettings // Overwrite with new theme settings
+            ...existingAppSettings, 
+            ...newAppSettings 
         };
         
         await setDoc(userDocRef, { appSettings: updatedAppSettings }, { merge: true });
@@ -251,7 +254,6 @@ export default function AppearanceSettingsPage() {
 
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
-        // Fetch existing appSettings to merge with
         const userDocSnap = await getDoc(userDocRef);
         let existingAppSettings: Partial<UserAppSettings> = {};
         if (userDocSnap.exists() && userDocSnap.data().appSettings) {
@@ -259,8 +261,8 @@ export default function AppearanceSettingsPage() {
         }
         
         const updatedAppSettings: UserAppSettings = {
-            ...existingAppSettings, // Preserve existing settings like onboardingComplete
-            ...defaultSettings // Overwrite with new default theme settings
+            ...existingAppSettings, 
+            ...defaultSettings 
         };
 
         await setDoc(userDocRef, { appSettings: updatedAppSettings }, { merge: true });
@@ -472,4 +474,3 @@ export default function AppearanceSettingsPage() {
     </div>
   );
 }
-

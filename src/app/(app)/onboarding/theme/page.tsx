@@ -23,17 +23,17 @@ type ThemeMode = 'light' | 'dark';
 interface AccentColorOption {
   name: string;
   value: string;
-  foreground: string; // Standardized property name
+  foreground: string; 
   className: string;
 }
 
-// Ensure accentOptions here matches those in settings/appearance if they are meant to be identical
 const accentOptions: AccentColorOption[] = [
-  { name: 'Neon Purple', value: '289 85% 45%', foreground: '0 0% 100%', className: 'bg-[hsl(289_85%_45%)]' },
+  { name: 'Neon Purple', value: '289 85% 55%', foreground: '0 0% 100%', className: 'bg-[hsl(289_85%_55%)]' }, // Updated PRD Primary
+  { name: 'Neon Green', value: '110 100% 50%', foreground: '220 3% 10%', className: 'bg-[hsl(110_100%_50%)]' }, // Updated PRD Accent
   { name: 'Crimson Red', value: '348 83% 47%', foreground: '0 0% 100%', className: 'bg-[hsl(348_83%_47%)]' },
   { name: 'Electric Blue', value: '217 91% 59%', foreground: '0 0% 100%', className: 'bg-[hsl(217_91%_59%)]' },
   { name: 'Sunny Yellow', value: '45 100% 51%', foreground: '220 3% 10%', className: 'bg-[hsl(45_100%_51%)]' },
-  { name: 'Emerald Green', value: '145 63% 42%', foreground: '0 0% 100%', className: 'bg-[hsl(145_63%_42%)]' },
+  { name: 'Emerald Green', value: '145 63% 42%', foreground: '0 0% 100%', className: 'bg-[hsl(145_63%_42%)]' }, // Old default secondary for onboarding page
   { name: 'Vibrant Orange', value: '24 95% 53%', foreground: '0 0% 100%', className: 'bg-[hsl(24_95%_53%)]'}
 ];
 
@@ -56,10 +56,14 @@ const defaultLightVars = {
   '--border': '0 0% 85%', '--input': '0 0% 92%',
 };
 
+// PRD specified defaults
+const prdPrimaryAccent = accentOptions.find(opt => opt.value === '289 85% 55%')!; 
+const prdSecondaryAccent = accentOptions.find(opt => opt.value === '110 100% 50%')!;
+
 const defaultAppThemeForOnboarding = {
     mode: 'dark' as ThemeMode,
-    primary: accentOptions[0], // Neon Purple
-    secondary: accentOptions[4], // Emerald Green (as an example for the fixed secondary on this page)
+    primary: prdPrimaryAccent, 
+    secondary: prdSecondaryAccent, // Using PRD Neon Green for secondary accent preview consistency
     scale: 'default' as UiScale,
 };
 
@@ -119,7 +123,7 @@ export default function ThemeSelectionPage() {
   }, []);
 
 
-  const applyTheme = useCallback((mode: ThemeMode, accent: AccentColorOption) => {
+  const applyTheme = useCallback((mode: ThemeMode, primaryAccentChoice: AccentColorOption) => {
     if (typeof window !== 'undefined') {
       const root = document.documentElement;
       const themeVars = mode === 'dark' ? defaultDarkVars : defaultLightVars;
@@ -127,11 +131,11 @@ export default function ThemeSelectionPage() {
       for (const [key, value] of Object.entries(themeVars)) {
         root.style.setProperty(key, value);
       }
-      root.style.setProperty('--primary', accent.value);
-      root.style.setProperty('--primary-foreground', accent.foreground); // Use standardized 'foreground'
-      root.style.setProperty('--ring', accent.value);
+      root.style.setProperty('--primary', primaryAccentChoice.value);
+      root.style.setProperty('--primary-foreground', primaryAccentChoice.foreground); 
+      root.style.setProperty('--ring', primaryAccentChoice.value);
 
-      // Keep secondary accent fixed to the onboarding default for this specific page's live preview
+      // Keep secondary accent fixed to the PRD default for this specific page's live preview
       root.style.setProperty('--accent', defaultAppThemeForOnboarding.secondary.value);
       root.style.setProperty('--accent-foreground', defaultAppThemeForOnboarding.secondary.foreground);
     }
@@ -152,7 +156,7 @@ export default function ThemeSelectionPage() {
         if (userDocSnap.exists() && userDocSnap.data().appSettings?.onboardingComplete === true) {
           router.replace('/dashboard');
         } else {
-          if (initialMode && initialAccentValue) {
+          if (initialMode && initialAccentValue) { // Ensure initial theme values are read before hiding splash
             setIsCheckingAuth(false);
           }
         }
@@ -162,8 +166,8 @@ export default function ThemeSelectionPage() {
     });
     return () => unsubscribe();
   }, [router, initialMode, initialAccentValue]);
-
-  useEffect(() => {
+  
+  useEffect(() => { // Additional effect to ensure splash hides once all conditions met
     if (currentUser && initialMode && initialAccentValue) {
         setIsCheckingAuth(false);
     }
@@ -181,10 +185,10 @@ export default function ThemeSelectionPage() {
     const themeSettingsToSave: Partial<UserAppSettings> = {
       themeMode: selectedMode,
       themePrimaryAccent: selectedAccent.value,
-      themePrimaryAccentFg: selectedAccent.foreground, // Save standardized 'foreground'
-      themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value, // Save default secondary
-      themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.foreground, // Save default secondary foreground
-      uiScale: defaultAppThemeForOnboarding.scale, // Save default UI scale
+      themePrimaryAccentFg: selectedAccent.foreground,
+      themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value, 
+      themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.foreground,
+      uiScale: defaultAppThemeForOnboarding.scale, 
     };
 
     try {
@@ -226,22 +230,14 @@ export default function ThemeSelectionPage() {
       return;
     }
     setIsSubmitting(true);
+    
     // Apply application defaults before proceeding
-    if (initialMode && initialAccentValue && initialAccentFgValue) {
-        const initialAccent = accentOptions.find(opt => opt.value === initialAccentValue && opt.foreground === initialAccentFgValue);
-        if (initialAccent) {
-             applyTheme(initialMode, initialAccent);
-        } else {
-             applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
-        }
-    } else {
-         applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
-    }
+    applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
 
     const defaultSettingsToSave: Partial<UserAppSettings> = {
         themeMode: defaultAppThemeForOnboarding.mode,
         themePrimaryAccent: defaultAppThemeForOnboarding.primary.value,
-        themePrimaryAccentFg: defaultAppThemeForOnboarding.primary.foreground, // Save standardized 'foreground'
+        themePrimaryAccentFg: defaultAppThemeForOnboarding.primary.foreground,
         themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value,
         themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.foreground,
         uiScale: defaultAppThemeForOnboarding.scale,
@@ -278,37 +274,28 @@ export default function ThemeSelectionPage() {
   useEffect(() => {
     return () => {
       if (typeof window !== 'undefined' && initialMode && initialAccentValue && initialAccentFgValue && currentUser && !isSubmitting) {
-        // Only attempt to revert if not submitting and initial values were captured
         const userDocRef = doc(db, "users", currentUser.uid);
         getDoc(userDocRef).then(snap => {
+            let finalMode = initialMode;
+            let finalPrimaryValue = initialAccentValue;
+            let finalPrimaryFgValue = initialAccentFgValue;
+
             if (snap.exists() && snap.data().appSettings?.themePrimaryAccent) {
                  const savedSettings = snap.data().appSettings as UserAppSettings;
-                 const savedPrimary = accentOptions.find(opt => opt.value === savedSettings.themePrimaryAccent && opt.foreground === savedSettings.themePrimaryAccentFg);
-                 if(savedPrimary && savedSettings.themeMode) {
-                    applyTheme(savedSettings.themeMode, savedPrimary);
-                 } else {
-                    // Fallback if saved accent not found in options, apply initial page load theme
-                    const initialAccent = accentOptions.find(opt => opt.value === initialAccentValue && opt.foreground === initialAccentFgValue);
-                    if (initialAccent) applyTheme(initialMode, initialAccent);
-                 }
-            } else {
-                 // No saved settings or navigating away before save, revert to initial page load theme
-                const initialAccent = accentOptions.find(opt => opt.value === initialAccentValue && opt.foreground === initialAccentFgValue);
-                if (initialAccent) {
-                    applyTheme(initialMode, initialAccent);
-                } else {
-                    // Absolute fallback if something went wrong with initial values
-                    applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
-                }
+                 finalMode = savedSettings.themeMode || initialMode;
+                 finalPrimaryValue = savedSettings.themePrimaryAccent || initialAccentValue;
+                 finalPrimaryFgValue = savedSettings.themePrimaryAccentFg || initialAccentFgValue;
             }
+            
+            const finalPrimaryAccent = accentOptions.find(opt => opt.value === finalPrimaryValue && opt.foreground === finalPrimaryFgValue) || defaultAppThemeForOnboarding.primary;
+            applyTheme(finalMode, finalPrimaryAccent);
         });
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialMode, initialAccentValue, initialAccentFgValue, currentUser, isSubmitting]); // Removed applyTheme from dependencies
+  }, [initialMode, initialAccentValue, initialAccentFgValue, currentUser, isSubmitting, applyTheme]);
 
 
-  if (isCheckingAuth || !initialMode || !currentUser) { // Ensure currentUser is also checked for initial render
+  if (isCheckingAuth || !initialMode || !currentUser) { 
     return <SplashScreenDisplay />;
   }
 
@@ -369,7 +356,7 @@ export default function ThemeSelectionPage() {
                 <Label className="text-lg font-semibold text-foreground flex items-center">
                   <Palette className="mr-2 h-6 w-6 text-accent" /> Primary Accent Color
                 </Label>
-                <div className="grid grid-cols-3 sm:grid-cols-3 gap-3"> {/* Changed sm:grid-cols-4 to 3 for better fit */}
+                <div className="grid grid-cols-3 sm:grid-cols-3 gap-3">
                   {accentOptions.map((accent) => (
                     <Button
                       key={accent.name}
