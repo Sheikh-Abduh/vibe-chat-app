@@ -49,7 +49,7 @@ const vibeCommunity = {
     name: 'vibe', 
     iconUrl: 'https://placehold.co/64x64.png', 
     dataAiHint: 'abstract colorful logo', 
-    description: 'The official community for all vibe users. Connect, share, discuss your passions, and discover!', 
+    description: 'The official community for all vibe users. Connect, share, discuss your passions, and discover new vibes!', 
     bannerUrl: 'https://placehold.co/600x200.png', 
     dataAiHintBanner: 'community abstract vibrant', 
     tags: ['General', 'Announcements', ...passionChannelOptions.map(p => p.label)] 
@@ -61,7 +61,7 @@ const placeholderChannels: Record<string, Array<{ id: string; name: string; type
   'vibe-community-main': [
     { id: 'vibe-general', name: 'general-chat', type: 'text', icon: Hash },
     { id: 'vibe-announcements', name: 'announcements', type: 'text', icon: ShieldCheck },
-    ...passionChannelOptions.map((p, idx) => ({
+    ...passionChannelOptions.map((p) => ({
       id: `vibe-passion-${p.value}`,
       name: p.label.toLowerCase().replace(/\s&?\s/g, '-').replace(/[^a-z0-9-]/g, ''),
       type: 'text' as 'text',
@@ -1280,7 +1280,7 @@ export default function CommunitiesPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className={cn("text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9 md:hidden", isRightBarOpen && "bg-accent/20 text-accent")}
+                          className={cn("text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9", isRightBarOpen && "bg-accent/20 text-accent")}
                           onClick={() => setIsRightBarOpen(!isRightBarOpen)}
                           title={isRightBarOpen ? "Hide Server Info" : "Show Server Info"}
                         >
@@ -1820,7 +1820,7 @@ export default function CommunitiesPage() {
 
       {/* Column 4: Right-Hand Info Bar */}
       {isRightBarOpen && selectedCommunity && (
-        <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex-col overflow-hidden hidden md:flex relative"> 
+        <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden relative"> 
             <Button 
               variant="ghost" 
               size="icon" 
@@ -1831,6 +1831,7 @@ export default function CommunitiesPage() {
             >
               <X className="h-5 w-5"/>
             </Button>
+            
             <div className="relative h-24 sm:h-32 w-full shrink-0">
                <Image
                 src={selectedCommunity.bannerUrl}
@@ -1842,7 +1843,7 @@ export default function CommunitiesPage() {
               />
             </div>
 
-            <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex flex-col flex-1 min-h-0"> {/* Container for title/desc and scrollable members */}
                 <div className="p-3 sm:p-4 space-y-2 sm:space-y-3 shrink-0 border-b border-border/40">
                     <div className="flex items-center space-x-2 sm:space-x-3">
                         <Avatar className="h-12 w-12 sm:h-16 sm:w-16 border-2 border-background shadow-md">
@@ -1958,3 +1959,4 @@ export default function CommunitiesPage() {
 }
 
     
+
