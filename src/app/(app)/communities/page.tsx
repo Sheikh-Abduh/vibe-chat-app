@@ -7,7 +7,7 @@ import type { User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase'; 
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, getDocs, limit } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction } from 'firebase/firestore';
 import type { TenorGif as TenorGifType } from '@/types/tenor';
 import dynamic from 'next/dynamic';
 import { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
@@ -44,18 +44,21 @@ const passionChannelOptions = [
   { value: "other_hobbies", label: "Other Hobbies", icon: Hash },
 ];
 
-const vibeCommunity = { 
+const vibeCommunityStaticProps = { 
     id: 'vibe-community-main', 
     name: 'vibe', 
-    iconUrl: 'https://placehold.co/64x64.png', 
     dataAiHint: 'abstract colorful logo', 
     description: 'The official community for all vibe users. Connect, share, discuss your passions, and discover new vibes!', 
-    bannerUrl: 'https://placehold.co/600x200.png', 
     dataAiHintBanner: 'community abstract vibrant', 
     tags: ['General', 'Announcements', ...passionChannelOptions.map(p => p.label)] 
-  };
+};
 
-const placeholderCommunities = [vibeCommunity];
+const placeholderCommunities = [
+    {
+        ...vibeCommunityStaticProps,
+        // iconUrl and bannerUrl will be determined dynamically based on theme
+    }
+];
 
 const placeholderChannels: Record<string, Array<{ id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType }>> = {
   'vibe-community-main': [
@@ -72,8 +75,9 @@ const placeholderChannels: Record<string, Array<{ id: string; name: string; type
   ],
 };
 
-type Community = typeof placeholderCommunities[0];
+type Community = Omit<typeof placeholderCommunities[0], 'iconUrl' | 'bannerUrl'> & { iconUrl?: string; bannerUrl?: string; };
 type Channel = { id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType };
+// Member type remains but will not be populated from Firestore due to permission issues.
 type Member = { id: string; name: string; avatarUrl: string; dataAiHint: string };
 
 type ChatMessage = {
@@ -155,7 +159,7 @@ export default function CommunitiesPage() {
   );
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
-  const [communityMembers, setCommunityMembers] = useState<Member[]>([]);
+  const [communityMembers, setCommunityMembers] = useState<Member[]>([]); // Will remain empty due to Firestore rules
 
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -211,46 +215,21 @@ export default function CommunitiesPage() {
     if (currentUser && typeof window !== 'undefined') {
         const modeFromStorage = localStorage.getItem(`appSettings_${currentUser.uid}`);
         if (modeFromStorage) {
-            const settings = JSON.parse(modeFromStorage);
-            setCurrentThemeMode(settings.themeMode || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+            try {
+              const settings = JSON.parse(modeFromStorage);
+              setCurrentThemeMode(settings.themeMode || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+            } catch (e) {
+                console.error("Error parsing theme from localStorage", e);
+                setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            }
         } else {
              setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         }
     }
   }, [currentUser]);
 
-  useEffect(() => {
-    if (selectedCommunity) {
-      const fetchMembers = async () => {
-        try {
-          const usersCollectionRef = collection(db, 'users');
-          // Fetching all users as members of the "vibe" community.
-          // In a real app with multiple communities, you'd have a proper members subcollection or an array of UIDs.
-          const q = query(usersCollectionRef, limit(30)); // Limiting for performance
-          const querySnapshot = await getDocs(q);
-          const fetchedMembers: Member[] = querySnapshot.docs.map(docSnap => {
-            const userData = docSnap.data();
-            return {
-              id: docSnap.id,
-              name: userData.profileDetails?.displayName || userData.email?.split('@')[0] || 'User',
-              avatarUrl: userData.profileDetails?.photoURL || `https://placehold.co/40x40.png?text=${(userData.profileDetails?.displayName || 'U').charAt(0).toUpperCase()}`,
-              dataAiHint: 'person face' // Generic hint for real users
-            };
-          });
-          setCommunityMembers(fetchedMembers);
-        } catch (error) {
-          console.error("Error fetching community members:", error);
-          toast({
-            variant: "destructive",
-            title: "Error Loading Members",
-            description: "Could not load community members.",
-          });
-          setCommunityMembers([]);
-        }
-      };
-      fetchMembers();
-    }
-  }, [selectedCommunity, toast]);
+  const dynamicVibeCommunityIcon = currentThemeMode === 'dark' ? '/pfd.png' : '/pfl.png';
+  const dynamicVibeCommunityBanner = currentThemeMode === 'dark' ? '/bannerd.png' : '/bannerl.png';
 
 
   const scrollToBottom = () => {
@@ -1165,7 +1144,13 @@ export default function CommunitiesPage() {
                 )}
                 title={community.name}
               >
-                <Image src={community.iconUrl} alt={community.name} width={56} height={56} className="object-cover w-full h-full" data-ai-hint={community.dataAiHint} />
+                <Image 
+                    src={community.id === 'vibe-community-main' ? dynamicVibeCommunityIcon : (community.iconUrl || '/pfd.png')} 
+                    alt={community.name} 
+                    width={56} height={56} 
+                    className="object-cover w-full h-full" 
+                    data-ai-hint={community.dataAiHint}
+                />
               </button>
             ))}
           </div>
@@ -1602,7 +1587,7 @@ export default function CommunitiesPage() {
                                         </button>
                                 ))
                             ) : (
-                                <p className="p-2 text-xs text-muted-foreground">No members match.</p>
+                                <p className="p-2 text-xs text-muted-foreground">No members match. (Member listing limited)</p>
                             )}
                         </PopoverContent>
                     </Popover>
@@ -1834,11 +1819,11 @@ export default function CommunitiesPage() {
             
             <div className="relative h-24 sm:h-32 w-full shrink-0">
                <Image
-                src={selectedCommunity.bannerUrl}
+                src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityBanner : (selectedCommunity.bannerUrl || '/bannerd.png')}
                 alt={`${selectedCommunity.name} banner`}
                 fill
                 className="object-cover"
-                data-ai-hint={selectedCommunity.dataAiHintBanner}
+                data-ai-hint={selectedCommunity.dataAiHintBanner || 'community banner'}
                 priority
               />
             </div>
@@ -1847,7 +1832,7 @@ export default function CommunitiesPage() {
                 <div className="p-3 sm:p-4 space-y-2 sm:space-y-3 shrink-0 border-b border-border/40">
                     <div className="flex items-center space-x-2 sm:space-x-3">
                         <Avatar className="h-12 w-12 sm:h-16 sm:w-16 border-2 border-background shadow-md">
-                        <AvatarImage src={selectedCommunity.iconUrl} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint}/>
+                        <AvatarImage src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityIcon : (selectedCommunity.iconUrl || '/pfd.png')} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint}/>
                         <AvatarFallback>{selectedCommunity.name.substring(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
                         <div>
@@ -1870,18 +1855,11 @@ export default function CommunitiesPage() {
                 <ScrollArea className="flex-1 min-h-0">
                    <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-0">
                         <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-2 z-10 border-b border-border/40 -mx-3 sm:-mx-4 px-3 sm:px-4">
-                        Members ({communityMembers.length})
+                          Community Info
                         </h4>
-                        <div className="space-y-1.5 sm:space-y-2 pt-2">
-                        {communityMembers.map((member) => (
-                            <div key={member.id} className="flex items-center space-x-2 p-1 sm:p-1.5 rounded-md hover:bg-muted/50">
-                            <Avatar className="h-7 w-7 sm:h-8 sm:w-8">
-                                <AvatarImage src={member.avatarUrl} alt={member.name} data-ai-hint={member.dataAiHint}/>
-                                <AvatarFallback>{member.name.substring(0, 1).toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <span className="text-xs sm:text-sm text-foreground truncate">{member.name}</span>
-                            </div>
-                        ))}
+                        <div className="space-y-1.5 sm:space-y-2 pt-2 text-muted-foreground text-sm">
+                         <p>Member listing is currently unavailable due to permission settings.</p>
+                         <p>In a production app, this section would display a list of community members.</p>
                         </div>
                     </div>
                 </ScrollArea>
@@ -1960,3 +1938,4 @@ export default function CommunitiesPage() {
 
     
 
+    

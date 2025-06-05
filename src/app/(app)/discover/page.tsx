@@ -1,32 +1,66 @@
 
 "use client";
 
+import React, { useState, useEffect } from 'react'; // Added useState, useEffect
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import { Globe, Users, PlusCircle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { auth } from '@/lib/firebase'; // Added auth import
+import type { User as FirebaseUser } from 'firebase/auth'; // Added FirebaseUser import
+
 
 // Updated to reflect the single 'vibe' community structure
-const placeholderCommunities = [
-  { 
+const vibeCommunityStaticDetails = { 
     id: 'vibe-community-main', 
     name: 'vibe', 
-    image: 'https://placehold.co/300x200.png', // Same as community icon/banner for consistency
     dataAiHint: 'abstract colorful logo', 
     description: 'The official community for all vibe users. Connect, share, discuss your passions, and discover!', 
-    members: 0 // Placeholder, ideally dynamically fetched
-  },
-];
+    membersText: "Many enthusiastic members" // Using static text
+  };
 
 export default function DiscoverPage() {
   const { toast } = useToast();
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null); // Added currentUser state
+  const [currentThemeMode, setCurrentThemeMode] = useState<'light' | 'dark'>('dark');
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(user => {
+        setCurrentUser(user); // Keep track of user for consistency, though not directly used for theme here yet
+        if (user && typeof window !== 'undefined') {
+            const modeFromStorage = localStorage.getItem(`appSettings_${user.uid}`);
+            if (modeFromStorage) {
+                 try {
+                    const settings = JSON.parse(modeFromStorage);
+                    setCurrentThemeMode(settings.themeMode || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+                } catch(e) {
+                    console.error("Error parsing theme from localStorage on discover", e);
+                    setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                }
+            } else {
+                 setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            }
+        } else if (!user) {
+            setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        }
+    });
+    return () => unsubscribe();
+  }, []);
+
 
   const handleMakeCommunity = () => {
     toast({
       title: "Coming Soon!",
       description: "The feature to create your own community is under development.",
     });
+  };
+  
+  const dynamicVibeCommunityImage = currentThemeMode === 'dark' ? '/bannerd.png' : '/bannerl.png'; // Using banner as main image
+
+  const displayCommunity = {
+    ...vibeCommunityStaticDetails,
+    image: dynamicVibeCommunityImage, // Set dynamically
   };
 
   return (
@@ -49,9 +83,9 @@ export default function DiscoverPage() {
           </Button>
         </div>
 
-        {placeholderCommunities.length > 0 ? (
+        {[displayCommunity].length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-            {placeholderCommunities.map((community) => (
+            {[displayCommunity].map((community) => (
               <Card key={community.id} className="bg-card border-border/50 shadow-lg hover:shadow-[0_0_15px_hsl(var(--primary)/0.3)] transition-shadow duration-300 flex flex-col">
                 <div className="relative w-full h-32 sm:h-40">
                   <Image
@@ -69,13 +103,12 @@ export default function DiscoverPage() {
                   <CardDescription className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{community.description}</CardDescription>
                   <p className="text-xs text-muted-foreground/80 mt-2 flex items-center">
                       <Users className="mr-1.5 h-3 w-3" />
-                      {/* In a real app, member count would be dynamic */}
-                      {(community.members > 0 ? community.members.toLocaleString() : 'Many enthusiastic')} members
+                      {community.membersText}
                   </p>
                 </CardContent>
                 <div className="p-3 sm:p-4 pt-0">
-                   <Button variant="outline" className="w-full group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.3)] hover:shadow-[0_0_10px_hsl(var(--accent)/0.5)] transition-all duration-300 text-xs sm:text-sm" disabled>
-                      View Community (Coming Soon)
+                   <Button variant="outline" className="w-full group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.3)] hover:shadow-[0_0_10px_hsl(var(--accent)/0.5)] transition-all duration-300 text-xs sm:text-sm" onClick={() => router.push('/communities')}>
+                      View Community
                    </Button>
                 </div>
               </Card>
