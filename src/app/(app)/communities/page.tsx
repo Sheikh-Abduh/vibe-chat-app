@@ -209,7 +209,7 @@ interface TenorGif extends TenorGifType {}
 // This key is included for prototyping purposes only.
 // For production, proxy requests through a backend (e.g., Firebase Cloud Function).
 const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
-const TENOR_CLIENT_KEY = "vibe_app_prototype"; // Replace with your actual client key if you have one
+const TENOR_CLIENT_KEY = "vibe_app_prototype"; // This might need to be a registered key for reliable API access.
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
 const CLOUDINARY_API_KEY = '775545995624823';
@@ -867,11 +867,18 @@ export default function CommunitiesPage() {
     }
     setLoadingGifs(true);
     try {
-      const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
+      const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) {
-        const errorBody = await response.text();
-        console.error("Tenor API Error (Trending):", response.status, errorBody);
-        throw new Error(`Failed to fetch trending GIFs. Status: ${response.status}. Body: ${errorBody}`);
+        let errorBodyText = "Could not read error body.";
+        try {
+            const errorJson = await response.json();
+            errorBodyText = errorJson.error?.message || JSON.stringify(errorJson);
+            console.error("Tenor API Error (Trending):", response.status, errorJson);
+        } catch (e) {
+            errorBodyText = await response.text();
+            console.error("Tenor API Error (Trending):", response.status, `Failed to parse error body as JSON: ${errorBodyText}`, e);
+        }
+        throw new Error(`Failed to fetch trending GIFs. Status: ${response.status}. Body: ${errorBodyText}`);
       }
       const data = await response.json();
       setGifs(data.results || []);
@@ -896,11 +903,18 @@ export default function CommunitiesPage() {
     }
     setLoadingGifs(true);
     try {
-      const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinygif,gif`);
+      const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&limit=20&media_filter=tinygif,gif`);
       if (!response.ok) {
-        const errorBody = await response.text();
-        console.error("Tenor API Error (Search):", response.status, errorBody);
-        throw new Error(`Failed to fetch GIFs. Status: ${response.status}. Body: ${errorBody}`);
+        let errorBodyText = "Could not read error body.";
+        try {
+            const errorJson = await response.json();
+            errorBodyText = errorJson.error?.message || JSON.stringify(errorJson);
+            console.error("Tenor API Error (Search):", response.status, errorJson);
+        } catch (e) {
+            errorBodyText = await response.text();
+            console.error("Tenor API Error (Search):", response.status, `Failed to parse error body as JSON: ${errorBodyText}`, e);
+        }
+        throw new Error(`Failed to fetch GIFs. Status: ${response.status}. Body: ${errorBodyText}`);
       }
       const data = await response.json();
       setGifs(data.results || []);
