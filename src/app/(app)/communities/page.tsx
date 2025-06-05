@@ -20,7 +20,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign } from 'lucide-react';
+import { ShieldCheck, Hash, Mic, Video, Users, Settings, UserCircle, MessageSquare, ChevronDown, Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign, Palette, MusicIcon, BookOpen, Code, Plane, Gamepad2, Bike, ChefHat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -32,91 +32,67 @@ const EmojiPicker = dynamic(() => import('emoji-picker-react'), {
   loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
 });
 
+const passionChannelOptions = [
+  { value: "art_design", label: "Art & Design", icon: Palette },
+  { value: "movies_tv", label: "Movies & TV", icon: Film },
+  { value: "music", label: "Music", icon: MusicIcon },
+  { value: "reading", label: "Reading", icon: BookOpen },
+  { value: "technology", label: "Technology", icon: Code },
+  { value: "travel", label: "Travel", icon: Plane },
+  { value: "gaming", label: "Gaming", icon: Gamepad2 },
+  { value: "sports_fitness", label: "Sports & Fitness", icon: Bike },
+  { value: "food_cooking", label: "Food & Cooking", icon: ChefHat },
+  { value: "other_hobbies", label: "Other Hobbies", icon: Hash },
+];
+
 const placeholderCommunities = [
-  { id: '1', name: 'Gamers Unite', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'controller abstract', description: 'A community for all things gaming, from retro to modern.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'gaming landscape', tags: ['Gaming', 'PC', 'Consoles', 'Retro', 'eSports'] },
-  { id: '2', name: 'Bookworms Corner', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'book open', description: 'Discuss your favorite books, authors, and genres.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'library shelf', tags: ['Books', 'Reading', 'Fiction', 'Non-Fiction', 'Literature'] },
-  { id: '3', name: 'Art Collective', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'palette brush', description: 'Share your art, get feedback, and collaborate.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'abstract paint', tags: ['Art', 'Design', 'Illustration', 'Digital Art', 'Painting'] },
-  { id: '4', name: 'Tech Hub', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'circuit board', description: 'For developers, enthusiasts, and tech news.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'futuristic city', tags: ['Technology', 'Software', 'Hardware', 'AI', 'Coding'] },
-  { id: '5', name: 'Musicians\' Hangout', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'guitar music', description: 'Collaborate, share music, and discuss gear.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'stage concert', tags: ['Music', 'Instruments', 'Production', 'Songwriting', 'Collaboration'] },
-  { id: '6', name: 'Coders\' Corner', iconUrl: 'https://placehold.co/64x64.png', dataAiHint: 'code screen', description: 'Talk code, share projects, and learn together.', bannerUrl: 'https://placehold.co/600x200.png', dataAiHintBanner: 'binary code', tags: ['Coding', 'WebDev', 'OpenSource', 'Software', 'Projects'] },
+  { 
+    id: 'vibe-community-main', 
+    name: 'vibe', 
+    iconUrl: 'https://placehold.co/64x64.png', 
+    dataAiHint: 'abstract colorful logo', 
+    description: 'The official community for all vibe users. Connect, share, discuss your passions, and discover!', 
+    bannerUrl: 'https://placehold.co/600x200.png', 
+    dataAiHintBanner: 'community abstract vibrant', 
+    tags: ['General', 'Announcements', ...passionChannelOptions.map(p => p.label)] 
+  },
 ];
 
 const placeholderChannels: Record<string, Array<{ id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType }>> = {
-  '1': [
-    { id: 'c1-1', name: 'general-chat', type: 'text', icon: Hash },
-    { id: 'c1-2', name: 'announcements', type: 'text', icon: ShieldCheck },
-    { id: 'c1-3', name: 'squad-voice', type: 'voice', icon: Mic },
-    { id: 'c1-4', name: 'game-night-stream', type: 'video', icon: Video },
-  ],
-  '2': [
-    { id: 'c2-1', name: 'book-discussions', type: 'text', icon: Hash },
-    { id: 'c2-2', name: 'reading-club-voice', type: 'voice', icon: Mic },
-  ],
-  '3': [
-    { id: 'c3-1', name: 'showcase', type: 'text', icon: Hash },
-    { id: 'c3-2', name: 'critique-corner', type: 'text', icon: Hash },
-    { id: 'c3-3', name: 'live-drawing-video', type: 'video', icon: Video },
-  ],
-  '4': [
-    { id: 'c4-1', name: 'dev-talk', type: 'text', icon: Hash },
-    { id: 'c4-2', name: 'code-help', type: 'text', icon: Hash },
-    { id: 'c4-3', name: 'tech-news-voice', type: 'voice', icon: Mic },
-  ],
-  '5': [
-    { id: 'c5-1', name: 'general-jam', type: 'text', icon: Hash },
-    { id: 'c5-2', name: 'gear-talk', type: 'text', icon: Hash },
-    { id: 'c5-3', name: 'collab-voice', type: 'voice', icon: Mic },
-    { id: 'c5-4', name: 'live-performance', type: 'video', icon: Video },
-  ],
-   '6': [
-    { id: 'c6-1', name: 'project-showcase', type: 'text', icon: Hash },
-    { id: 'c6-2', name: 'ask-for-help', type: 'text', icon: Hash },
-    { id: 'c6-3', name: 'pair-programming-voice', type: 'voice', icon: Mic },
+  'vibe-community-main': [
+    { id: 'vibe-general', name: 'general-chat', type: 'text', icon: Hash },
+    { id: 'vibe-announcements', name: 'announcements', type: 'text', icon: ShieldCheck },
+    ...passionChannelOptions.map((p, idx) => ({
+      id: `vibe-passion-${idx}`,
+      name: p.label.toLowerCase().replace(/\s&?\s/g, '-').replace(/[^a-z0-9-]/g, ''),
+      type: 'text' as 'text',
+      icon: p.icon || Hash
+    })),
+    { id: 'vibe-lounge-voice', name: 'lounge-voice', type: 'voice', icon: Mic },
+    { id: 'vibe-hangout-video', name: 'hangout-video', type: 'video', icon: Video },
   ],
 };
 
 const placeholderMembers: Record<string, Array<{ id: string; name: string; avatarUrl: string; dataAiHint: string }>> = {
-  '1': [
-    { id: 'm1', name: 'PlayerOne', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person cool' },
-    { id: 'm2', name: 'GamerGirl', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman gaming' },
-    { id: 'm3', name: 'RetroFan', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man pixel' },
-    { id: 'm1a', name: 'NoobSlayer', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'warrior helmet' },
-    { id: 'm1b', name: 'PixelWizard', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'wizard hat' },
-    { id: 'm1c', name: 'QuestQueen', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'queen crown' },
-  ],
-  '2': [
-    { id: 'm4', name: 'ReaderRiley', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person books' },
-    { id: 'm5', name: 'NovelNerd', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman library' },
-  ],
-   '3': [
-    { id: 'm6', name: 'ArtfulAlex', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'artist painting' },
-    { id: 'm7', name: 'CreativeCasey', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'designer thinking' },
-    { id: 'm7a', name: 'SketchySam', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person drawing' },
-  ],
-  '4': [
-    { id: 'm8', name: 'CodeWizard', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man code' },
-    { id: 'm9', name: 'TechieTom', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person computer' },
-  ],
-  '5': [
-    { id: 'm10', name: 'MusicMaestro', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'musician stage' },
-    { id: 'm11', name: 'BeatMaker', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'dj deck' },
-    { id: 'm12', name: 'SingerStar', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman microphone' },
-    { id: 'm12a', name: 'DrumDynamo', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'drummer silhouette' },
-    { id: 'm12b', name: 'GuitarHero', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'guitar fire' },
-    { id: 'm12c', name: 'BassBoss', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'bass player' },
-    { id: 'm12d', name: 'KeyboardKing', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'keyboard music' },
-    { id: 'm12e', name: 'VinylVictor', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'vinyl record' },
-  ],
-  '6': [
-    { id: 'm13', name: 'DevDynamo', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'coder focus' },
-    { id: 'm14', name: 'ScriptKid', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person laptop' },
-    { id: 'm14a', name: 'AlgorithmAna', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman tech' },
+  'vibe-community-main': [
+    { id: 'vibester1', name: 'AlexV', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man smiling' },
+    { id: 'vibester2', name: 'BriC', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman glasses' },
+    { id: 'vibester3', name: 'CaseyM', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person neutral' },
+    { id: 'vibester4', name: 'DevD', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man tech' },
+    { id: 'vibester5', name: 'EliF', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman nature' },
+    { id: 'vibester6', name: 'FrankieG', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'person abstract' },
+    { id: 'vibester7', name: 'GiaH', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman colorful' },
+    { id: 'vibester8', name: 'HenryI', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man outdoor' },
+    { id: 'vibester9', name: 'IslaJ', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman thinking' },
+    { id: 'vibester10', name: 'JackK', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man happy' },
+    { id: 'vibester11', name: 'KaraL', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'woman artistic' },
+    { id: 'vibester12', name: 'LeoN', avatarUrl: 'https://placehold.co/40x40.png', dataAiHint: 'man creative' },
   ],
 };
 
 type Community = typeof placeholderCommunities[0];
 type Channel = { id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType };
-type Member = typeof placeholderMembers['1'][0];
+type Member = typeof placeholderMembers['vibe-community-main'][0];
 
 type ChatMessage = {
   id: string;
@@ -144,72 +120,11 @@ type ChatMessage = {
   mentionedUserIds?: string[]; // For backend notification processing (currently stores @username strings)
 };
 
-/**
- * =============================================================================
- * CHAT FUNCTIONALITY GUIDE (Communities & Direct Messages)
- * =============================================================================
- * This app uses Firebase Firestore for real-time chat.
- *
- * 1. Backend Setup (Firebase Firestore):
- *    - Database Schema:
- *      - `/communities/{communityId}/channels/{channelId}/messages/{messageId}`
- *        Each message document includes fields defined in the `ChatMessage` type.
- *    - Firestore Security Rules: Crucial for access control. (See firestore.rules.md).
- *
- * 2. Real-time Message Listening (Frontend - Firebase SDK):
- *    - `onSnapshot` listener on `communities/.../messages` collection, ordered by `timestamp`.
- *    - Updates local `messages` state.
- *
- * 3. Sending Messages (Frontend - Firestore SDK):
- *    - `addDoc` creates new message documents. Uses `serverTimestamp()`.
- *    - Includes reply context (`replyTo...` fields) and basic mention strings.
- *
- * 4. File/Image Upload (Frontend - Cloudinary):
- *    - Uploads to Cloudinary (unsigned preset).
- *    - Message of type 'image' or 'file' created in Firestore with Cloudinary `secure_url`.
- *
- * 5. GIF Send (Frontend - Tenor API):
- *    - **SECURITY WARNING: TENOR API KEY IS CLIENT-SIDE (PROTOTYPE ONLY).** Proxy for production.
- *    - Fetches GIFs from Tenor. Message type 'gif' with URLs/metadata.
- *    - GIF favoriting uses `localStorage`.
- *
- * 6. Emoji Send (Frontend - `emoji-picker-react`):
- *    - `EmojiPicker` component for selecting and appending emojis to text input or for reactions.
- *
- * 7. Voice Message Send (Frontend - MediaRecorder & Cloudinary Upload):
- *    - Captures audio, uploads blob to Cloudinary (as 'video' resource type).
- *    - Message type 'voice_message' with Cloudinary `fileUrl`.
- *
- * 8. Message Features (Frontend - Firestore updates):
- *    - Delete: Deletes message doc (sender only).
- *    - Pin: Updates `isPinned` boolean on message doc.
- *    - Reactions: Updates `reactions` map on message doc using Firestore transaction.
- *
- * 9. UI/UX Enhancements:
- *    - Loading states, error toasts, timestamp grouping, pinned messages toggle, reply context, etc.
- *    - Client-side search (filters currently loaded messages).
- *    - Rudimentary @mention suggestions (from current community members).
- *    - Basic Markdown-style text formatting.
- *
- * 10. Voice & Video Channels (Agora Integration):
- *     - SDK: `agora-rtc-sdk-ng`. AGORA_APP_ID is set.
- *     - Token Generation: **NOT IMPLEMENTED (USING APP ID ONLY FOR TESTING - INSECURE FOR PRODUCTION)**.
- *       A backend token server is required for production Agora apps.
- *     - Channel Join/Leave: Logic for joining/leaving Agora channels.
- *     - Stream Publishing/Subscription: Handles local/remote audio/video tracks.
- *     - UI: Basic `<video>` elements for displaying streams.
- * =============================================================================
- */
-
 const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
 
 interface TenorGif extends TenorGifType {}
 
-// SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
-// This key is included for prototyping purposes only.
-// For production, proxy requests through a backend (e.g., Firebase Cloud Function).
 const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
-const TENOR_CLIENT_KEY = "vibe_app_prototype"; // This might need to be a registered key for reliable API access.
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
 const CLOUDINARY_API_KEY = '775545995624823';
@@ -223,7 +138,6 @@ const ALLOWED_FILE_TYPES = [
   'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/aac',
 ];
 
-// Agora Configuration
 const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48"; // Your Agora App ID
 
 const formatChatMessage = (text?: string): string => {
@@ -1401,7 +1315,7 @@ export default function CommunitiesPage() {
                         )}
                          {!isCurrentUserMsg && !showHeader && ( <div className="w-8 shrink-0"></div> )}
 
-                        <div className={cn("flex-1 min-w-0 text-left", isCurrentUserMsg ? "pr-10 sm:pr-12" : "pl-0", showHeader ? "" : (isCurrentUserMsg ? "" : ""))}>
+                        <div className={cn("flex-1 min-w-0 text-left", isCurrentUserMsg ? "pr-10 sm:pr-12" : "pl-0")}>
                           {showHeader && (
                             <div className={cn("flex items-baseline space-x-1.5")}>
                               <p className="font-semibold text-sm text-foreground">
@@ -1801,7 +1715,7 @@ export default function CommunitiesPage() {
                                                         alt={gif.content_description || "GIF"}
                                                         fill
                                                         sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
-                                                        className="object-cover transition-transform group-hover:scale-105"
+                                                        className="object-contain transition-transform group-hover:scale-105"
                                                         unoptimized
                                                     />
                                                 </button>
@@ -1841,7 +1755,7 @@ export default function CommunitiesPage() {
                                                     alt={gif.content_description || "GIF"}
                                                     fill
                                                     sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
-                                                    className="object-cover transition-transform group-hover:scale-105"
+                                                    className="object-contain transition-transform group-hover:scale-105"
                                                     unoptimized
                                                 />
                                             </button>
@@ -2028,3 +1942,5 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+
+    

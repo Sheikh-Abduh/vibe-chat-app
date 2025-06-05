@@ -52,13 +52,8 @@ const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
 interface TenorGif extends TenorGifType {}
 
 
-// SECURITY WARNING: DO NOT USE YOUR TENOR API KEY DIRECTLY IN PRODUCTION CLIENT-SIDE CODE.
-// This key is included for prototyping purposes only.
-// For production, proxy requests through a backend (e.g., Firebase Cloud Function).
 const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
-const TENOR_CLIENT_KEY = "vibe_app_prototype"; // This might need to be a registered key for reliable API access.
 
-// Agora Configuration
 const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48";
 
 
@@ -121,7 +116,7 @@ const formatChatMessage = (text?: string): string => {
 
 export default function MessagesPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(isCheckingAuth);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const { toast } = useToast();
   const router = useRouter();
 
@@ -236,8 +231,6 @@ export default function MessagesPage() {
 
   const ensureConversationDocument = useCallback(async (): Promise<boolean> => {
     if (!currentUser || !otherUserId || !conversationId) {
-        // Don't toast here, might be called preemptively
-        // toast({ variant: "destructive", title: "Error", description: "User or conversation not identified for ensuring doc." });
         return false;
     }
     const convoDocRef = doc(db, `direct_messages/${conversationId}`);
@@ -1268,7 +1261,7 @@ export default function MessagesPage() {
                       )}
                        {!isCurrentUserMsg && !showHeader && ( <div className="w-8 shrink-0"></div> )}
 
-                      <div className={cn("flex-1 min-w-0 text-left", isCurrentUserMsg ? "pr-10 sm:pr-12" : "pl-0", showHeader ? "" : (isCurrentUserMsg ? "" : ""))}>
+                      <div className={cn("flex-1 min-w-0 text-left", isCurrentUserMsg ? "pr-10 sm:pr-12" : "pl-0")}>
                         {showHeader && (
                           <div className={cn("flex items-baseline space-x-1.5")}>
                             <p className="font-semibold text-sm text-foreground">{msg.senderName}</p>
@@ -1486,7 +1479,7 @@ export default function MessagesPage() {
                     <DialogContent className="sm:max-w-[425px] md:max-w-[600px] lg:max-w-[800px] h-[70vh] flex flex-col">
                         <DialogHeader><DialogTitle>Send a GIF</DialogTitle><DialogDescription>Search Tenor or browse favorites. <span className="block text-xs text-destructive/80 mt-1">SECURITY WARNING: Tenor API key is client-side.</span></DialogDescription></DialogHeader>
                         <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="mt-2 flex-1 flex flex-col min-h-0">
-                            <TabsList className="grid w-full grid-cols-2 shrink-0"><TabsTrigger value="search">Search</TabsTrigger><TabsTrigger value="favorites">Favorites</TabsTrigger></TabsList>
+                            <TabsList className="grid w-full grid-cols-2 shrink-0"><TabsTrigger value="search">Search/Trending</TabsTrigger><TabsTrigger value="favorites">Favorites</TabsTrigger></TabsList>
                             <TabsContent value="search" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2">
                                 <Input type="text" placeholder="Search Tenor GIFs..." value={gifSearchTerm} onChange={handleGifSearchChange} className="my-2 shrink-0"/>
                                 <ScrollArea className="flex-1 min-h-0">
@@ -1494,7 +1487,7 @@ export default function MessagesPage() {
                                     {loadingGifs ? <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                                         : gifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                         {gifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
-                                            <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, 33vw" className="object-cover group-hover:scale-105" unoptimized/></button>
+                                            <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw" className="object-contain transition-transform group-hover:scale-105" unoptimized/></button>
                                             <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleToggleFavoriteGif(gif)} title={isGifFavorited(gif.id) ? "Unfavorite" : "Favorite"}><Star className={cn("h-4 w-4", isGifFavorited(gif.id) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/></Button>
                                         </div>))}</div>)
                                         : <p className="text-center text-muted-foreground py-4">{gifSearchTerm ? "No GIFs found." : "No trending GIFs."}</p>}
@@ -1506,7 +1499,7 @@ export default function MessagesPage() {
                                     <div className="p-1">
                                     {favoritedGifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                         {favoritedGifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
-                                        <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, 33vw" className="object-cover group-hover:scale-105" unoptimized/></button>
+                                        <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw" className="object-contain transition-transform group-hover:scale-105" unoptimized/></button>
                                         <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleToggleFavoriteGif(gif)} title="Unfavorite"><Star className="h-4 w-4 fill-yellow-400 text-yellow-400"/></Button>
                                         </div>))}</div>)
                                         : <p className="text-center text-muted-foreground py-4">No favorited GIFs.</p>}
@@ -1633,3 +1626,5 @@ export default function MessagesPage() {
     </div>
   );
 }
+
+    
