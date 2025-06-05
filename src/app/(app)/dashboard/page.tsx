@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation'; // Import useRouter
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import Image from "next/image";
 import { Heart, Users, Loader2 } from 'lucide-react';
@@ -30,6 +31,7 @@ interface SuggestedPerson { // This interface can be removed if the feature is f
 }
 
 export default function DashboardPage() {
+  const router = useRouter(); // Initialize router
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   // const [suggestedPeople, setSuggestedPeople] = useState<SuggestedPerson[]>([]); // No longer fetching suggested people
@@ -137,5 +139,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    
