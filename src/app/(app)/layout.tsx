@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { onAuthStateChanged, signOut as firebaseSignOut, type User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -66,9 +66,10 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userStoredDetails, setUserStoredDetails] = useState<UserStoredDetails | null>(null);
+  const [unreadActivityCount, setUnreadActivityCount] = useState(0);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
         const userDocRef = doc(db, "users", user.uid);
@@ -112,8 +113,26 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         router.replace('/login');
       }
     });
-    return () => unsubscribe();
+    return () => unsubscribeAuth();
   }, [router, pathname]);
+
+  useEffect(() => {
+    if (currentUser) {
+      const activityItemsRef = collection(db, `users/${currentUser.uid}/activityItems`);
+      const q = query(activityItemsRef, where("isRead", "==", false));
+      
+      const unsubscribeFirestore = onSnapshot(q, (querySnapshot) => {
+        setUnreadActivityCount(querySnapshot.size);
+      }, (error) => {
+        console.error("Error fetching unread activity count: ", error);
+        setUnreadActivityCount(0);
+      });
+      
+      return () => unsubscribeFirestore();
+    } else {
+      setUnreadActivityCount(0);
+    }
+  }, [currentUser]);
 
   const handleLogout = async () => {
     setIsCheckingAuth(true); 
@@ -121,11 +140,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       await firebaseSignOut(auth);
       setCurrentUser(null);
       setUserStoredDetails(null); 
-      
-      // Firestore settings are user-specific and don't need manual clearing here
-      // as ThemeProvider will revert to defaults on user change.
-      // However, if you had other non-user-specific localStorage settings, clear them here.
-      
+      setUnreadActivityCount(0);
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
       router.push('/login'); 
     } catch (error) {
@@ -188,6 +203,11 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                   <Link href="/activity">
                     <BellDot />
                     Activity
+                    {unreadActivityCount > 0 && (
+                      <span className="ml-auto inline-block px-2 py-0.5 text-xs font-semibold bg-destructive text-destructive-foreground rounded-full">
+                        {unreadActivityCount > 9 ? '9+' : unreadActivityCount}
+                      </span>
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -327,7 +347,11 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                  <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground relative" asChild>
                     <Link href="/activity">
                         <BellDot className="h-5 w-5" />
-                        <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground p-1.5">3</span>
+                        {unreadActivityCount > 0 && (
+                           <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground p-1.5">
+                             {unreadActivityCount > 9 ? '9+' : unreadActivityCount}
+                           </span>
+                        )}
                         <span className="sr-only">Activity Feed</span>
                     </Link>
                 </Button>
@@ -352,3 +376,4 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 export default function AuthenticatedAppLayout({ children }: { children: React.ReactNode }) {
   return <AppLayoutContent>{children}</AppLayoutContent>;
 }
+

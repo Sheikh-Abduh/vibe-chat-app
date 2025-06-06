@@ -2,27 +2,24 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { useRouter } from 'next/navigation'; 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import Image from "next/image";
 import { Heart, Users, Loader2 } from 'lucide-react';
-// import { db } from '@/lib/firebase'; // db import no longer needed for users here
-// import { collection, getDocs, limit, query } from 'firebase/firestore'; // Firestore imports no longer needed for users here
+import { db } from '@/lib/firebase'; 
+import { collection, getDocs } from 'firebase/firestore'; 
 import { useToast } from '@/hooks/use-toast';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 
-// Details for the "vibe" community, consistent with communities/page.tsx
 const vibeCommunityStaticDetails = {
   id: 'vibe-community-main',
   name: 'vibe',
-  // image property will be derived dynamically
   dataAiHint: 'abstract colorful logo',
   description: 'The official community for all vibe users. Connect, share, discuss your passions, and discover!',
-  membersText: "Many members", // Static text instead of dynamic count
 };
 
-interface SuggestedPerson { // This interface can be removed if the feature is fully disabled
+interface SuggestedPerson { 
   id: string;
   name: string;
   avatar: string;
@@ -31,13 +28,14 @@ interface SuggestedPerson { // This interface can be removed if the feature is f
 }
 
 export default function DashboardPage() {
-  const router = useRouter(); // Initialize router
+  const router = useRouter(); 
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-  // const [suggestedPeople, setSuggestedPeople] = useState<SuggestedPerson[]>([]); // No longer fetching suggested people
-  // const [isLoadingPeople, setIsLoadingPeople] = useState(true); // No longer fetching suggested people
+  const [suggestedPeople, setSuggestedPeople] = useState<SuggestedPerson[]>([]);
+  const [isLoadingPeople, setIsLoadingPeople] = useState(true);
   const [currentThemeMode, setCurrentThemeMode] = useState<'light' | 'dark'>('dark');
-
+  const [vibeCommunityMemberCount, setVibeCommunityMemberCount] = useState(0);
+  const [isLoadingMemberCount, setIsLoadingMemberCount] = useState(true);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(user => {
@@ -55,23 +53,68 @@ export default function DashboardPage() {
             } else {
                  setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
             }
-        } else if (!user) { // If no user, default to dark or system preference
+        } else if (!user) { 
             setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         }
     });
     return () => unsubscribe();
   }, []);
 
-  // Removing user fetching logic due to Firestore permission constraints
-  // useEffect(() => {
-  //   // Fetching users for "suggested people" and member count is removed.
-  // }, [toast, currentUser]);
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setIsLoadingPeople(true);
+      setIsLoadingMemberCount(true);
+      try {
+        const usersCollectionRef = collection(db, "users");
+        const usersSnapshot = await getDocs(usersCollectionRef);
+        const allUsers: SuggestedPerson[] = [];
+        
+        usersSnapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const profile = data.profileDetails || {};
+          const person: SuggestedPerson = {
+            id: docSnap.id,
+            name: profile.displayName || data.email?.split('@')[0] || "User",
+            avatar: profile.photoURL || `https://placehold.co/100x100.png?text=${(profile.displayName || 'U').charAt(0)}`,
+            dataAiHint: "person face",
+            tags: [profile.passion, profile.hobbies?.split(',')[0]].filter(Boolean).map(tag => tag.trim()),
+          };
+          allUsers.push(person);
+        });
 
-  const dynamicVibeCommunityImage = currentThemeMode === 'dark' ? '/bannerd.png' : '/bannerl.png'; // Using banner as main image here
+        setVibeCommunityMemberCount(allUsers.length);
+        setIsLoadingMemberCount(false);
+        
+        // Filter out current user if logged in, then take a sample
+        const samplePeople = allUsers
+          .filter(person => person.id !== currentUser?.uid)
+          .sort(() => 0.5 - Math.random()) // Simple shuffle
+          .slice(0, 4); // Take up to 4 suggestions
+        
+        setSuggestedPeople(samplePeople);
+
+      } catch (error) {
+        console.error("Error fetching users:", error);
+        toast({
+          variant: "destructive",
+          title: "Error Loading Users",
+          description: "Could not load user suggestions or member count.",
+        });
+        setSuggestedPeople([]);
+        setVibeCommunityMemberCount(0);
+      } finally {
+        setIsLoadingPeople(false);
+        setIsLoadingMemberCount(false);
+      }
+    };
+
+    fetchUsers();
+  }, [toast, currentUser]);
+
+  const dynamicVibeCommunityImage = currentThemeMode === 'dark' ? '/bannerd.png' : '/bannerl.png';
 
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden p-4 md:p-6 space-y-8 md:space-y-12">
-      {/* Tailored Communities Section */}
       <section className="px-2 sm:px-4">
         <div className="flex items-center justify-between mb-4 md:mb-6">
             <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-primary flex items-center" style={{ textShadow: '0 0 4px hsl(var(--primary)/0.6)'}}>
@@ -96,7 +139,7 @@ export default function DashboardPage() {
             <CardContent className="flex-grow text-sm sm:text-base">
               <CardDescription className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{vibeCommunityStaticDetails.description}</CardDescription>
               <p className="text-xs text-muted-foreground/80 mt-2">
-                {vibeCommunityStaticDetails.membersText}
+                {isLoadingMemberCount ? <Loader2 className="h-4 w-4 animate-spin inline-block mr-1"/> : `${vibeCommunityMemberCount} members`}
               </p>
             </CardContent>
             <div className="p-3 sm:p-4 pt-0">
@@ -108,7 +151,6 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* People with Similar Interests Section */}
       <section className="px-2 sm:px-4">
          <div className="flex items-center justify-between mb-4 md:mb-6">
             <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-accent flex items-center" style={{ textShadow: '0 0 4px hsl(var(--accent)/0.6)'}}>
@@ -116,25 +158,36 @@ export default function DashboardPage() {
                 People with Similar Interests
             </h2>
         </div>
-        {/*isLoadingPeople ? ( // This section is removed as user listing is not possible with current rules
+        {isLoadingPeople ? (
           <div className="flex justify-center items-center py-10">
             <Loader2 className="h-8 w-8 animate-spin text-accent" />
             <p className="ml-2 text-muted-foreground">Loading people...</p>
           </div>
         ) : suggestedPeople.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
             {suggestedPeople.map((person) => (
-              // ... card rendering removed ...
+              <Card key={person.id} className="bg-card border-border/50 shadow-md hover:shadow-[0_0_10px_hsl(var(--accent)/0.25)] transition-shadow duration-300 flex flex-col items-center text-center p-3">
+                <Avatar className="h-16 w-16 sm:h-20 sm:w-20 mb-2 border-2 border-accent/50">
+                  <AvatarImage src={person.avatar} alt={person.name} data-ai-hint={person.dataAiHint} />
+                  <AvatarFallback>{person.name.charAt(0)}</AvatarFallback>
+                </Avatar>
+                <CardTitle className="text-sm sm:text-base font-semibold text-foreground mb-1 truncate w-full">{person.name}</CardTitle>
+                {person.tags.length > 0 && (
+                  <div className="flex flex-wrap justify-center gap-1 mb-2">
+                    {person.tags.slice(0, 2).map(tag => (
+                      <span key={tag} className="text-xs bg-muted/70 text-muted-foreground px-1.5 py-0.5 rounded-sm">{tag}</span>
+                    ))}
+                  </div>
+                )}
+                 <Button variant="outline" size="sm" className="w-full mt-auto text-xs border-accent/70 text-accent hover:bg-accent/10 hover:text-accent">
+                    Connect
+                 </Button>
+              </Card>
             ))}
           </div>
         ) : (
           <p className="text-center text-muted-foreground py-6">No user suggestions available at the moment. Check back later!</p>
-        )*/}
-        <p className="text-center text-muted-foreground py-6">
-            User suggestions are currently unavailable. Check back later!
-            <br />
-            <span className="text-xs italic">(Note: Listing users requires different permission settings.)</span>
-        </p>
+        )}
       </section>
     </div>
   );

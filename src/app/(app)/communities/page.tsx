@@ -122,13 +122,12 @@ const ALLOWED_FILE_TYPES = [
   'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/aac',
 ];
 
-const AGORA_APP_ID = "530ba273ad0847019e4e48e70135e345"; // Updated App ID
+const AGORA_APP_ID = "530ba273ad0847019e4e48e70135e345";
 const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a"; 
 
 
 async function fetchAgoraToken(channelName: string, uid: string | number): Promise<string> {
-  // IMPORTANT: Replace with your actual token server URL
-  const TOKEN_SERVER_URL = 'https://your-token-server.com/generate-agora-token';
+  const TOKEN_SERVER_URL = 'https://your-token-server.com/generate-agora-token'; // IMPORTANT: Replace!
 
   try {
     const response = await fetch(TOKEN_SERVER_URL, {
@@ -165,7 +164,7 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
     if (error.message.toLowerCase().includes('failed to fetch')) {
         throw new Error(`Network error fetching Agora token. Please ensure the token server URL is correct and reachable: ${TOKEN_SERVER_URL}`);
     }
-    throw error; // Re-throw other errors
+    throw error;
   }
 }
 
@@ -173,25 +172,14 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
 const formatChatMessage = (text?: string): string => {
   if (!text) return '';
   let formattedText = text;
-  // Escape HTML to prevent XSS before applying markdown
   formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  // @Mentions: @username (basic styling) - Apply this first
   formattedText = formattedText.replace(/@([\w.-]+)/g, '<span class="bg-accent/20 text-accent font-medium px-0.5 rounded-sm">@$1</span>');
-  
-  // Bold: **text** or __text__
   formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
-  // Italic: *text* or _text_
   formattedText = formattedText.replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>');
-  // Strikethrough: ~~text~~
   formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
-  // Underline: ++text++
   formattedText = formattedText.replace(/\+\+(.*?)\+\+/g, '<u>$1</u>');
-  // Superscript: ^^text^^
   formattedText = formattedText.replace(/\^\^(.*?)\^\^/g, '<sup>$1</sup>');
-  // Subscript: vvtextvv
   formattedText = formattedText.replace(/vv(.*?)vv/g, '<sub>$1</sub>');
-
   return formattedText;
 };
 
@@ -204,6 +192,7 @@ export default function CommunitiesPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { toast } = useToast();
   const [communityMembers, setCommunityMembers] = useState<Member[]>([]); 
+  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
 
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -283,7 +272,7 @@ export default function CommunitiesPage() {
   useEffect(scrollToBottom, [messages, showPinnedMessages, chatSearchTerm]);
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged(user => {
+    const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       setCurrentUser(user);
       if (user) {
         const storedFavorites = localStorage.getItem(`favorited_gifs_${user.uid}`);
@@ -292,12 +281,42 @@ export default function CommunitiesPage() {
         } else {
           setFavoritedGifs([]);
         }
+
+        // Fetch all users to simulate community members
+        setIsLoadingMembers(true);
+        try {
+          const usersSnapshot = await getDocs(collection(db, "users"));
+          const fetchedMembers: Member[] = [];
+          usersSnapshot.forEach((docSnap) => {
+            const userData = docSnap.data();
+            fetchedMembers.push({
+              id: docSnap.id,
+              name: userData.profileDetails?.displayName || userData.email?.split('@')[0] || "User",
+              avatarUrl: userData.profileDetails?.photoURL || undefined,
+              dataAiHint: "person face", 
+            });
+          });
+          setCommunityMembers(fetchedMembers);
+        } catch (error) {
+          console.error("Error loading members:", error);
+          toast({
+            variant: "destructive",
+            title: "Error Loading Members",
+            description: "Could not load community members. Please check console for details.",
+          });
+          setCommunityMembers([]);
+        } finally {
+          setIsLoadingMembers(false);
+        }
+
       } else {
         setFavoritedGifs([]);
+        setCommunityMembers([]);
+        setIsLoadingMembers(false);
       }
     });
     return () => unsubscribeAuth();
-  }, []);
+  }, [toast]);
 
   const getFavoriteStorageKey = () => {
     if (!currentUser) return null;
@@ -310,7 +329,7 @@ export default function CommunitiesPage() {
     if (!key) return;
 
     let updatedFavorites;
-    if (favoritedGifs.some(fav => fav.id === gif.id)) { // Use .some for checking existence
+    if (favoritedGifs.some(fav => fav.id === gif.id)) { 
       updatedFavorites = favoritedGifs.filter(fav => fav.id !== gif.id);
       toast({ title: "GIF Unfavorited", description: "Removed from your favorites." });
     } else {
@@ -387,7 +406,7 @@ export default function CommunitiesPage() {
       return () => unsubscribeFirestore();
 
     } else if (selectedChannel && (selectedChannel.type === 'voice' || selectedChannel.type === 'video')) {
-        setMessages([]); // Clear previous text messages
+        setMessages([]); 
     } else {
       setMessages([]);
     }
@@ -428,17 +447,15 @@ export default function CommunitiesPage() {
     }
 
     const messageText = newMessage.trim();
-
-    // Resolve @mentions to UIDs - placeholder for actual UID resolution
     const mentionRegex = /@([\w.-]+)/g;
     let match;
     const mentionedUserDisplayNames: string[] = [];
     while ((match = mentionRegex.exec(messageText)) !== null) {
       mentionedUserDisplayNames.push(match[1]);
     }
-    // In a real app, you'd resolve these display names to UIDs.
-    // For this prototype, we'll store the display names which the backend function would need to resolve.
-    const resolvedMentionedUserIds = mentionedUserDisplayNames; 
+    const resolvedMentionedUserIds = communityMembers
+        .filter(member => mentionedUserDisplayNames.includes(member.name))
+        .map(member => member.id);
 
     const messageData: Partial<ChatMessage> = {
       senderId: currentUser.uid,
@@ -650,7 +667,7 @@ export default function CommunitiesPage() {
     const gifToFavorite: TenorGifType = {
         id: message.gifId,
         media_formats: {
-            tinygif: { url: message.gifTinyUrl, dims: [0,0], preview: '', duration: 0, size:0 }, // Dims and other details are placeholders
+            tinygif: { url: message.gifTinyUrl, dims: [0,0], preview: '', duration: 0, size:0 }, 
             gif: { url: message.gifUrl || '', dims: [0,0], preview: '', duration: 0, size:0 }
         },
         content_description: message.gifContentDescription,
@@ -995,7 +1012,7 @@ export default function CommunitiesPage() {
     if (selectedChannel.type === 'video') {
         try {
             const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            videoStream.getTracks().forEach(track => track.stop()); // Stop after permission check
+            videoStream.getTracks().forEach(track => track.stop()); 
         } catch (error) {
             toast({ variant: "destructive", title: "Camera Access Denied", description: "Proceeding with audio-only. Please allow camera access for video." });
             cameraPermission = false;
@@ -1049,9 +1066,9 @@ export default function CommunitiesPage() {
         });
 
         const uid: UID = currentUser.uid;
-        const token = await fetchAgoraToken(selectedChannel.id, uid); // Fetch token
+        const token = await fetchAgoraToken(selectedChannel.id, uid); 
         
-        if (!token) { // Check if token fetching failed
+        if (!token) {
             throw new Error("Failed to fetch Agora token for joining channel.");
         }
         
@@ -1104,10 +1121,10 @@ export default function CommunitiesPage() {
     }
     if (agoraClientRef.current) {
         await agoraClientRef.current.leave();
-        agoraClientRef.current = null; // Reset client
-        setRemoteUsers([]); // Clear remote users
-        if(remoteVideoPlayersContainerRef.current) remoteVideoPlayersContainerRef.current.innerHTML = ''; // Clear remote video players
-        if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; // Clear local video player
+        agoraClientRef.current = null; 
+        setRemoteUsers([]); 
+        if(remoteVideoPlayersContainerRef.current) remoteVideoPlayersContainerRef.current.innerHTML = ''; 
+        if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = ''; 
         toast({ title: "Disconnected", description: "You have left the channel."});
     }
     setIsJoiningVoice(false);
@@ -1118,7 +1135,7 @@ export default function CommunitiesPage() {
         handleLeaveVoiceChannel();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChannel]); // Trigger on channel change
+  }, [selectedChannel]); 
 
 
   const handleChatSearchToggle = () => {
@@ -1136,7 +1153,7 @@ export default function CommunitiesPage() {
   const userAvatar = currentUser?.photoURL;
 
   const filteredMessages = messages.filter(msg => {
-    if (!chatSearchTerm.trim()) return true; // Show all if search is empty
+    if (!chatSearchTerm.trim()) return true; 
     const term = chatSearchTerm.toLowerCase();
     if (msg.text?.toLowerCase().includes(term)) return true;
     if (msg.fileName?.toLowerCase().includes(term)) return true;
@@ -1155,7 +1172,8 @@ export default function CommunitiesPage() {
   const handleMentionInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setNewMessage(value);
-    if (value.match(/@\S*$/) && selectedChannel?.type === 'text') {
+    const mentionMatch = value.match(/@(\S*)$/);
+    if (mentionMatch && selectedChannel?.type === 'text') {
         setShowMentionSuggestions(true);
     } else {
         setShowMentionSuggestions(false);
@@ -1318,7 +1336,6 @@ export default function CommunitiesPage() {
               </div>
             </div>
 
-            {/* Main content: Text chat or Voice/Video UI */}
             {selectedChannel.type === 'text' ? (
               <ScrollArea className="flex-1 min-h-0 bg-card/30">
                 <div className="p-2 sm:p-4 space-y-0.5">
@@ -1334,7 +1351,7 @@ export default function CommunitiesPage() {
                     const showHeader = shouldShowFullMessageHeader(msg, previousMessage);
                     const isCurrentUserMsg = currentUser?.uid === msg.senderId;
                     let hasBeenRepliedTo = false;
-                    if (currentUser) { // Always check if currentUser exists
+                    if (currentUser) { 
                       hasBeenRepliedTo = displayedMessages.some(
                         (replyCandidate) => replyCandidate.replyToMessageId === msg.id && replyCandidate.senderId !== currentUser?.uid
                       );
@@ -1536,15 +1553,12 @@ export default function CommunitiesPage() {
 
                 {agoraClientRef.current ? (
                      <div className="mt-4 w-full max-w-md sm:max-w-2xl flex flex-col items-center">
-                        {/* Local Video Player Container */}
                         {localVideoTrack && selectedChannel.type === 'video' && (
                             <div id="local-video-player-container" ref={localVideoPlayerContainerRef} className="w-36 h-28 sm:w-48 sm:h-36 bg-black my-2 rounded-md shadow relative self-start">
                                 <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">You</p>
                             </div>
                         )}
-                        {/* Remote Video Players Container */}
                         <div id="remote-video-players-container" ref={remoteVideoPlayersContainerRef} className="w-full grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                            {/* Remote video players will be dynamically added here */}
                         </div>
                         {remoteUsers.length > 0 && selectedChannel.type === 'video' && (
                             <p className="text-xs mt-2">{remoteUsers.length} other participant(s) in the call.</p>
@@ -1582,8 +1596,6 @@ export default function CommunitiesPage() {
               </div>
             )}
 
-
-            {/* Chat Input Area for Text Channels */}
             {selectedChannel.type === 'text' ? (
               <div className="p-2 sm:p-3 border-t border-border/40 shrink-0 relative">
                 {replyingToMessage && (
@@ -1616,9 +1628,16 @@ export default function CommunitiesPage() {
                             align="start"
                             avoidCollisions={false}
                         >
-                            {communityMembers.filter(member => member.name.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase())).length > 0 ? (
+                            {communityMembers.filter(member => 
+                                member.name.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase()) &&
+                                member.id !== currentUser?.uid 
+                            ).length > 0 ? (
                                 communityMembers
-                                    .filter(member => member.name.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase()))
+                                    .filter(member => 
+                                        member.name.toLowerCase().startsWith(newMessage.substring(newMessage.lastIndexOf('@') + 1).toLowerCase()) &&
+                                        member.id !== currentUser?.uid
+                                    )
+                                    .slice(0, 5) // Limit suggestions
                                     .map(member => (
                                         <button
                                             key={member.id}
@@ -1629,7 +1648,7 @@ export default function CommunitiesPage() {
                                         </button>
                                 ))
                             ) : (
-                                <p className="p-2 text-xs text-muted-foreground">No members match. (Member listing limited)</p>
+                                <p className="p-2 text-xs text-muted-foreground">No matching members found.</p>
                             )}
                         </PopoverContent>
                     </Popover>
@@ -1719,9 +1738,6 @@ export default function CommunitiesPage() {
                             <DialogTitle>Send a GIF</DialogTitle>
                             <DialogDescription>
                                 Search for GIFs from Tenor or browse your favorites.
-                                <span className="block text-xs text-destructive/80 mt-1">
-                                    SECURITY WARNING: For production, the Tenor API key must be proxied via a backend.
-                                </span>
                             </DialogDescription>
                         </DialogHeader>
                         <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="mt-2 flex-1 flex flex-col min-h-0">
@@ -1834,7 +1850,6 @@ export default function CommunitiesPage() {
               </div>
             ) : (
               <div className="p-2 sm:p-3 border-t border-border/40 shrink-0 flex items-center justify-center h-14 sm:h-16">
-                 {/* Placeholder for non-text channel footers, e.g., voice/video controls */}
               </div>
             )}
           </>
@@ -1845,7 +1860,6 @@ export default function CommunitiesPage() {
         )}
       </div>
 
-      {/* Column 4: Right-Hand Info Bar */}
       {isRightBarOpen && selectedCommunity && (
         <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden relative"> 
             <Button 
@@ -1858,59 +1872,77 @@ export default function CommunitiesPage() {
             >
               <X className="h-5 w-5"/>
             </Button>
-            
             <ScrollArea className="flex-1 min-h-0">
-              <div className="flex flex-col h-full"> {/* Inner container for all scrollable content */}
-                <div className="relative h-24 sm:h-32 w-full shrink-0">
-                  <Image
-                    src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityBanner : (selectedCommunity.bannerUrl || '/bannerd.png')}
-                    alt={`${selectedCommunity.name} banner`}
-                    fill
-                    className="object-cover"
-                    data-ai-hint={selectedCommunity.dataAiHintBanner || 'community banner'}
-                    priority
-                  />
-                </div>
-
-                <div className="p-3 sm:p-4 space-y-2 sm:space-y-3 border-b border-border/40 shrink-0">
-                    <div className="flex items-center space-x-2 sm:space-x-3">
-                        <Avatar className="h-12 w-12 sm:h-16 sm:w-16 border-2 border-background shadow-md">
-                        <AvatarImage src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityIcon : (selectedCommunity.iconUrl || '/pfd.png')} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint || 'abstract logo'}/>
-                        <AvatarFallback>{selectedCommunity.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                        <CardTitle className="text-lg sm:text-xl">{selectedCommunity.name}</CardTitle>
-                        </div>
+                <div className="flex flex-col h-full">
+                    <div className="relative h-24 sm:h-32 w-full shrink-0">
+                    <Image
+                        src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityBanner : (selectedCommunity.bannerUrl || '/bannerd.png')}
+                        alt={`${selectedCommunity.name} banner`}
+                        fill
+                        className="object-cover"
+                        data-ai-hint={selectedCommunity.dataAiHintBanner || 'community banner'}
+                        priority
+                    />
                     </div>
-                    <CardDescription className="text-xs sm:text-sm">{selectedCommunity.description}</CardDescription>
-                    {selectedCommunity.tags && selectedCommunity.tags.length > 0 && (
-                        <div className="mt-2 sm:mt-3">
-                        <h5 className="text-xs font-semibold text-muted-foreground mb-1 sm:mb-1.5 uppercase tracking-wide">Tags</h5>
-                        <div className="flex flex-wrap gap-1 sm:gap-1.5">
-                            {selectedCommunity.tags.map((tag) => (
-                            <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
-                            ))}
+
+                    <div className="p-3 sm:p-4 space-y-2 sm:space-y-3 border-b border-border/40 shrink-0">
+                        <div className="flex items-center space-x-2 sm:space-x-3">
+                            <Avatar className="h-12 w-12 sm:h-16 sm:w-16 border-2 border-background shadow-md">
+                            <AvatarImage src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityIcon : (selectedCommunity.iconUrl || '/pfd.png')} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint || 'abstract logo'}/>
+                            <AvatarFallback>{selectedCommunity.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                            <CardTitle className="text-lg sm:text-xl">{selectedCommunity.name}</CardTitle>
+                            </div>
                         </div>
-                        </div>
-                    )}
+                        <CardDescription className="text-xs sm:text-sm">{selectedCommunity.description}</CardDescription>
+                        {selectedCommunity.tags && selectedCommunity.tags.length > 0 && (
+                            <div className="mt-2 sm:mt-3">
+                            <h5 className="text-xs font-semibold text-muted-foreground mb-1 sm:mb-1.5 uppercase tracking-wide">Tags</h5>
+                            <div className="flex flex-wrap gap-1 sm:gap-1.5">
+                                {selectedCommunity.tags.map((tag) => (
+                                <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
+                                ))}
+                            </div>
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="px-3 sm:px-4 pt-2 pb-3 sm:pb-4 flex-1 flex flex-col min-h-0">
+                        <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1 z-10">
+                            Members ({communityMembers.length})
+                        </h4>
+                        {isLoadingMembers ? (
+                            <div className="flex items-center justify-center flex-1">
+                                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/>
+                            </div>
+                        ) : communityMembers.length > 0 ? (
+                             <ScrollArea className="flex-1 min-h-0">
+                                <div className="space-y-2">
+                                {communityMembers.map((member) => (
+                                    <div key={member.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
+                                    <Avatar className="h-7 w-7 sm:h-8 sm:w-8">
+                                        <AvatarImage src={member.avatarUrl} alt={member.name} data-ai-hint={member.dataAiHint} />
+                                        <AvatarFallback className="text-xs bg-muted-foreground/20">
+                                        {member.name.substring(0, 1).toUpperCase()}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <span className="text-sm text-foreground truncate">{member.name}</span>
+                                    </div>
+                                ))}
+                                </div>
+                            </ScrollArea>
+                        ) : (
+                            <p className="text-sm text-muted-foreground text-center py-4">No members found.</p>
+                        )}
+                    </div>
+                    
+                    <div className="p-3 border-t border-border/40 shrink-0 mt-auto">
+                        <Button variant="outline" className="w-full text-muted-foreground text-xs sm:text-sm" onClick={() => toast({title: "Feature Coming Soon", description: "Community settings will be implemented."})}>
+                            <Settings className="mr-2 h-4 w-4" /> Community Settings
+                        </Button>
+                    </div>
                 </div>
-                
-                <div className="px-3 sm:px-4 pt-2 pb-3 sm:pb-4 flex-1 flex flex-col min-h-0">
-                     <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1 z-10">
-                        Community Info
-                     </h4>
-                     <div className="flex-1 space-y-1.5 sm:space-y-2 text-muted-foreground text-sm overflow-y-auto">
-                        <p>Member listing is currently unavailable due to permission settings.</p>
-                        <p>In a production app, this section would display a list of community members.</p>
-                     </div>
-                </div>
-                
-                <div className="p-3 border-t border-border/40 shrink-0 mt-auto">
-                    <Button variant="outline" className="w-full text-muted-foreground text-xs sm:text-sm" onClick={() => toast({title: "Feature Coming Soon", description: "Community settings will be implemented."})}>
-                        <Settings className="mr-2 h-4 w-4" /> Community Settings
-                    </Button>
-                </div>
-              </div>
             </ScrollArea>
         </div>
       )}
@@ -1977,5 +2009,4 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
 

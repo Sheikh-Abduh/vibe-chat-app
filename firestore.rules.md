@@ -5,14 +5,18 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // Rules for user profiles
-    // Allows any authenticated user to read profile data.
+    // Allows any authenticated user to read ANY user profile.
     // Users can only create and update their own profile.
     // Deletion should be handled by a Cloud Function.
     match /users/{userId} {
-      allow read: if request.auth != null;
+      allow get: if request.auth != null;
       allow create: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null && request.auth.uid == userId;
       allow delete: if false; // Deletion typically handled by a Cloud Function
+    }
+    // Allow authenticated users to list all user profiles
+    match /users {
+      allow list: if request.auth != null;
     }
 
     // Rules for communities
@@ -98,11 +102,15 @@ service cloud.firestore {
     }
     
     // Rules for user-specific activity items (notifications)
-    // Users can only read their own activity items.
+    // Users can read their own activity items.
+    // User can mark their own activity items as read.
     // Activity items are typically created by backend functions, not directly by clients.
     match /users/{userId}/activityItems/{activityId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if false; // Assume backend creates these
+      allow create: if false; // Backend creates these
+      allow update: if request.auth != null && request.auth.uid == userId &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      allow delete: if false; // Backend or TTL policy might handle deletion
     }
 
     // Optional: Default deny for any paths not explicitly matched for extra safety
