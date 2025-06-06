@@ -54,7 +54,7 @@ interface TenorGif extends TenorGifType {}
 
 const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
 
-const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48";
+const AGORA_APP_ID = "530ba273ad0847019e4e48e70135e345"; // Updated App ID
 const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a"; // Your token server API key
 
 async function fetchAgoraToken(channelName: string, uid: string | number): Promise<string> {
@@ -973,7 +973,11 @@ export default function MessagesPage() {
         });
 
         const uid: UID = currentUser!.uid;
-        const token = await fetchAgoraToken(conversationId!, uid);
+        const token = await fetchAgoraToken(conversationId!, uid); // Fetch token
+        
+        if (!token) { // Check if token fetching failed
+            throw new Error("Failed to fetch Agora token for DM call.");
+        }
 
         await client.join(AGORA_APP_ID, conversationId!, token, uid);
 

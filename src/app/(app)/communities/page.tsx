@@ -122,8 +122,8 @@ const ALLOWED_FILE_TYPES = [
   'audio/webm', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/aac',
 ];
 
-const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48";
-const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a"; // Your token server API key
+const AGORA_APP_ID = "530ba273ad0847019e4e48e70135e345"; // Updated App ID
+const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a"; 
 
 
 async function fetchAgoraToken(channelName: string, uid: string | number): Promise<string> {
@@ -1049,7 +1049,11 @@ export default function CommunitiesPage() {
         });
 
         const uid: UID = currentUser.uid;
-        const token = await fetchAgoraToken(selectedChannel.id, uid);
+        const token = await fetchAgoraToken(selectedChannel.id, uid); // Fetch token
+        
+        if (!token) { // Check if token fetching failed
+            throw new Error("Failed to fetch Agora token for joining channel.");
+        }
         
         await client.join(AGORA_APP_ID, selectedChannel.id, token, uid);
 
@@ -1891,7 +1895,7 @@ export default function CommunitiesPage() {
                     )}
                 </div>
                 
-                <div className="px-3 sm:px-4 pt-2 pb-3 sm:pb-4 flex-1 flex flex-col min-h-0"> {/* Made this flex-1 for scroll */}
+                <div className="px-3 sm:px-4 pt-2 pb-3 sm:pb-4 flex-1 flex flex-col min-h-0">
                      <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1 z-10">
                         Community Info
                      </h4>
@@ -1973,4 +1977,5 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+
 
