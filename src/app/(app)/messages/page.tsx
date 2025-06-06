@@ -55,6 +55,43 @@ interface TenorGif extends TenorGifType {}
 const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
 
 const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48";
+const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a"; // Your token server API key
+
+async function fetchAgoraToken(channelName: string, uid: string | number): Promise<string> {
+  // IMPORTANT: Replace with your actual token server URL
+  const TOKEN_SERVER_URL = 'https://your-token-server.com/generate-agora-token';
+
+  try {
+    const response = await fetch(TOKEN_SERVER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': TOKEN_SERVER_API_KEY,
+      },
+      body: JSON.stringify({
+        channelName: channelName,
+        uid: uid,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('Failed to fetch Agora token:', response.status, errorData);
+      throw new Error(`Token server responded with ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data.token) {
+      return data.token;
+    } else {
+      console.error('Token not found in server response:', data);
+      throw new Error('Token not found in server response.');
+    }
+  } catch (error) {
+    console.error('Error fetching Agora token:', error);
+    throw error; 
+  }
+}
 
 
 type ChatMessage = {
@@ -863,13 +900,11 @@ export default function MessagesPage() {
   };
 
  const handleStartCall = async (isVideoCall: boolean) => {
-    if (!otherUserId || (currentUser && currentUser.uid === otherUserId) || isStartingCall || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" || !AGORA_APP_ID) {
-        if (AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" || !AGORA_APP_ID) {
+    if (!otherUserId || !currentUser || (currentUser.uid === otherUserId) || isStartingCall || !AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" ) {
+        if (!AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") {
             toast({ variant: "destructive", title: "Agora App ID Missing", description: "Agora App ID is not configured for DM calls." });
         } else if (currentUser && currentUser.uid === otherUserId) {
             toast({ title: "Cannot Call Yourself", description: "This feature is for calling other users." });
-        } else if (!AGORA_APP_ID){
-             toast({ variant: "destructive", title: "Agora App ID Not Set", description: "Voice/video functionality requires an Agora App ID configuration." });
         }
         setIsStartingCall(false);
         return;
@@ -895,7 +930,7 @@ export default function MessagesPage() {
 
     toast({
         title: `Starting ${isVideoCall ? 'Video' : 'Voice'} Call...`,
-        description: `Attempting to call ${otherUserName || 'User'}. (Third-party service like Agora/Twilio needed for full function)`,
+        description: `Attempting to call ${otherUserName || 'User'}.`,
     });
 
     try {
@@ -930,9 +965,13 @@ export default function MessagesPage() {
             if (playerContainer) playerContainer.remove();
         });
 
-        const token = null;
-
         const uid: UID = currentUser!.uid;
+        // Fetch token from your backend
+        const token = await fetchAgoraToken(conversationId!, uid);
+        if (!token) {
+            throw new Error("Failed to fetch Agora token from server.");
+        }
+
         await client.join(AGORA_APP_ID, conversationId!, token, uid);
 
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
@@ -949,9 +988,9 @@ export default function MessagesPage() {
         }
         await client.publish(tracksToPublish);
         toast({ title: `${isVideoCall && cameraPermission ? 'Video' : 'Voice'} Call Active`, description: `Connected with ${otherUserName || 'User'}.` });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Agora DM call error:", error);
-        toast({ variant: "destructive", title: "Call Failed", description: "Could not start or connect to the call." });
+        toast({ variant: "destructive", title: "Call Failed", description: error.message || "Could not start or connect to the call." });
         if (localAudioTrack) { localAudioTrack.close(); setLocalAudioTrack(null); }
         if (localVideoTrack) { localVideoTrack.close(); setLocalVideoTrack(null); }
         if (agoraClientRef.current) { await agoraClientRef.current.leave(); agoraClientRef.current = null; }
@@ -1151,7 +1190,7 @@ export default function MessagesPage() {
                                     className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9"
                                     title={agoraClientRef.current ? "End Call" : "Start Voice Call"}
                                     onClick={!agoraClientRef.current ? () => handleStartCall(false) : handleLeaveDmCall}
-                                    disabled={isStartingCall || (!AGORA_APP_ID && !agoraClientRef.current) }
+                                    disabled={isStartingCall || (!AGORA_APP_ID && !agoraClientRef.current) || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" }
                                 >
                                     {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin"/> : (agoraClientRef.current ? <X className="h-4 w-4 sm:h-5 sm:w-5 text-destructive"/> : <Phone className="h-4 w-4 sm:h-5 sm:w-5"/>)}
                                 </Button>
@@ -1161,7 +1200,7 @@ export default function MessagesPage() {
                                     className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9"
                                     title={agoraClientRef.current && localVideoTrack ? "End Video Call" : "Start Video Call"}
                                     onClick={!agoraClientRef.current ? () => handleStartCall(true) : handleLeaveDmCall}
-                                    disabled={isStartingCall || (!AGORA_APP_ID && !agoraClientRef.current)}
+                                    disabled={isStartingCall || (!AGORA_APP_ID && !agoraClientRef.current) || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER"}
                                 >
                                      {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin"/> : (agoraClientRef.current && localVideoTrack ? <X className="h-4 w-4 sm:h-5 sm:w-5 text-destructive"/> : <VideoIcon className="h-4 w-4 sm:h-5 sm:w-5"/>)}
                                 </Button>
@@ -1296,7 +1335,7 @@ export default function MessagesPage() {
                         )}
                         {msg.type === 'gif' && msg.gifUrl && (
                            <div className="relative max-w-[250px] sm:max-w-[300px] mt-1 group/gif">
-                                <Image src={msg.gifUrl} alt={msg.gifContentDescription || "GIF"} width={0} height={0} style={{ width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '200px', borderRadius: '0.375rem' }} unoptimized priority={false} data-ai-hint="animated gif" />
+                                <Image src={msg.gifUrl} alt={msg.gifContentDescription || "GIF"} width={0} height={0} style={{ width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '200px', borderRadius: '0.375rem', objectFit: 'contain' }} unoptimized priority={false} data-ai-hint="animated gif" />
                                 {currentUser && msg.gifId && (
                                     <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover/gif:opacity-100 transition-opacity" onClick={() => handleFavoriteGifFromChat(msg)} title={isGifFavorited(msg.gifId || "") ? "Unfavorite" : "Favorite"}>
                                         <Star className={cn("h-4 w-4", isGifFavorited(msg.gifId || "") ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>

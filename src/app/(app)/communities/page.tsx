@@ -47,7 +47,6 @@ const passionChannelOptions = [
 const vibeCommunityStaticProps = { 
     id: 'vibe-community-main', 
     name: 'vibe', 
-    // iconUrl and bannerUrl will be determined dynamically based on theme
     dataAiHint: 'abstract colorful logo', 
     description: 'The official community for all vibe users. Connect, share, discuss your passions, and discover new vibes!', 
     dataAiHintBanner: 'community abstract vibrant', 
@@ -77,7 +76,6 @@ const placeholderChannels: Record<string, Array<{ id: string; name: string; type
 
 type Community = Omit<typeof placeholderCommunities[0], 'iconUrl' | 'bannerUrl'> & { iconUrl?: string; bannerUrl?: string; };
 type Channel = { id: string; name: string; type: 'text' | 'voice' | 'video'; icon: React.ElementType };
-// Member type for displaying members, data now fetched from Firestore
 type Member = { id: string; name: string; avatarUrl?: string; dataAiHint: string };
 
 type ChatMessage = {
@@ -110,7 +108,7 @@ const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
 
 interface TenorGif extends TenorGifType {}
 
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; // Updated API Key
+const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw"; 
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
 const CLOUDINARY_API_KEY = '775545995624823';
@@ -125,6 +123,45 @@ const ALLOWED_FILE_TYPES = [
 ];
 
 const AGORA_APP_ID = "31ecd1d8c6224b6583e4de451ece7a48";
+const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a"; // Your token server API key
+
+
+async function fetchAgoraToken(channelName: string, uid: string | number): Promise<string> {
+  // IMPORTANT: Replace with your actual token server URL
+  const TOKEN_SERVER_URL = 'https://your-token-server.com/generate-agora-token';
+
+  try {
+    const response = await fetch(TOKEN_SERVER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': TOKEN_SERVER_API_KEY, 
+      },
+      body: JSON.stringify({
+        channelName: channelName,
+        uid: uid, 
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('Failed to fetch Agora token:', response.status, errorData);
+      throw new Error(`Token server responded with ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data.token) {
+      return data.token;
+    } else {
+      console.error('Token not found in server response:', data);
+      throw new Error('Token not found in server response.');
+    }
+  } catch (error) {
+    console.error('Error fetching Agora token:', error);
+    throw error; // Re-throw to be caught by calling function
+  }
+}
+
 
 const formatChatMessage = (text?: string): string => {
   if (!text) return '';
@@ -934,8 +971,6 @@ export default function CommunitiesPage() {
     if (!selectedChannel || (selectedChannel.type !== 'voice' && selectedChannel.type !== 'video') || isJoiningVoice || !currentUser || !AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") {
         if (!AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") {
             toast({ variant: "destructive", title: "Agora App ID Missing", description: "Agora App ID is not configured. Voice/video chat disabled."});
-        } else if (!AGORA_APP_ID) {
-             toast({ variant: "destructive", title: "Agora App ID Not Set", description: "Voice/video functionality requires an Agora App ID configuration." });
         }
         setIsJoiningVoice(false);
         return;
@@ -1006,12 +1041,13 @@ export default function CommunitiesPage() {
            }
         });
 
-        // IMPORTANT: Token Generation for Production
-        // For production, fetch a token from your backend.
-        // const token = await fetchTokenFromServer(currentUser.uid, selectedChannel.id);
-        const token = null; // Using null for testing (only if your Agora project allows it without token)
-
         const uid: UID = currentUser.uid;
+        // Fetch token from your backend
+        const token = await fetchAgoraToken(selectedChannel.id, uid);
+        if (!token) {
+            throw new Error("Failed to fetch Agora token from server.");
+        }
+        
         await client.join(AGORA_APP_ID, selectedChannel.id, token, uid);
 
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
@@ -1034,9 +1070,9 @@ export default function CommunitiesPage() {
 
         toast({ title: "Connected!", description: `Joined ${selectedChannel.name}.`});
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Agora connection error:", error);
-        toast({ variant: "destructive", title: "Connection Failed", description: "Could not connect to voice/video channel." });
+        toast({ variant: "destructive", title: "Connection Failed", description: error.message || "Could not connect to voice/video channel." });
         if (localAudioTrack) { localAudioTrack.close(); setLocalAudioTrack(null); }
         if (localVideoTrack) { localVideoTrack.close(); setLocalVideoTrack(null); }
         if (agoraClientRef.current) { await agoraClientRef.current.leave(); agoraClientRef.current = null; }
@@ -1361,7 +1397,7 @@ export default function CommunitiesPage() {
                                       alt={msg.gifContentDescription || "GIF"}
                                       width={0}
                                       height={0}
-                                      style={{ width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '200px', borderRadius: '0.375rem' }}
+                                      style={{ width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '200px', borderRadius: '0.375rem', objectFit: 'contain' }}
                                       unoptimized
                                       priority={false}
                                       data-ai-hint="animated gif"
@@ -1522,13 +1558,13 @@ export default function CommunitiesPage() {
                     <>
                         <Button
                             onClick={handleJoinVoiceChannel}
-                            disabled={isJoiningVoice || !AGORA_APP_ID}
+                            disabled={isJoiningVoice || !AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER"}
                             className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
                         >
                             {isJoiningVoice ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <selectedChannel.icon className="mr-2 h-4 w-4"/>}
                             {isJoiningVoice ? "Connecting..." : `Join ${selectedChannel.type.charAt(0).toUpperCase() + selectedChannel.type.slice(1)} Channel`}
                         </Button>
-                         {!AGORA_APP_ID && (
+                         {(!AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") && (
                              <p className="text-xs text-destructive mt-2">Agora App ID not configured. Voice/Video chat is disabled.</p>
                          )}
                     </>
@@ -1829,7 +1865,7 @@ export default function CommunitiesPage() {
                   />
                 </div>
 
-                <div className="p-3 sm:p-4 space-y-2 sm:space-y-3 border-b border-border/40">
+                <div className="p-3 sm:p-4 space-y-2 sm:space-y-3 border-b border-border/40 shrink-0">
                     <div className="flex items-center space-x-2 sm:space-x-3">
                         <Avatar className="h-12 w-12 sm:h-16 sm:w-16 border-2 border-background shadow-md">
                         <AvatarImage src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityIcon : (selectedCommunity.iconUrl || '/pfd.png')} alt={selectedCommunity.name} data-ai-hint={selectedCommunity.dataAiHint || 'abstract logo'}/>
@@ -1853,7 +1889,7 @@ export default function CommunitiesPage() {
                 </div>
 
                 <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-2">
-                    <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                    <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1">
                       Community Info
                     </h4>
                     <div className="space-y-1.5 sm:space-y-2 text-muted-foreground text-sm">
@@ -1934,7 +1970,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
-    
-
-    
