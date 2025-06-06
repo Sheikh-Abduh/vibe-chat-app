@@ -54,12 +54,13 @@ interface TenorGif extends TenorGifType {}
 
 const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
 
-const AGORA_APP_ID = "530ba273ad0847019e4e48e70135e345"; // Updated App ID
-const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a"; // Your token server API key
+const AGORA_APP_ID = "530ba273ad0847019e4e48e70135e345"; 
+// IMPORTANT: You must replace 'https://your-token-server.com/generate-agora-token' with your actual token server URL.
+const TOKEN_SERVER_URL_PLACEHOLDER = 'https://your-token-server.com/generate-agora-token';
+const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a"; 
 
 async function fetchAgoraToken(channelName: string, uid: string | number): Promise<string> {
-  // IMPORTANT: Replace with your actual token server URL
-  const TOKEN_SERVER_URL = 'https://your-token-server.com/generate-agora-token';
+  const TOKEN_SERVER_URL = TOKEN_SERVER_URL_PLACEHOLDER;
 
   try {
     const response = await fetch(TOKEN_SERVER_URL, {
@@ -80,23 +81,27 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
         const errorData = await response.text(); 
         errorDetails += ` Body: ${errorData}`;
       } catch (e) { /* ignore if reading body fails */ }
-      console.error('Failed to fetch Agora token:', errorDetails);
-      throw new Error(errorDetails);
+      // console.error('Failed to fetch Agora token (server error):', errorDetails); // Original console.error
+      throw new Error(errorDetails); // Let the calling function handle this with a toast
     }
 
     const data = await response.json();
     if (data.token) {
       return data.token;
     } else {
-      console.error('Token not found in server response:', data);
+      // console.error('Token not found in server response:', data); // Original console.error
       throw new Error('Token not found in server response.');
     }
   } catch (error: any) {
-    console.error('Error fetching Agora token:', error.message);
-     if (error.message.toLowerCase().includes('failed to fetch')) {
-        throw new Error(`Network error fetching Agora token. Please ensure the token server URL is correct and reachable: ${TOKEN_SERVER_URL}`);
+    if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
+      const specificErrorMessage = `Network error fetching Agora token. Please ensure the token server URL ('${TOKEN_SERVER_URL}') is correct, reachable, and has CORS configured if necessary. Original error: ${error.message}`;
+      console.error(specificErrorMessage); 
+      throw new Error(specificErrorMessage); 
     }
-    throw error; 
+    // For other errors during fetch (e.g., JSON parsing if server sends non-JSON, or errors thrown from !response.ok)
+    const generalErrorMessage = `Error fetching Agora token: ${error.message || 'Unknown error'}. Check server response and network.`;
+    console.error(generalErrorMessage, error);
+    throw new Error(generalErrorMessage);
   }
 }
 
@@ -907,9 +912,11 @@ export default function MessagesPage() {
   };
 
  const handleStartCall = async (isVideoCall: boolean) => {
-    if (!otherUserId || !currentUser || (currentUser.uid === otherUserId) || isStartingCall || !AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" ) {
+    if (!otherUserId || !currentUser || (currentUser.uid === otherUserId) || isStartingCall || !AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" || TOKEN_SERVER_URL_PLACEHOLDER === 'https://your-token-server.com/generate-agora-token') {
         if (!AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") {
             toast({ variant: "destructive", title: "Agora App ID Missing", description: "Agora App ID is not configured for DM calls." });
+        } else if (TOKEN_SERVER_URL_PLACEHOLDER === 'https://your-token-server.com/generate-agora-token') {
+             toast({ variant: "destructive", title: "Token Server URL Missing", description: "Token server URL not configured. DM calls disabled."});
         } else if (currentUser && currentUser.uid === otherUserId) {
             toast({ title: "Cannot Call Yourself", description: "This feature is for calling other users." });
         }
@@ -973,9 +980,9 @@ export default function MessagesPage() {
         });
 
         const uid: UID = currentUser!.uid;
-        const token = await fetchAgoraToken(conversationId!, uid); // Fetch token
+        const token = await fetchAgoraToken(conversationId!, uid); 
         
-        if (!token) { // Check if token fetching failed
+        if (!token) { 
             throw new Error("Failed to fetch Agora token for DM call.");
         }
 
@@ -1197,7 +1204,7 @@ export default function MessagesPage() {
                                     className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9"
                                     title={agoraClientRef.current ? "End Call" : "Start Voice Call"}
                                     onClick={!agoraClientRef.current ? () => handleStartCall(false) : handleLeaveDmCall}
-                                    disabled={isStartingCall || (!AGORA_APP_ID && !agoraClientRef.current) || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" }
+                                    disabled={isStartingCall || (!AGORA_APP_ID && !agoraClientRef.current) || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" || TOKEN_SERVER_URL_PLACEHOLDER === 'https://your-token-server.com/generate-agora-token' }
                                 >
                                     {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin"/> : (agoraClientRef.current ? <X className="h-4 w-4 sm:h-5 sm:w-5 text-destructive"/> : <Phone className="h-4 w-4 sm:h-5 sm:w-5"/>)}
                                 </Button>
@@ -1207,7 +1214,7 @@ export default function MessagesPage() {
                                     className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9"
                                     title={agoraClientRef.current && localVideoTrack ? "End Video Call" : "Start Video Call"}
                                     onClick={!agoraClientRef.current ? () => handleStartCall(true) : handleLeaveDmCall}
-                                    disabled={isStartingCall || (!AGORA_APP_ID && !agoraClientRef.current) || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER"}
+                                    disabled={isStartingCall || (!AGORA_APP_ID && !agoraClientRef.current) || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" || TOKEN_SERVER_URL_PLACEHOLDER === 'https://your-token-server.com/generate-agora-token'}
                                 >
                                      {isStartingCall && !agoraClientRef.current ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin"/> : (agoraClientRef.current && localVideoTrack ? <X className="h-4 w-4 sm:h-5 sm:w-5 text-destructive"/> : <VideoIcon className="h-4 w-4 sm:h-5 sm:w-5"/>)}
                                 </Button>

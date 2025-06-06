@@ -123,11 +123,13 @@ const ALLOWED_FILE_TYPES = [
 ];
 
 const AGORA_APP_ID = "530ba273ad0847019e4e48e70135e345";
-const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a"; 
+// IMPORTANT: You must replace 'https://your-token-server.com/generate-agora-token' with your actual token server URL.
+const TOKEN_SERVER_URL_PLACEHOLDER = 'https://your-token-server.com/generate-agora-token';
+const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a";
 
 
 async function fetchAgoraToken(channelName: string, uid: string | number): Promise<string> {
-  const TOKEN_SERVER_URL = 'https://your-token-server.com/generate-agora-token'; // IMPORTANT: Replace!
+  const TOKEN_SERVER_URL = TOKEN_SERVER_URL_PLACEHOLDER; 
 
   try {
     const response = await fetch(TOKEN_SERVER_URL, {
@@ -148,23 +150,27 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
         const errorData = await response.text(); 
         errorDetails += ` Body: ${errorData}`;
       } catch (e) { /* ignore if reading body fails */ }
-      console.error('Failed to fetch Agora token:', errorDetails);
-      throw new Error(errorDetails);
+      // console.error('Failed to fetch Agora token (server error):', errorDetails); // Original console.error before specific re-throw
+      throw new Error(errorDetails); // Let the calling function handle this with a toast
     }
 
     const data = await response.json();
     if (data.token) {
       return data.token;
     } else {
-      console.error('Token not found in server response:', data);
+      // console.error('Token not found in server response:', data); // Original console.error
       throw new Error('Token not found in server response.');
     }
   } catch (error: any) {
-    console.error('Error fetching Agora token:', error.message);
-    if (error.message.toLowerCase().includes('failed to fetch')) {
-        throw new Error(`Network error fetching Agora token. Please ensure the token server URL is correct and reachable: ${TOKEN_SERVER_URL}`);
+     if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
+      const specificErrorMessage = `Network error fetching Agora token. Please ensure the token server URL ('${TOKEN_SERVER_URL}') is correct, reachable, and has CORS configured if necessary. Original error: ${error.message}`;
+      console.error(specificErrorMessage); 
+      throw new Error(specificErrorMessage); 
     }
-    throw error;
+    // For other errors during fetch (e.g., JSON parsing if server sends non-JSON, or errors thrown from !response.ok)
+    const generalErrorMessage = `Error fetching Agora token: ${error.message || 'Unknown error'}. Check server response and network.`;
+    console.error(generalErrorMessage, error);
+    throw new Error(generalErrorMessage);
   }
 }
 
@@ -282,7 +288,6 @@ export default function CommunitiesPage() {
           setFavoritedGifs([]);
         }
 
-        // Fetch all users to simulate community members
         setIsLoadingMembers(true);
         try {
           const usersSnapshot = await getDocs(collection(db, "users"));
@@ -302,7 +307,7 @@ export default function CommunitiesPage() {
           toast({
             variant: "destructive",
             title: "Error Loading Members",
-            description: "Could not load community members. Please check console for details.",
+            description: "Could not load community members. Please check Firestore rules.",
           });
           setCommunityMembers([]);
         } finally {
@@ -1579,7 +1584,7 @@ export default function CommunitiesPage() {
                     <>
                         <Button
                             onClick={handleJoinVoiceChannel}
-                            disabled={isJoiningVoice || !AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER"}
+                            disabled={isJoiningVoice || !AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER" || TOKEN_SERVER_URL_PLACEHOLDER === 'https://your-token-server.com/generate-agora-token'}
                             className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
                         >
                             {isJoiningVoice ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <selectedChannel.icon className="mr-2 h-4 w-4"/>}
@@ -1587,6 +1592,9 @@ export default function CommunitiesPage() {
                         </Button>
                          {(!AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") && (
                              <p className="text-xs text-destructive mt-2">Agora App ID not configured. Voice/Video chat is disabled.</p>
+                         )}
+                         {(TOKEN_SERVER_URL_PLACEHOLDER === 'https://your-token-server.com/generate-agora-token') && (
+                            <p className="text-xs text-destructive mt-1">Token server URL not configured.</p>
                          )}
                     </>
                 )}
@@ -1862,7 +1870,7 @@ export default function CommunitiesPage() {
 
       {isRightBarOpen && selectedCommunity && (
         <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden relative"> 
-            <Button 
+             <Button 
               variant="ghost" 
               size="icon" 
               className="absolute top-2 right-2 text-muted-foreground hover:text-foreground z-20 h-8 w-8"
@@ -2009,4 +2017,5 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+
 
