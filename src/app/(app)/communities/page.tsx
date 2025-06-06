@@ -144,9 +144,13 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
     });
 
     if (!response.ok) {
-      const errorData = await response.text();
-      console.error('Failed to fetch Agora token:', response.status, errorData);
-      throw new Error(`Token server responded with ${response.status}`);
+      let errorDetails = `Token server responded with ${response.status}.`;
+      try {
+        const errorData = await response.text(); 
+        errorDetails += ` Body: ${errorData}`;
+      } catch (e) { /* ignore if reading body fails */ }
+      console.error('Failed to fetch Agora token:', errorDetails);
+      throw new Error(errorDetails);
     }
 
     const data = await response.json();
@@ -156,9 +160,12 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
       console.error('Token not found in server response:', data);
       throw new Error('Token not found in server response.');
     }
-  } catch (error) {
-    console.error('Error fetching Agora token:', error);
-    throw error; // Re-throw to be caught by calling function
+  } catch (error: any) {
+    console.error('Error fetching Agora token:', error.message);
+    if (error.message.toLowerCase().includes('failed to fetch')) {
+        throw new Error(`Network error fetching Agora token. Please ensure the token server URL is correct and reachable: ${TOKEN_SERVER_URL}`);
+    }
+    throw error; // Re-throw other errors
   }
 }
 
@@ -1042,11 +1049,7 @@ export default function CommunitiesPage() {
         });
 
         const uid: UID = currentUser.uid;
-        // Fetch token from your backend
         const token = await fetchAgoraToken(selectedChannel.id, uid);
-        if (!token) {
-            throw new Error("Failed to fetch Agora token from server.");
-        }
         
         await client.join(AGORA_APP_ID, selectedChannel.id, token, uid);
 
@@ -1853,7 +1856,7 @@ export default function CommunitiesPage() {
             </Button>
             
             <ScrollArea className="flex-1 min-h-0">
-              <div> {/* Inner container for all scrollable content */}
+              <div className="flex flex-col h-full"> {/* Inner container for all scrollable content */}
                 <div className="relative h-24 sm:h-32 w-full shrink-0">
                   <Image
                     src={selectedCommunity.id === 'vibe-community-main' ? dynamicVibeCommunityBanner : (selectedCommunity.bannerUrl || '/bannerd.png')}
@@ -1887,18 +1890,18 @@ export default function CommunitiesPage() {
                         </div>
                     )}
                 </div>
-
-                <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-2">
-                    <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1">
-                      Community Info
-                    </h4>
-                    <div className="space-y-1.5 sm:space-y-2 text-muted-foreground text-sm">
-                     <p>Member listing is currently unavailable due to permission settings.</p>
-                     <p>In a production app, this section would display a list of community members.</p>
-                    </div>
+                
+                <div className="px-3 sm:px-4 pt-2 pb-3 sm:pb-4 flex-1 flex flex-col min-h-0"> {/* Made this flex-1 for scroll */}
+                     <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1 z-10">
+                        Community Info
+                     </h4>
+                     <div className="flex-1 space-y-1.5 sm:space-y-2 text-muted-foreground text-sm overflow-y-auto">
+                        <p>Member listing is currently unavailable due to permission settings.</p>
+                        <p>In a production app, this section would display a list of community members.</p>
+                     </div>
                 </div>
                 
-                <div className="p-3 border-t border-border/40">
+                <div className="p-3 border-t border-border/40 shrink-0 mt-auto">
                     <Button variant="outline" className="w-full text-muted-foreground text-xs sm:text-sm" onClick={() => toast({title: "Feature Coming Soon", description: "Community settings will be implemented."})}>
                         <Settings className="mr-2 h-4 w-4" /> Community Settings
                     </Button>
@@ -1970,3 +1973,4 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+

@@ -75,9 +75,13 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
     });
 
     if (!response.ok) {
-      const errorData = await response.text();
-      console.error('Failed to fetch Agora token:', response.status, errorData);
-      throw new Error(`Token server responded with ${response.status}`);
+      let errorDetails = `Token server responded with ${response.status}.`;
+      try {
+        const errorData = await response.text(); 
+        errorDetails += ` Body: ${errorData}`;
+      } catch (e) { /* ignore if reading body fails */ }
+      console.error('Failed to fetch Agora token:', errorDetails);
+      throw new Error(errorDetails);
     }
 
     const data = await response.json();
@@ -87,8 +91,11 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
       console.error('Token not found in server response:', data);
       throw new Error('Token not found in server response.');
     }
-  } catch (error) {
-    console.error('Error fetching Agora token:', error);
+  } catch (error: any) {
+    console.error('Error fetching Agora token:', error.message);
+     if (error.message.toLowerCase().includes('failed to fetch')) {
+        throw new Error(`Network error fetching Agora token. Please ensure the token server URL is correct and reachable: ${TOKEN_SERVER_URL}`);
+    }
     throw error; 
   }
 }
@@ -966,11 +973,7 @@ export default function MessagesPage() {
         });
 
         const uid: UID = currentUser!.uid;
-        // Fetch token from your backend
         const token = await fetchAgoraToken(conversationId!, uid);
-        if (!token) {
-            throw new Error("Failed to fetch Agora token from server.");
-        }
 
         await client.join(AGORA_APP_ID, conversationId!, token, uid);
 
