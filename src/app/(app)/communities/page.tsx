@@ -150,15 +150,15 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
         const errorData = await response.text(); 
         errorDetails += ` Body: ${errorData}`;
       } catch (e) { /* ignore if reading body fails */ }
-      // console.error('Failed to fetch Agora token (server error):', errorDetails); // Original console.error before specific re-throw
-      throw new Error(errorDetails); // Let the calling function handle this with a toast
+      console.error('Failed to fetch Agora token (server error):', errorDetails); 
+      throw new Error(errorDetails); 
     }
 
     const data = await response.json();
     if (data.token) {
       return data.token;
     } else {
-      // console.error('Token not found in server response:', data); // Original console.error
+      console.error('Token not found in server response:', data); 
       throw new Error('Token not found in server response.');
     }
   } catch (error: any) {
@@ -167,7 +167,6 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
       console.error(specificErrorMessage); 
       throw new Error(specificErrorMessage); 
     }
-    // For other errors during fetch (e.g., JSON parsing if server sends non-JSON, or errors thrown from !response.ok)
     const generalErrorMessage = `Error fetching Agora token: ${error.message || 'Unknown error'}. Check server response and network.`;
     console.error(generalErrorMessage, error);
     throw new Error(generalErrorMessage);
@@ -277,16 +276,12 @@ export default function CommunitiesPage() {
 
   useEffect(scrollToBottom, [messages, showPinnedMessages, chatSearchTerm]);
 
-  useEffect(() => {
+ useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       setCurrentUser(user);
       if (user) {
         const storedFavorites = localStorage.getItem(`favorited_gifs_${user.uid}`);
-        if (storedFavorites) {
-          setFavoritedGifs(JSON.parse(storedFavorites));
-        } else {
-          setFavoritedGifs([]);
-        }
+        setFavoritedGifs(storedFavorites ? JSON.parse(storedFavorites) : []);
 
         setIsLoadingMembers(true);
         try {
@@ -301,19 +296,19 @@ export default function CommunitiesPage() {
               dataAiHint: "person face", 
             });
           });
+          console.log("Fetched community members:", fetchedMembers); // Debug log
           setCommunityMembers(fetchedMembers);
         } catch (error) {
           console.error("Error loading members:", error);
           toast({
             variant: "destructive",
             title: "Error Loading Members",
-            description: "Could not load community members. Please check Firestore rules.",
+            description: (error as Error).message || "Could not load community members.",
           });
           setCommunityMembers([]);
         } finally {
           setIsLoadingMembers(false);
         }
-
       } else {
         setFavoritedGifs([]);
         setCommunityMembers([]);
@@ -1000,6 +995,8 @@ export default function CommunitiesPage() {
     if (!selectedChannel || (selectedChannel.type !== 'voice' && selectedChannel.type !== 'video') || isJoiningVoice || !currentUser || !AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") {
         if (!AGORA_APP_ID || AGORA_APP_ID === "YOUR_AGORA_APP_ID_PLACEHOLDER") {
             toast({ variant: "destructive", title: "Agora App ID Missing", description: "Agora App ID is not configured. Voice/video chat disabled."});
+        } else if (TOKEN_SERVER_URL_PLACEHOLDER === 'https://your-token-server.com/generate-agora-token') {
+            toast({ variant: "destructive", title: "Token Server URL Missing", description: "Token server URL not configured. Voice/Video chat disabled."});
         }
         setIsJoiningVoice(false);
         return;
@@ -1870,7 +1867,7 @@ export default function CommunitiesPage() {
 
       {isRightBarOpen && selectedCommunity && (
         <div className="h-full w-64 sm:w-72 bg-card border-l border-border/40 flex flex-col overflow-hidden relative"> 
-             <Button 
+            <Button 
               variant="ghost" 
               size="icon" 
               className="absolute top-2 right-2 text-muted-foreground hover:text-foreground z-20 h-8 w-8"
@@ -1917,8 +1914,8 @@ export default function CommunitiesPage() {
                     </div>
                     
                     <div className="px-3 sm:px-4 pt-2 pb-3 sm:pb-4 flex-1 flex flex-col min-h-0">
-                        <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide sticky top-0 bg-card py-1 z-10">
-                            Members ({communityMembers.length})
+                        <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide py-1 z-10">
+                             Members ({isLoadingMembers ? "..." : communityMembers.length})
                         </h4>
                         {isLoadingMembers ? (
                             <div className="flex items-center justify-center flex-1">
@@ -1941,7 +1938,7 @@ export default function CommunitiesPage() {
                                 </div>
                             </ScrollArea>
                         ) : (
-                            <p className="text-sm text-muted-foreground text-center py-4">No members found.</p>
+                            <p className="text-sm text-muted-foreground text-center py-4">No members found or error loading members.</p>
                         )}
                     </div>
                     
@@ -2017,5 +2014,3 @@ export default function CommunitiesPage() {
     </div>
   );
 }
-
-
