@@ -112,10 +112,5 @@ service cloud.firestore {
                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
       allow delete: if false; // Backend or TTL policy might handle deletion
     }
-
-    // Optional: Default deny for any paths not explicitly matched for extra safety
-    // match /{document=**} {
-    //  allow read, write: if false;
-    // }
   }
 }
