@@ -129,6 +129,7 @@ const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a";
 
 
 async function fetchAgoraToken(channelName: string, uid: string | number): Promise<string> {
+  // IMPORTANT: Replace with your actual token server URL
   const TOKEN_SERVER_URL = TOKEN_SERVER_URL_PLACEHOLDER; 
 
   try {
@@ -150,7 +151,6 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
         const errorData = await response.text(); 
         errorDetails += ` Body: ${errorData}`;
       } catch (e) { /* ignore if reading body fails */ }
-      console.error('Failed to fetch Agora token (server error):', errorDetails); 
       throw new Error(errorDetails); 
     }
 
@@ -158,18 +158,14 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
     if (data.token) {
       return data.token;
     } else {
-      console.error('Token not found in server response:', data); 
       throw new Error('Token not found in server response.');
     }
   } catch (error: any) {
-     if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
-      const specificErrorMessage = `Network error fetching Agora token. Please ensure the token server URL ('${TOKEN_SERVER_URL}') is correct, reachable, and has CORS configured if necessary. Original error: ${error.message}`;
-      console.error(specificErrorMessage); 
-      throw new Error(specificErrorMessage); 
+    console.error('Error fetching Agora token:', error.message);
+    if (error.message.toLowerCase().includes('failed to fetch')) {
+        throw new Error(`Network error fetching Agora token. Please ensure the token server URL ('${TOKEN_SERVER_URL}') is correct, reachable, and has CORS configured if necessary. Original error: ${error.message}`);
     }
-    const generalErrorMessage = `Error fetching Agora token: ${error.message || 'Unknown error'}. Check server response and network.`;
-    console.error(generalErrorMessage, error);
-    throw new Error(generalErrorMessage);
+    throw error; // Re-throw other errors
   }
 }
 
@@ -282,7 +278,8 @@ export default function CommunitiesPage() {
       if (user) {
         const storedFavorites = localStorage.getItem(`favorited_gifs_${user.uid}`);
         setFavoritedGifs(storedFavorites ? JSON.parse(storedFavorites) : []);
-
+        
+        console.log("Current user for fetching members:", auth.currentUser?.uid);
         setIsLoadingMembers(true);
         try {
           const usersSnapshot = await getDocs(collection(db, "users"));
@@ -296,14 +293,14 @@ export default function CommunitiesPage() {
               dataAiHint: "person face", 
             });
           });
-          console.log("Fetched community members:", fetchedMembers); // Debug log
+          console.log("Fetched community members:", fetchedMembers);
           setCommunityMembers(fetchedMembers);
         } catch (error) {
-          console.error("Error loading members:", error);
+          console.error("Error loading members (full error object):", error);
           toast({
             variant: "destructive",
             title: "Error Loading Members",
-            description: (error as Error).message || "Could not load community members.",
+            description: "Could not load community members. Please ensure you are authenticated and check Firestore security rules in the Firebase Console. See browser console for more details.",
           });
           setCommunityMembers([]);
         } finally {
@@ -2014,3 +2011,4 @@ export default function CommunitiesPage() {
     </div>
   );
 }
+

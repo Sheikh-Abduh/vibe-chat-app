@@ -62,6 +62,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchUsers = async () => {
+      if (!currentUser) {
+          console.log("Dashboard: fetchUsers called but currentUser is not yet set. Waiting for auth state.");
+          setIsLoadingPeople(true);
+          setIsLoadingMemberCount(true);
+          return;
+      }
+      console.log("Dashboard: Current user for fetching users:", currentUser?.uid);
       setIsLoadingPeople(true);
       setIsLoadingMemberCount(true);
       try {
@@ -83,22 +90,20 @@ export default function DashboardPage() {
         });
 
         setVibeCommunityMemberCount(allUsers.length);
-        setIsLoadingMemberCount(false);
         
-        // Filter out current user if logged in, then take a sample
         const samplePeople = allUsers
           .filter(person => person.id !== currentUser?.uid)
-          .sort(() => 0.5 - Math.random()) // Simple shuffle
-          .slice(0, 4); // Take up to 4 suggestions
+          .sort(() => 0.5 - Math.random()) 
+          .slice(0, 4); 
         
         setSuggestedPeople(samplePeople);
 
       } catch (error) {
-        console.error("Error fetching users:", error);
+        console.error("Dashboard: Error loading users (full error object):", error);
         toast({
           variant: "destructive",
           title: "Error Loading Users",
-          description: "Could not load user suggestions or member count.",
+          description: "Could not load user suggestions or member count. Please ensure you are authenticated and check Firestore security rules in the Firebase Console. See browser console for more details.",
         });
         setSuggestedPeople([]);
         setVibeCommunityMemberCount(0);
@@ -108,7 +113,9 @@ export default function DashboardPage() {
       }
     };
 
-    fetchUsers();
+    if (currentUser) {
+        fetchUsers();
+    }
   }, [toast, currentUser]);
 
   const dynamicVibeCommunityImage = currentThemeMode === 'dark' ? '/bannerd.png' : '/bannerl.png';
@@ -192,3 +199,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
