@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
@@ -28,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { Badge } from '@/components/ui/badge';
 import AgoraRTC, { type IAgoraRTCClient, type ILocalAudioTrack, type ILocalVideoTrack, type IAgoraRTCRemoteUser, type UID } from 'agora-rtc-sdk-ng';
+import type { ChatMessage } from '@/types/app';
 
 const EmojiPicker = dynamic(() => import('emoji-picker-react').then(mod => mod.default), {
   ssr: false,
@@ -104,33 +106,6 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
     throw new Error(generalErrorMessage);
   }
 }
-
-
-type ChatMessage = {
-  id: string;
-  text?: string;
-  senderId: string;
-  senderName: string;
-  senderAvatarUrl?: string | null;
-  timestamp: Date;
-  type: 'text' | 'image' | 'file' | 'gif' | 'voice_message';
-  fileUrl?: string;
-  fileName?: string;
-  fileType?: string;
-  gifUrl?: string;
-  gifId?: string;
-  gifTinyUrl?: string;
-  gifContentDescription?: string;
-  isPinned?: boolean;
-  reactions?: Record<string, string[]>;
-  replyToMessageId?: string;
-  replyToSenderName?: string;
-  replyToSenderId?: string;
-  replyToTextSnippet?: string;
-  isForwarded?: boolean;
-  forwardedFromSenderName?: string;
-  mentionedUserIds?: string[];
-};
 
 interface DmConversation {
   id: string;
@@ -1681,3 +1656,4 @@ export default function MessagesPage() {
 }
 
     
+
