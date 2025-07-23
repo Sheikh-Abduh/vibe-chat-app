@@ -129,8 +129,7 @@ const TOKEN_SERVER_API_KEY = "ACo4e06ba0f991d4bc1891d6c8ae0d71b0a";
 
 
 async function fetchAgoraToken(channelName: string, uid: string | number): Promise<string> {
-  // IMPORTANT: Replace with your actual token server URL
-  const TOKEN_SERVER_URL = TOKEN_SERVER_URL_PLACEHOLDER; 
+  const TOKEN_SERVER_URL = TOKEN_SERVER_URL_PLACEHOLDER;
 
   try {
     const response = await fetch(TOKEN_SERVER_URL, {
@@ -161,11 +160,14 @@ async function fetchAgoraToken(channelName: string, uid: string | number): Promi
       throw new Error('Token not found in server response.');
     }
   } catch (error: any) {
-    console.error('Error fetching Agora token:', error.message);
-    if (error.message.toLowerCase().includes('failed to fetch')) {
-        throw new Error(`Network error fetching Agora token. Please ensure the token server URL ('${TOKEN_SERVER_URL}') is correct, reachable, and has CORS configured if necessary. Original error: ${error.message}`);
+    if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
+        const specificErrorMessage = `Network error fetching Agora token. Please ensure the token server URL ('${TOKEN_SERVER_URL}') is correct, reachable, and has CORS configured if necessary. Original error: ${error.message}`;
+        console.error(specificErrorMessage);
+        throw new Error(specificErrorMessage);
     }
-    throw error; // Re-throw other errors
+    const generalErrorMessage = `Error fetching Agora token: ${error.message || 'Unknown error'}. Check server response and network.`;
+    console.error(generalErrorMessage, error);
+    throw new Error(generalErrorMessage);
   }
 }
 
@@ -246,7 +248,14 @@ export default function CommunitiesPage() {
   const remoteVideoPlayersContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (currentUser && typeof window !== 'undefined') {
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      setCurrentUser(user);
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  useEffect(() => {
+    if (currentUser) {
         const modeFromStorage = localStorage.getItem(`appSettings_${currentUser.uid}`);
         if (modeFromStorage) {
             try {
@@ -259,8 +268,47 @@ export default function CommunitiesPage() {
         } else {
              setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         }
+
+        const storedFavorites = localStorage.getItem(`favorited_gifs_${currentUser.uid}`);
+        setFavoritedGifs(storedFavorites ? JSON.parse(storedFavorites) : []);
+
+        const fetchMembers = async () => {
+          setIsLoadingMembers(true);
+          try {
+            console.log("Current user for fetching members:", auth.currentUser?.uid);
+            const usersSnapshot = await getDocs(collection(db, "users"));
+            const fetchedMembers: Member[] = [];
+            usersSnapshot.forEach((docSnap) => {
+              const userData = docSnap.data();
+              fetchedMembers.push({
+                id: docSnap.id,
+                name: userData.profileDetails?.displayName || userData.email?.split('@')[0] || "User",
+                avatarUrl: userData.profileDetails?.photoURL || undefined,
+                dataAiHint: "person face", 
+              });
+            });
+            console.log("Fetched community members:", fetchedMembers);
+            setCommunityMembers(fetchedMembers);
+          } catch (error) {
+            console.error("Error loading members (full error object):", error);
+            toast({
+              variant: "destructive",
+              title: "Error Loading Members",
+              description: "Could not load community members. Please ensure you are authenticated and check Firestore security rules in the Firebase Console. See browser console for more details.",
+            });
+            setCommunityMembers([]);
+          } finally {
+            setIsLoadingMembers(false);
+          }
+        };
+
+        fetchMembers();
+    } else {
+        setFavoritedGifs([]);
+        setCommunityMembers([]);
+        setIsLoadingMembers(false);
     }
-  }, [currentUser]);
+  }, [currentUser, toast]);
 
   const dynamicVibeCommunityIcon = currentThemeMode === 'dark' ? '/pfd.png' : '/pfl.png';
   const dynamicVibeCommunityBanner = currentThemeMode === 'dark' ? '/bannerd.png' : '/bannerl.png';
@@ -271,49 +319,6 @@ export default function CommunitiesPage() {
   };
 
   useEffect(scrollToBottom, [messages, showPinnedMessages, chatSearchTerm]);
-
- useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
-      setCurrentUser(user);
-      if (user) {
-        const storedFavorites = localStorage.getItem(`favorited_gifs_${user.uid}`);
-        setFavoritedGifs(storedFavorites ? JSON.parse(storedFavorites) : []);
-        
-        console.log("Current user for fetching members:", auth.currentUser?.uid);
-        setIsLoadingMembers(true);
-        try {
-          const usersSnapshot = await getDocs(collection(db, "users"));
-          const fetchedMembers: Member[] = [];
-          usersSnapshot.forEach((docSnap) => {
-            const userData = docSnap.data();
-            fetchedMembers.push({
-              id: docSnap.id,
-              name: userData.profileDetails?.displayName || userData.email?.split('@')[0] || "User",
-              avatarUrl: userData.profileDetails?.photoURL || undefined,
-              dataAiHint: "person face", 
-            });
-          });
-          console.log("Fetched community members:", fetchedMembers);
-          setCommunityMembers(fetchedMembers);
-        } catch (error) {
-          console.error("Error loading members (full error object):", error);
-          toast({
-            variant: "destructive",
-            title: "Error Loading Members",
-            description: "Could not load community members. Please ensure you are authenticated and check Firestore security rules in the Firebase Console. See browser console for more details.",
-          });
-          setCommunityMembers([]);
-        } finally {
-          setIsLoadingMembers(false);
-        }
-      } else {
-        setFavoritedGifs([]);
-        setCommunityMembers([]);
-        setIsLoadingMembers(false);
-      }
-    });
-    return () => unsubscribeAuth();
-  }, [toast]);
 
   const getFavoriteStorageKey = () => {
     if (!currentUser) return null;

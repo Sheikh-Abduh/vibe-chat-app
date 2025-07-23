@@ -11,6 +11,8 @@ import { collection, getDocs } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 const vibeCommunityStaticDetails = {
   id: 'vibe-community-main',
@@ -40,83 +42,74 @@ export default function DashboardPage() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(user => {
         setCurrentUser(user);
-        if (user && typeof window !== 'undefined') {
-            const modeFromStorage = localStorage.getItem(`appSettings_${user.uid}`);
-            if (modeFromStorage) {
-                try {
-                    const settings = JSON.parse(modeFromStorage);
-                    setCurrentThemeMode(settings.themeMode || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
-                } catch(e) {
-                    console.error("Error parsing theme from localStorage on dashboard", e);
-                    setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-                }
-            } else {
-                 setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-            }
-        } else if (!user) { 
-            setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        }
     });
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      if (!currentUser) {
-          console.log("Dashboard: fetchUsers called but currentUser is not yet set. Waiting for auth state.");
+    if (currentUser) {
+        const modeFromStorage = localStorage.getItem(`appSettings_${currentUser.uid}`);
+        if (modeFromStorage) {
+            try {
+                const settings = JSON.parse(modeFromStorage);
+                setCurrentThemeMode(settings.themeMode || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+            } catch(e) {
+                console.error("Error parsing theme from localStorage on dashboard", e);
+                setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            }
+        } else {
+             setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        }
+
+        const fetchUsers = async () => {
           setIsLoadingPeople(true);
           setIsLoadingMemberCount(true);
-          return;
-      }
-      console.log("Dashboard: Current user for fetching users:", currentUser?.uid);
-      setIsLoadingPeople(true);
-      setIsLoadingMemberCount(true);
-      try {
-        const usersCollectionRef = collection(db, "users");
-        const usersSnapshot = await getDocs(usersCollectionRef);
-        const allUsers: SuggestedPerson[] = [];
-        
-        usersSnapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          const profile = data.profileDetails || {};
-          const person: SuggestedPerson = {
-            id: docSnap.id,
-            name: profile.displayName || data.email?.split('@')[0] || "User",
-            avatar: profile.photoURL || `https://placehold.co/100x100.png?text=${(profile.displayName || 'U').charAt(0)}`,
-            dataAiHint: "person face",
-            tags: [profile.passion, profile.hobbies?.split(',')[0]].filter(Boolean).map(tag => tag.trim()),
-          };
-          allUsers.push(person);
-        });
+          try {
+            console.log("Dashboard: Current user for fetching users:", auth.currentUser?.uid);
+            const usersCollectionRef = collection(db, "users");
+            const usersSnapshot = await getDocs(usersCollectionRef);
+            const allUsers: SuggestedPerson[] = [];
+            
+            usersSnapshot.forEach((docSnap) => {
+              const data = docSnap.data();
+              const profile = data.profileDetails || {};
+              const person: SuggestedPerson = {
+                id: docSnap.id,
+                name: profile.displayName || data.email?.split('@')[0] || "User",
+                avatar: profile.photoURL || `https://placehold.co/100x100.png?text=${(profile.displayName || 'U').charAt(0)}`,
+                dataAiHint: "person face",
+                tags: [profile.passion, profile.hobbies?.split(',')[0]].filter(Boolean).map(tag => tag.trim()),
+              };
+              allUsers.push(person);
+            });
 
-        setVibeCommunityMemberCount(allUsers.length);
-        
-        const samplePeople = allUsers
-          .filter(person => person.id !== currentUser?.uid)
-          .sort(() => 0.5 - Math.random()) 
-          .slice(0, 4); 
-        
-        setSuggestedPeople(samplePeople);
+            setVibeCommunityMemberCount(allUsers.length);
+            
+            const samplePeople = allUsers
+              .filter(person => person.id !== currentUser?.uid)
+              .sort(() => 0.5 - Math.random()) 
+              .slice(0, 4); 
+            
+            setSuggestedPeople(samplePeople);
 
-      } catch (error) {
-        console.error("Dashboard: Error loading users (full error object):", error);
-        toast({
-          variant: "destructive",
-          title: "Error Loading Users",
-          description: "Could not load user suggestions or member count. Please ensure you are authenticated and check Firestore security rules in the Firebase Console. See browser console for more details.",
-        });
-        setSuggestedPeople([]);
-        setVibeCommunityMemberCount(0);
-      } finally {
-        setIsLoadingPeople(false);
-        setIsLoadingMemberCount(false);
-      }
-    };
+          } catch (error) {
+            console.error("Dashboard: Error loading users (full error object):", error);
+            toast({
+              variant: "destructive",
+              title: "Error Loading Users",
+              description: "Could not load user suggestions or member count. Please ensure you are authenticated and check Firestore security rules in the Firebase Console. See browser console for more details.",
+            });
+            setSuggestedPeople([]);
+            setVibeCommunityMemberCount(0);
+          } finally {
+            setIsLoadingPeople(false);
+            setIsLoadingMemberCount(false);
+          }
+        };
 
-    if (currentUser) {
         fetchUsers();
     }
-  }, [toast, currentUser]);
+  }, [currentUser, toast]);
 
   const dynamicVibeCommunityImage = currentThemeMode === 'dark' ? '/bannerd.png' : '/bannerl.png';
 
