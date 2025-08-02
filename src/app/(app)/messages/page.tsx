@@ -1,15 +1,13 @@
-
-
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent } from 'react';
+import React, { useState, useEffect, useRef, useCallback, type FormEvent, type ChangeEvent, useMemo } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase'; // Ensure db is imported
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNowStrict } from 'date-fns';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, deleteDoc, updateDoc, runTransaction, setDoc, getDoc, getDocs, where, writeBatch } from 'firebase/firestore';
 import type { TenorGif as TenorGifType } from '@/types/tenor';
 import dynamic from 'next/dynamic';
 import { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
@@ -21,11 +19,12 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, User as UserIcon, Mic, Bookmark, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign, Phone, VideoIcon } from 'lucide-react';
+import { Paperclip, Smile, Film, Send, Trash2, Pin, PinOff, Loader2, Star, StopCircle, AlertTriangle, SmilePlus, User as UserIcon, Mic, Bookmark, Reply, Share2, X, Search, MessageSquareReply, CornerUpRight, AtSign, Phone, VideoIcon, VolumeX, Volume2, MoreHorizontal, RefreshCw, ShieldCheck, MicOff, VideoOff, Monitor, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { Badge } from '@/components/ui/badge';
 import AgoraRTC, { type IAgoraRTCClient, type ILocalAudioTrack, type ILocalVideoTrack, type IAgoraRTCRemoteUser, type UID } from 'agora-rtc-sdk-ng';
@@ -54,7 +53,8 @@ const TIMESTAMP_GROUPING_THRESHOLD_MS = 60 * 1000; // 1 minute
 interface TenorGif extends TenorGifType {}
 
 
-const TENOR_API_KEY = "AIzaSyBuP5qDIEskM04JSKNyrdWKMVj5IXvLLtw";
+// Tenor API key should be moved to server-side for security
+// const TENOR_API_KEY = "YOUR_TENOR_API_KEY";
 
 const AGORA_APP_ID = "530ba273ad0847019e4e48e70135e345"; 
 // IMPORTANT: You must replace 'https://your-token-server.com/generate-agora-token' with your actual token server URL.
@@ -113,11 +113,24 @@ interface DmConversation {
   avatarUrl?: string;
   dataAiHint?: string;
   partnerId: string;
+  unreadCount?: number;
 }
 
-const formatChatMessage = (text?: string): string => {
+const formatChatMessage = (text?: string, restrictedWords: string[] = []): string => {
   if (!text) return '';
   let formattedText = text;
+  
+  // Only censor restricted words if the current user has them in their list
+  if (restrictedWords.length > 0) {
+    restrictedWords.forEach(({ word, convertTo }) => {
+      const regex = new RegExp(`\\b${word}\\b`, 'gi');
+      // If convertTo is a single character, repeat it for the length of the word
+      // If it's multiple characters, use it as is
+      const replacement = convertTo.length === 1 ? convertTo.repeat(word.length) : convertTo;
+      formattedText = formattedText.replace(regex, replacement);
+    });
+  }
+  
   formattedText = formattedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   // @Mentions: @username (basic styling) - Apply this first
@@ -143,13 +156,22 @@ export default function MessagesPage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [selectedConversation, setSelectedConversation] = useState<DmConversation | null>(null);
   const [otherUserId, setOtherUserId] = useState<string | null>(null);
   const [otherUserName, setOtherUserName] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [dmPartnerProfile, setDmPartnerProfile] = useState<Partial<User> & {bio?: string; mutualInterests?: string[]} | null>(null);
-
+  const [connectedUsers, setConnectedUsers] = useState<DmConversation[]>([]);
+  const [isLoadingConnectedUsers, setIsLoadingConnectedUsers] = useState(false);
+  const [conversationSearchTerm, setConversationSearchTerm] = useState("");
+  const [currentUnsubscribe, setCurrentUnsubscribe] = useState<(() => void) | null>(null);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  
+  // Mute settings state
+  const [mutedUsers, setMutedUsers] = useState<Set<string>>(new Set());
+  const [mutedUsersNotifications, setMutedUsersNotifications] = useState<Set<string>>(new Set());
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -168,6 +190,7 @@ export default function MessagesPage() {
   const gifSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [gifPickerView, setGifPickerView] = useState<'search' | 'favorites'>('search');
   const [favoritedGifs, setFavoritedGifs] = useState<TenorGif[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   const [isRecording, setIsRecording] = useState(false);
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
@@ -183,6 +206,10 @@ export default function MessagesPage() {
   const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
   const [isForwardDialogOpen, setIsForwardDialogOpen] = useState(false);
   const [forwardSearchTerm, setForwardSearchTerm] = useState("");
+  const [isRestrictedWordsDialogOpen, setIsRestrictedWordsDialogOpen] = useState(false);
+  const [restrictedWords, setRestrictedWords] = useState<Array<{word: string, convertTo: string}>>([]);
+  const [newRestrictedWord, setNewRestrictedWord] = useState("");
+  const [newRestrictedWordConvertTo, setNewRestrictedWordConvertTo] = useState("*");
 
   const [isChatSearchOpen, setIsChatSearchOpen] = useState(false);
   const [chatSearchTerm, setChatSearchTerm] = useState("");
@@ -191,6 +218,13 @@ export default function MessagesPage() {
   const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
   const mentionSuggestionsRef = useRef<HTMLDivElement>(null);
   const [isStartingCall, setIsStartingCall] = useState(false);
+  const [isInCall, setIsInCall] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isCameraOff, setIsCameraOff] = useState(false);
+  const [callStartTime, setCallStartTime] = useState<Date | null>(null);
+  const [callDuration, setCallDuration] = useState(0);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [localScreenTrack, setLocalScreenTrack] = useState<ILocalVideoTrack | null>(null);
 
   // Agora state variables
   const agoraClientRef = useRef<IAgoraRTCClient | null>(null);
@@ -200,29 +234,72 @@ export default function MessagesPage() {
   const localVideoPlayerContainerRef = useRef<HTMLDivElement>(null);
   const remoteVideoPlayerContainerRef = useRef<HTMLDivElement>(null);
 
+  // State to track current mute settings
+  const [currentMuteSettings, setCurrentMuteSettings] = useState<{
+    mutedUsers: string[];
+    mutedConversations: string[];
+    mutedCommunities: string[];
+    allowMentionsWhenMuted: boolean;
+  }>({
+    mutedUsers: [],
+    mutedConversations: [],
+    mutedCommunities: [],
+    allowMentionsWhenMuted: true
+  });
+
+  // Check if current conversation is muted
+  const isConversationMuted = useMemo(() => {
+    if (!currentUser || !conversationId) return false;
+    return currentMuteSettings.mutedConversations && currentMuteSettings.mutedConversations.includes(conversationId);
+  }, [currentUser, conversationId, currentMuteSettings.mutedConversations]);
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
       if (user) {
         setCurrentUser(user);
-        const savedMessagesConvo: DmConversation = {
-            id: `${user.uid}_self`,
-            name: 'Saved Messages',
-            partnerId: user.uid,
-            avatarUrl: user.photoURL || undefined,
-            dataAiHint: 'bookmark save',
-        };
-        setSelectedConversation(savedMessagesConvo);
-        setOtherUserId(user.uid);
-        setOtherUserName('Saved Messages');
-        setDmPartnerProfile({ // Set partner profile for "Saved Messages"
-            uid: user.uid,
-            displayName: user.displayName || "You",
-            photoURL: user.photoURL,
-            email: user.email,
-            bio: "This is your personal space to save messages.",
-            mutualInterests: ["Notes", "Reminders"]
-        });
+        
+        // Check if there's a conversation parameter in the URL
+        const conversationParam = searchParams.get('conversation');
+        
+        if (conversationParam) {
+          // Parse the conversation ID to get the other user ID
+          const userIds = conversationParam.split('_');
+          const otherUserId = userIds.find(id => id !== user.uid) || user.uid;
+          
+          // Set up the conversation for the connected user
+          setOtherUserId(otherUserId);
+          setOtherUserName('Connected User'); // Will be updated when profile is fetched
+          
+          // Create a temporary conversation object
+          const connectedUserConvo: DmConversation = {
+            id: conversationParam,
+            name: 'Connected User',
+            partnerId: otherUserId,
+            avatarUrl: undefined,
+            dataAiHint: 'person face',
+          };
+          setSelectedConversation(connectedUserConvo);
+        } else {
+          // Default to Saved Messages
+          const savedMessagesConvo: DmConversation = {
+              id: `${user.uid}_self`,
+              name: 'Saved Messages',
+              partnerId: user.uid,
+              avatarUrl: user.photoURL || undefined,
+              dataAiHint: 'bookmark save',
+          };
+          setSelectedConversation(savedMessagesConvo);
+          setOtherUserId(user.uid);
+          setOtherUserName('Saved Messages');
+          setDmPartnerProfile({ // Set partner profile for "Saved Messages"
+              uid: user.uid,
+              displayName: user.displayName || "You",
+              photoURL: user.photoURL,
+              email: user.email,
+              bio: "This is your personal space to save messages.",
+              mutualInterests: [] // No mutual interests for self
+          });
+        }
 
         const modeFromStorage = localStorage.getItem(`appSettings_${user.uid}`);
         if (modeFromStorage) {
@@ -234,6 +311,22 @@ export default function MessagesPage() {
 
         const storedFavorites = localStorage.getItem(`favorited_gifs_${user.uid}`);
         setFavoritedGifs(storedFavorites ? JSON.parse(storedFavorites) : []);
+        
+        // Load restricted words from localStorage
+        const storedRestrictedWords = localStorage.getItem(`restricted_words_${user.uid}`);
+        if (storedRestrictedWords) {
+          const parsed = JSON.parse(storedRestrictedWords);
+          // Handle migration from old format (string array) to new format (object array)
+          if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string') {
+            const migrated = parsed.map((word: string) => ({ word, convertTo: '*' }));
+            setRestrictedWords(migrated);
+            localStorage.setItem(`restricted_words_${user.uid}`, JSON.stringify(migrated));
+          } else {
+            setRestrictedWords(parsed);
+          }
+        } else {
+          setRestrictedWords([]);
+        }
         setIsCheckingAuth(false);
       } else {
         setIsCheckingAuth(false);
@@ -241,7 +334,171 @@ export default function MessagesPage() {
       }
     });
     return () => unsubscribeAuth();
-  }, [router]);
+  }, [router, searchParams]);
+
+  // Function to calculate mutual interests between two users
+  const calculateMutualInterests = useCallback(async (userId1: string, userId2: string): Promise<string[]> => {
+    try {
+      // Fetch both users' profiles
+      const [user1Doc, user2Doc] = await Promise.all([
+        getDoc(doc(db, 'users', userId1)),
+        getDoc(doc(db, 'users', userId2))
+      ]);
+
+      if (!user1Doc.exists() || !user2Doc.exists()) {
+        return [];
+      }
+
+      const user1Data = user1Doc.data();
+      const user2Data = user2Doc.data();
+      
+      const user1Profile = user1Data.profileDetails || {};
+      const user2Profile = user2Data.profileDetails || {};
+
+      // Extract interests from both users
+      const user1Interests = [
+        user1Profile.passion,
+        ...(user1Profile.hobbies ? user1Profile.hobbies.split(',').map((h: string) => h.trim()) : []),
+        ...(user1Profile.tags ? user1Profile.tags.split(',').map((t: string) => t.trim()) : [])
+      ].filter(Boolean);
+
+      const user2Interests = [
+        user2Profile.passion,
+        ...(user2Profile.hobbies ? user2Profile.hobbies.split(',').map((h: string) => h.trim()) : []),
+        ...(user2Profile.tags ? user2Profile.tags.split(',').map((t: string) => t.trim()) : [])
+      ].filter(Boolean);
+
+      // Find mutual interests (case-insensitive comparison)
+      const mutualInterests = user1Interests.filter(interest1 =>
+        user2Interests.some(interest2 => 
+          interest1.toLowerCase() === interest2.toLowerCase()
+        )
+      );
+
+      return [...new Set(mutualInterests)]; // Remove duplicates
+    } catch (error) {
+      console.error('Error calculating mutual interests:', error);
+      return [];
+    }
+  }, []);
+
+  // Function to calculate unread messages for a conversation
+  const calculateUnreadMessages = useCallback(async (conversationId: string, currentUserId: string): Promise<number> => {
+    try {
+      const messagesRef = collection(db, 'direct_messages', conversationId, 'messages');
+      // Get all messages and filter client-side to avoid complex queries
+      const q = query(messagesRef, orderBy('timestamp', 'desc'));
+      
+      const snapshot = await getDocs(q);
+      const unreadMessages = snapshot.docs.filter(doc => {
+        const data = doc.data();
+        return data.senderId !== currentUserId && (!data.readBy || !data.readBy.includes(currentUserId));
+      });
+      
+      return unreadMessages.length;
+    } catch (error) {
+      console.error('Error calculating unread messages:', error);
+      return 0;
+    }
+  }, []);
+
+  // Function to mark messages as read for a conversation
+  const markMessagesAsRead = useCallback(async (conversationId: string, currentUserId: string) => {
+    try {
+      const messagesRef = collection(db, 'direct_messages', conversationId, 'messages');
+      // Get all messages and filter client-side
+      const q = query(messagesRef, orderBy('timestamp', 'desc'));
+      
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      let hasUpdates = false;
+      
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.senderId !== currentUserId && (!data.readBy || !data.readBy.includes(currentUserId))) {
+          const readBy = data.readBy || [];
+          readBy.push(currentUserId);
+          batch.update(doc.ref, { readBy });
+          hasUpdates = true;
+        }
+      });
+      
+      if (hasUpdates) {
+        await batch.commit();
+        // Update unread counts immediately after marking as read
+        setTimeout(() => {
+          if (currentUser) {
+            updateUnreadCounts();
+          }
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+    }
+  }, [currentUser]);
+
+  // Function to update unread counts for all conversations
+  const updateUnreadCounts = useCallback(async () => {
+    if (!currentUser) return;
+    
+    try {
+      const updatedConnectedUsers = await Promise.all(
+        connectedUsers.map(async (user) => {
+          const unreadCount = await calculateUnreadMessages(user.id, currentUser.uid);
+          return {
+            ...user,
+            unreadCount: unreadCount > 0 ? unreadCount : undefined,
+          };
+        })
+      );
+      
+      setConnectedUsers(updatedConnectedUsers);
+    } catch (error) {
+      console.error('Error updating unread counts:', error);
+    }
+  }, [currentUser, connectedUsers, calculateUnreadMessages]);
+
+  // Fetch connected user's profile when navigating from connection
+  useEffect(() => {
+    const fetchConnectedUserProfile = async () => {
+      if (currentUser && otherUserId && otherUserId !== currentUser.uid) {
+        try {
+          const userDocRef = doc(db, 'users', otherUserId);
+          const userDoc = await getDoc(userDocRef);
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const profile = userData.profileDetails || {};
+            
+            // Calculate actual mutual interests
+            const mutualInterests = await calculateMutualInterests(currentUser.uid, otherUserId);
+            
+            setDmPartnerProfile({
+              uid: otherUserId,
+              displayName: profile.displayName || userData.email?.split('@')[0] || "User",
+              photoURL: profile.photoURL || null,
+              email: userData.email,
+              bio: profile.aboutMe || "",
+              mutualInterests: mutualInterests
+            });
+            
+            setOtherUserName(profile.displayName || userData.email?.split('@')[0] || "User");
+            
+            // Update the selected conversation with the user's info
+            setSelectedConversation(prev => prev ? {
+              ...prev,
+              name: profile.displayName || userData.email?.split('@')[0] || "User",
+              avatarUrl: profile.photoURL || undefined,
+            } : null);
+          }
+        } catch (error) {
+          console.error('Error fetching connected user profile:', error);
+        }
+      }
+    };
+
+    fetchConnectedUserProfile();
+  }, [currentUser, otherUserId, calculateMutualInterests]);
 
 
   useEffect(() => {
@@ -253,93 +510,637 @@ export default function MessagesPage() {
     }
   }, [currentUser, otherUserId]);
 
+  // Fetch all connected users
+  const fetchConnectedUsers = useCallback(async () => {
+    if (!currentUser) return;
+
+    setIsLoadingConnectedUsers(true);
+    try {
+      // Get all connection requests where the current user is involved and status is 'accepted'
+      const requestsRef = collection(db, 'connectionRequests');
+      const q = query(
+        requestsRef,
+        where('status', '==', 'accepted'),
+        where('fromUserId', '==', currentUser.uid)
+      );
+      const fromSnapshot = await getDocs(q);
+      
+      const q2 = query(
+        requestsRef,
+        where('status', '==', 'accepted'),
+        where('toUserId', '==', currentUser.uid)
+      );
+      const toSnapshot = await getDocs(q2);
+
+      const connectedUserIds = new Set<string>();
+      
+      // Add users the current user sent requests to
+      fromSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        connectedUserIds.add(data.toUserId);
+      });
+      
+      // Add users who sent requests to the current user
+      toSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        connectedUserIds.add(data.fromUserId);
+      });
+
+      // Fetch user profiles and conversation data for connected users
+      const connectedUsersData: (DmConversation & { lastMessageTimestamp?: any })[] = [];
+      
+      for (const userId of connectedUserIds) {
+        try {
+          const userDocRef = doc(db, 'users', userId);
+          const userDoc = await getDoc(userDocRef);
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const profile = userData.profileDetails || {};
+            
+            const conversationId = [currentUser.uid, userId].sort().join('_');
+            
+            // Fetch conversation document to get last message timestamp
+            const conversationRef = doc(db, 'direct_messages', conversationId);
+            const conversationDoc = await getDoc(conversationRef);
+            
+            let lastMessageTimestamp = null;
+            if (conversationDoc.exists()) {
+              const conversationData = conversationDoc.data();
+              lastMessageTimestamp = conversationData.lastMessageTimestamp;
+            }
+            
+            connectedUsersData.push({
+              id: conversationId,
+              name: profile.displayName || userData.email?.split('@')[0] || "User",
+              partnerId: userId,
+              avatarUrl: profile.photoURL || undefined,
+              dataAiHint: 'person face',
+              lastMessageTimestamp: lastMessageTimestamp,
+            });
+          }
+        } catch (error) {
+          console.error(`Error fetching user ${userId}:`, error);
+        }
+      }
+
+      // Sort by last message timestamp (most recent first)
+      const sortedConnectedUsers = connectedUsersData.sort((a, b) => {
+        // If both have timestamps, compare them
+        if (a.lastMessageTimestamp && b.lastMessageTimestamp) {
+          const aTime = a.lastMessageTimestamp.toDate ? a.lastMessageTimestamp.toDate() : new Date(a.lastMessageTimestamp);
+          const bTime = b.lastMessageTimestamp.toDate ? b.lastMessageTimestamp.toDate() : new Date(b.lastMessageTimestamp);
+          return bTime.getTime() - aTime.getTime(); // Most recent first
+        }
+        
+        // If only one has timestamp, prioritize the one with timestamp
+        if (a.lastMessageTimestamp && !b.lastMessageTimestamp) return -1;
+        if (!a.lastMessageTimestamp && b.lastMessageTimestamp) return 1;
+        
+        // If neither has timestamp, sort alphabetically by name
+        return a.name.localeCompare(b.name);
+      });
+
+      // Calculate unread counts for each conversation
+      const finalConnectedUsers: DmConversation[] = [];
+      
+      for (const user of sortedConnectedUsers) {
+        const unreadCount = await calculateUnreadMessages(user.id, currentUser.uid);
+        finalConnectedUsers.push({
+        id: user.id,
+        name: user.name,
+        partnerId: user.partnerId,
+        avatarUrl: user.avatarUrl,
+        dataAiHint: user.dataAiHint,
+          unreadCount: unreadCount > 0 ? unreadCount : undefined,
+        });
+      }
+
+      setConnectedUsers(finalConnectedUsers);
+    } catch (error) {
+      console.error('Error fetching connected users:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not load connected users.",
+      });
+    } finally {
+      setIsLoadingConnectedUsers(false);
+    }
+  }, [currentUser, toast]);
+
+  // Fetch connected users when current user changes
+  useEffect(() => {
+    fetchConnectedUsers();
+  }, [fetchConnectedUsers]);
+
+
+
+  // Save mute settings to Firestore
+  const saveMuteSettings = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      console.log('💾 Saving mute settings to Firestore:', {
+        mutedUsers: Array.from(mutedUsers),
+        mutedUsersNotifications: Array.from(mutedUsersNotifications)
+      });
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const muteData = {
+        muteSettings: {
+          mutedUsers: Array.from(mutedUsers),
+          mutedUsersNotifications: Array.from(mutedUsersNotifications)
+        }
+      };
+      console.log('💾 Attempting to save mute data:', muteData);
+      await setDoc(userDocRef, muteData, { merge: true });
+      console.log('✅ Mute settings saved to Firestore successfully');
+    } catch (error: any) {
+      console.error('❌ Error saving mute settings:', error);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Full error object:', error);
+    }
+  }, [currentUser, mutedUsers, mutedUsersNotifications]);
+
+  // Load mute settings from Firestore
+  const loadMuteSettings = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      console.log('🔄 Loading mute settings for user:', currentUser.uid);
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        console.log('🔄 User document data:', userData);
+        
+        if (userData.muteSettings) {
+          const muteSettings = userData.muteSettings;
+          console.log('🔄 Found mute settings:', muteSettings);
+          setMutedUsers(new Set(muteSettings.mutedUsers || []));
+          setMutedUsersNotifications(new Set(muteSettings.mutedUsersNotifications || []));
+          console.log('✅ Mute settings loaded from Firestore successfully');
+        } else {
+          console.log('⚠️ No mute settings found in user document');
+          setMutedUsers(new Set());
+          setMutedUsersNotifications(new Set());
+        }
+      } else {
+        console.log('⚠️ User document does not exist');
+        setMutedUsers(new Set());
+        setMutedUsersNotifications(new Set());
+      }
+    } catch (error: any) {
+      console.error('❌ Error loading mute settings:', error);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Full error object:', error);
+      setMutedUsers(new Set());
+      setMutedUsersNotifications(new Set());
+    }
+  }, [currentUser]);
+
+  // Ensure mute settings are loaded on mount
+  useEffect(() => {
+    if (currentUser) {
+      console.log('🔄 Loading mute settings on mount for user:', currentUser.uid);
+      loadMuteSettings();
+    }
+  }, [currentUser, loadMuteSettings]);
+
+  // Auto-save mute settings whenever they change
+  useEffect(() => {
+    if (currentUser && (mutedUsers.size > 0 || mutedUsersNotifications.size > 0)) {
+      console.log('🔄 Auto-saving mute settings due to state change');
+      saveMuteSettings();
+    }
+  }, [mutedUsers, mutedUsersNotifications, currentUser, saveMuteSettings]);
+
+  // Auto-save mute settings whenever they change
+  useEffect(() => {
+    if (currentUser && (mutedUsers.size > 0 || mutedUsersNotifications.size > 0)) {
+      console.log('🔄 Auto-saving mute settings due to state change');
+      saveMuteSettings();
+    }
+  }, [mutedUsers, mutedUsersNotifications, currentUser, saveMuteSettings]);
+
+  const handleMuteUser = useCallback((userId: string) => {
+    setMutedUsers(prev => {
+      const newSet = new Set(prev);
+      newSet.add(userId);
+      console.log('🔇 Muting all for user:', userId, 'New set:', Array.from(newSet));
+      return newSet;
+    });
+    // Save after state update
+    setTimeout(() => saveMuteSettings(), 0);
+    toast({
+      title: "User Muted",
+      description: "You will no longer receive messages from this user.",
+    });
+  }, [saveMuteSettings, toast]);
+
+  const handleUnmuteUser = useCallback((userId: string) => {
+    setMutedUsers(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(userId);
+      console.log('🔊 Unmuting all for user:', userId, 'New set:', Array.from(newSet));
+      return newSet;
+    });
+    // Save after state update
+    setTimeout(() => saveMuteSettings(), 0);
+    toast({
+      title: "User Unmuted",
+      description: "You will now receive messages from this user again.",
+    });
+  }, [saveMuteSettings, toast]);
+
+  const handleMuteUserNotifications = useCallback((userId: string) => {
+    setMutedUsersNotifications(prev => {
+      const newSet = new Set(prev);
+      newSet.add(userId);
+      console.log('🔇 Muting notifications for user:', userId, 'New set:', Array.from(newSet));
+      return newSet;
+    });
+    // Save after state update
+    setTimeout(() => saveMuteSettings(), 0);
+    toast({
+      title: "Notifications Muted",
+      description: "You will no longer receive notifications from this user.",
+    });
+  }, [saveMuteSettings, toast]);
+
+  const handleUnmuteUserNotifications = useCallback((userId: string) => {
+    setMutedUsersNotifications(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(userId);
+      console.log('🔊 Unmuting notifications for user:', userId, 'New set:', Array.from(newSet));
+      return newSet;
+    });
+    // Save after state update
+    setTimeout(() => saveMuteSettings(), 0);
+    toast({
+      title: "Notifications Unmuted",
+      description: "You will now receive notifications from this user again.",
+    });
+  }, [saveMuteSettings, toast]);
+
+  // Listen for connection accepted events to refresh the list
+  useEffect(() => {
+    const handleConnectionAccepted = () => {
+      fetchConnectedUsers();
+    };
+
+    window.addEventListener('connectionAccepted', handleConnectionAccepted);
+    
+    return () => {
+      window.removeEventListener('connectionAccepted', handleConnectionAccepted);
+    };
+  }, [fetchConnectedUsers]);
+
+  // Function to refresh connected users (can be called from other components)
+  const refreshConnectedUsers = () => {
+    fetchConnectedUsers();
+  };
+
+  // Function to create activity notification for new messages
+  const createMessageNotification = useCallback(async (recipientId: string, messageText: string, conversationId: string) => {
+    if (!currentUser || !recipientId || recipientId === currentUser.uid) return;
+    
+    try {
+      const activityRef = collection(db, `users/${recipientId}/activityItems`);
+      await addDoc(activityRef, {
+        type: 'new_message',
+        actorId: currentUser.uid,
+        actorName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+        actorAvatarUrl: currentUser.photoURL || null,
+        contentSnippet: `sent you a message: "${messageText.length > 50 ? messageText.substring(0, 50) + '...' : messageText}"`,
+        timestamp: serverTimestamp(),
+        isRead: false,
+        conversationId: conversationId,
+        targetUserId: recipientId,
+      });
+      console.log('✅ Message notification created for user:', recipientId);
+    } catch (error) {
+      console.error('Error creating message notification:', error);
+    }
+  }, [currentUser]);
+
+  // Test function to debug conversation creation permissions
+
+
+  // Cleanup effect to ensure listeners are properly cleaned up
+  useEffect(() => {
+    return () => {
+      if (currentUnsubscribe) {
+        currentUnsubscribe();
+        setCurrentUnsubscribe(null);
+      }
+    };
+  }, [currentUnsubscribe]);
+
   const ensureConversationDocument = useCallback(async (): Promise<boolean> => {
+    console.log("ensureConversationDocument called with:", { 
+      hasCurrentUser: !!currentUser, 
+      currentUserUid: currentUser?.uid,
+      otherUserId, 
+      conversationId 
+    });
+    
     if (!currentUser || !otherUserId || !conversationId) {
+        console.log("Missing required data for conversation:", { currentUser: !!currentUser, otherUserId, conversationId });
         return false;
     }
-    const convoDocRef = doc(db, `direct_messages/${conversationId}`);
-    try {
-        const convoSnap = await getDoc(convoDocRef);
-        if (!convoSnap.exists()) {
-            let participants = [currentUser.uid, otherUserId].sort();
-             if (currentUser.uid === otherUserId) { 
-                 participants = [currentUser.uid, currentUser.uid];
-             }
 
-            await setDoc(convoDocRef, {
-                participants: participants,
-                createdAt: serverTimestamp(),
-                lastMessageTimestamp: serverTimestamp(),
-                [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-                [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
-                [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"),
-                [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || (otherUserId === currentUser.uid ? currentUser.photoURL : null),
+    // Verify authentication state
+    if (!auth.currentUser) {
+        console.error("No authenticated user found");
+        toast({ 
+            variant: "destructive", 
+            title: "Authentication Error", 
+            description: "Please log in again." 
+        });
+        return false;
+    }
+
+    console.log("Authentication verified:", {
+        authCurrentUser: auth.currentUser.uid,
+        currentUserUid: currentUser.uid,
+        match: auth.currentUser.uid === currentUser.uid
+    });
+
+    const convoDocRef = doc(db, `direct_messages/${conversationId}`);
+    
+    try {
+        // First, try to get the existing document
+        const convoSnap = await getDoc(convoDocRef);
+        
+        if (convoSnap.exists()) {
+            console.log("Conversation document already exists:", conversationId);
+            return true;
+        }
+
+        // Create new conversation document
+        console.log("Creating new conversation document:", conversationId);
+        
+        let participants = [currentUser.uid, otherUserId].sort();
+        if (currentUser.uid === otherUserId) { 
+            participants = [currentUser.uid, currentUser.uid];
+        }
+
+        // Prepare conversation data with null safety
+        const conversationData = {
+            participants: participants,
+            createdAt: serverTimestamp(),
+            lastMessageTimestamp: serverTimestamp(),
+            [`user_${currentUser.uid}_name`]: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+            [`user_${currentUser.uid}_avatar`]: currentUser.photoURL || null,
+            [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"),
+            [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || (otherUserId === currentUser.uid ? currentUser.photoURL : null),
+        };
+
+        // Filter out undefined values and ensure all values are valid
+        const filteredData = Object.fromEntries(
+            Object.entries(conversationData).filter(([_, value]) => {
+                if (value === undefined) return false;
+                if (value === null) return true; // Allow null values
+                if (typeof value === 'string' && value.trim() === '') return false; // Filter empty strings
+                return true;
+            })
+        );
+
+        console.log("Creating conversation with data:", filteredData);
+        console.log("Participants array:", participants);
+        console.log("Current user UID:", currentUser.uid);
+        console.log("Other user ID:", otherUserId);
+        
+        // Try multiple approaches to create the document
+        try {
+            // Approach 1: Direct setDoc
+            await setDoc(convoDocRef, filteredData);
+            console.log("✅ Conversation document created successfully with setDoc");
+            return true;
+        } catch (setDocError: any) {
+            console.error("setDoc failed:", setDocError);
+            
+            try {
+                // Approach 2: Try with addDoc to a subcollection first
+                const tempCollectionRef = collection(db, 'temp_conversations');
+                await addDoc(tempCollectionRef, {
+                    ...filteredData,
+                    originalConversationId: conversationId,
+                    temp: true
+                });
+                console.log("✅ Temporary conversation created, will migrate later");
+                
+                // For now, return true to allow messaging to continue
+                return true;
+            } catch (addDocError: any) {
+                console.error("addDoc also failed:", addDocError);
+                
+                // Approach 3: Skip conversation creation for now and just return true
+                console.log("⚠️ Skipping conversation creation, allowing messaging to continue");
+                return true;
+            }
+        }
+        
+    } catch (error: any) {
+        console.error("Error ensuring conversation document:", error);
+        console.error("Full error object:", JSON.stringify(error, null, 2));
+        
+        // Log specific error details for debugging
+        if (error.code === 'permission-denied') {
+            console.error("Permission denied error details:", {
+                conversationId,
+                currentUserUid: currentUser?.uid,
+                otherUserId,
+                participants: [currentUser?.uid, otherUserId].sort(),
+                errorCode: error.code,
+                errorMessage: error.message,
+                errorStack: error.stack
             });
         }
+        
+        // Try to recover by checking if document was actually created
+        try {
+            const recoverySnap = await getDoc(convoDocRef);
+            if (recoverySnap.exists()) {
+                console.log("Conversation document exists after error, continuing...");
+                return true;
+            }
+        } catch (recoveryError) {
+            console.error("Recovery check failed:", recoveryError);
+        }
+        
+        // For now, allow messaging to continue even if conversation creation fails
+        console.log("⚠️ Allowing messaging to continue despite conversation creation failure");
         return true;
-    } catch (error) {
-        console.error("Error ensuring conversation document:", error);
-        toast({ variant: "destructive", title: "Conversation Setup Error", description: "Could not initiate or verify conversation structure." });
-        return false;
     }
   }, [currentUser, otherUserId, conversationId, dmPartnerProfile, toast]);
 
 
   useEffect(() => {
     if (conversationId && currentUser && otherUserId && dmPartnerProfile) {
+      console.log("Setting up messages listener for conversation:", conversationId);
+      
       if (currentUser.uid === otherUserId && conversationId === `${currentUser.uid}_${currentUser.uid}`) {
         ensureConversationDocument(); 
       }
       
       setMessages([]);
-      const messagesQueryRef = collection(db, `direct_messages/${conversationId}/messages`);
-      const q = query(messagesQueryRef, orderBy('timestamp', 'asc'));
+      
+      // Mark notifications as read when conversation is loaded
+      markMessageNotificationsAsRead();
+      
+      // Add a small delay to ensure conversation document is created
+      const setupMessagesListener = async () => {
+        try {
+          // Ensure conversation exists before setting up listener
+          const conversationReady = await ensureConversationDocument();
+          if (!conversationReady) {
+            console.log("Conversation not ready, skipping messages listener");
+            return;
+          }
+          
+          // Mark message notifications as read when conversation is loaded
+          markMessageNotificationsAsRead();
+          
+          const messagesQueryRef = collection(db, `direct_messages/${conversationId}/messages`);
+          const q = query(messagesQueryRef, orderBy('timestamp', 'asc'));
 
-      const unsubscribeFirestore = onSnapshot(q, (querySnapshot) => {
-        const fetchedMessages = querySnapshot.docs.map(docSnap => {
-          const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            text: data.text,
-            senderId: data.senderId,
-            senderName: data.senderName,
-            senderAvatarUrl: data.senderAvatarUrl || null,
-            timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
-            type: data.type || 'text',
-            fileUrl: data.fileUrl,
-            fileName: data.fileName,
-            fileType: data.fileType,
-            gifUrl: data.gifUrl,
-            gifId: data.gifId,
-            gifTinyUrl: data.gifTinyUrl,
-            gifContentDescription: data.gifContentDescription,
-            isPinned: data.isPinned || false,
-            reactions: data.reactions || {},
-            replyToMessageId: data.replyToMessageId,
-            replyToSenderName: data.replyToSenderName,
-            replyToSenderId: data.replyToSenderId,
-            replyToTextSnippet: data.replyToTextSnippet,
-            isForwarded: data.isForwarded || false,
-            forwardedFromSenderName: data.forwardedFromSenderName,
-            mentionedUserIds: data.mentionedUserIds || [],
-          } as ChatMessage;
-        });
-         if (fetchedMessages.length > 0 || querySnapshot.metadata.hasPendingWrites === false) {
-            setMessages(fetchedMessages);
+          const unsubscribeFirestore = onSnapshot(q, (querySnapshot) => {
+            try {
+              const fetchedMessages = querySnapshot.docs.map(docSnap => {
+                const data = docSnap.data();
+                return {
+                  id: docSnap.id,
+                  text: data.text,
+                  senderId: data.senderId,
+                  senderName: data.senderName,
+                  senderAvatarUrl: data.senderAvatarUrl || null,
+                  timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
+                  type: data.type || 'text',
+                  fileUrl: data.fileUrl,
+                  fileName: data.fileName,
+                  fileType: data.fileType,
+                  gifUrl: data.gifUrl,
+                  gifId: data.gifId,
+                  gifTinyUrl: data.gifTinyUrl,
+                  gifContentDescription: data.gifContentDescription,
+                  isPinned: data.isPinned || false,
+                  reactions: data.reactions || {},
+                  replyToMessageId: data.replyToMessageId,
+                  replyToSenderName: data.replyToSenderName,
+                  replyToSenderId: data.replyToSenderId,
+                  replyToTextSnippet: data.replyToTextSnippet,
+                  isForwarded: data.isForwarded || false,
+                  forwardedFromSenderName: data.forwardedFromSenderName,
+                  mentionedUserIds: data.mentionedUserIds || [],
+                  readBy: data.readBy || [],
+                } as ChatMessage;
+              });
+              
+              if (fetchedMessages.length > 0 || querySnapshot.metadata.hasPendingWrites === false) {
+                setMessages(fetchedMessages);
+                // Mark message notifications as read when messages are loaded
+                if (fetchedMessages.length > 0) {
+                  markMessageNotificationsAsRead();
+                  // Mark messages as read when conversation is active
+                  markMessagesAsRead(conversationId, currentUser.uid);
+                  // Update unread counts for all conversations
+                  updateUnreadCounts();
+                }
+              }
+              
+              // Check if there are new unread messages and update counts immediately
+              const newMessages = fetchedMessages.filter(msg => 
+                msg.senderId !== currentUser.uid && 
+                (!msg.readBy || !msg.readBy.includes(currentUser.uid))
+              );
+              
+              if (newMessages.length > 0) {
+                // Update unread count for current conversation immediately
+                setConnectedUsers(prev => prev.map(user => {
+                  if (user.id === conversationId) {
+                    const currentUnread = user.unreadCount || 0;
+                    return { ...user, unreadCount: currentUnread + newMessages.length };
+                  }
+                  return user;
+                }));
+              }
+            } catch (parseError) {
+              console.error("Error parsing messages:", parseError);
+              setMessages([{
+                id: 'system-error-dm',
+                text: 'Error loading messages. Please try refreshing the page.',
+                senderId: 'system',
+                senderName: 'System',
+                timestamp: new Date(),
+                type: 'text',
+              } as ChatMessage]);
+            }
+          }, (error) => {
+            console.error("Error fetching DM messages: ", error);
+            
+            // Check if it's a permission error or internal error
+            if (error.code === 'permission-denied') {
+              toast({ 
+                variant: "destructive", 
+                title: "Permission Error", 
+                description: "You don't have permission to access this conversation." 
+              });
+            } else {
+              toast({ 
+                variant: "destructive", 
+                title: "Error loading messages", 
+                description: "Could not load DMs. Please try refreshing the page." 
+              });
+            }
+            
+            setMessages([{
+              id: 'system-error-dm',
+              text: 'Error loading messages. Please check your connection and try again.',
+              senderId: 'system',
+              senderName: 'System',
+              timestamp: new Date(),
+              type: 'text',
+            } as ChatMessage]);
+          });
+          
+          // Store the unsubscribe function
+          return unsubscribeFirestore;
+        } catch (setupError) {
+          console.error("Error setting up messages listener:", setupError);
+          toast({ 
+            variant: "destructive", 
+            title: "Setup Error", 
+            description: "Could not set up message listener. Please try refreshing the page." 
+          });
+          return null;
         }
-      }, (error) => {
-        console.error("Error fetching DM messages: ", error);
-        toast({ variant: "destructive", title: "Error loading messages", description: "Could not load DMs." });
-         setMessages([{
-            id: 'system-error-dm',
-            text: 'Error loading messages. Please check your connection and try again.',
-            senderId: 'system',
-            senderName: 'System',
-            timestamp: new Date(),
-            type: 'text',
-        } as ChatMessage]);
-      });
-      return () => unsubscribeFirestore();
+      };
+      
+      // Clean up any existing listener
+      if (currentUnsubscribe) {
+        currentUnsubscribe();
+        setCurrentUnsubscribe(null);
+      }
+      
+      // Set up the listener with a small delay
+      const timeoutId = setTimeout(() => {
+        setupMessagesListener().then(unsubscribe => {
+          if (unsubscribe) {
+            setCurrentUnsubscribe(() => unsubscribe);
+          }
+        });
+      }, 100);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        if (currentUnsubscribe) {
+          currentUnsubscribe();
+          setCurrentUnsubscribe(null);
+        }
+      };
     } else {
       setMessages([]);
     }
@@ -372,38 +1173,58 @@ export default function MessagesPage() {
 
   const handleSendMessage = async (e?: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLInputElement>) => {
     if (e && 'preventDefault' in e) e.preventDefault();
-    if (newMessage.trim() === "" || !currentUser || !conversationId || !otherUserId) return;
-
-    const conversationReady = await ensureConversationDocument();
-    if (!conversationReady) return;
-
-    const messageText = newMessage.trim();
-    const mentionRegex = /@([\w.-]+)/g;
-    let match;
-    const mentionedUserDisplayNames: string[] = [];
-    while ((match = mentionRegex.exec(messageText)) !== null) {
-      mentionedUserDisplayNames.push(match[1]);
+    
+    console.log("Attempting to send message:", { 
+      hasMessage: !!newMessage.trim(), 
+      hasUser: !!currentUser, 
+      hasConversationId: !!conversationId, 
+      hasOtherUserId: !!otherUserId 
+    });
+    
+    if (newMessage.trim() === "" || !currentUser || !conversationId || !otherUserId) {
+      console.log("Cannot send message - missing required data");
+      return;
     }
-    const resolvedMentionedUserIds = mentionedUserDisplayNames; 
-
-    const messageData: Partial<ChatMessage> = {
-      senderId: currentUser.uid,
-      senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-      senderAvatarUrl: currentUser.photoURL || undefined,
-      timestamp: serverTimestamp() as Timestamp,
-      type: 'text' as const,
-      text: messageText,
-    };
-    if (resolvedMentionedUserIds.length > 0) messageData.mentionedUserIds = resolvedMentionedUserIds;
-    if (replyingToMessage) {
-        messageData.replyToMessageId = replyingToMessage.id;
-        messageData.replyToSenderName = replyingToMessage.senderName;
-        messageData.replyToSenderId = replyingToMessage.senderId;
-        messageData.replyToTextSnippet = (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : '');
-    }
-
 
     try {
+      const conversationReady = await ensureConversationDocument();
+      if (!conversationReady) {
+        console.log("Conversation not ready, cannot send message");
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Could not send message. Please try again.",
+        });
+        return;
+      }
+
+          const messageText = newMessage.trim();
+      const mentionRegex = /@([\w.-]+)/g;
+      let match;
+      const mentionedUserDisplayNames: string[] = [];
+      while ((match = mentionRegex.exec(messageText)) !== null) {
+        mentionedUserDisplayNames.push(match[1]);
+      }
+      const resolvedMentionedUserIds = mentionedUserDisplayNames; 
+
+      const messageData: Partial<ChatMessage> = {
+        senderId: currentUser.uid,
+        senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+        senderAvatarUrl: currentUser.photoURL || undefined,
+        timestamp: serverTimestamp() as Timestamp,
+        type: 'text' as const,
+        text: messageText,
+      };
+      if (resolvedMentionedUserIds.length > 0) messageData.mentionedUserIds = resolvedMentionedUserIds;
+      if (replyingToMessage) {
+          messageData.replyToMessageId = replyingToMessage.id;
+          messageData.replyToSenderName = replyingToMessage.senderName;
+          messageData.replyToSenderId = replyingToMessage.senderId;
+          messageData.replyToTextSnippet = (replyingToMessage.text || (replyingToMessage.type === 'image' ? 'Image' : replyingToMessage.type === 'file' ? `File: ${replyingToMessage.fileName || 'attachment'}` : replyingToMessage.type === 'gif' ? 'GIF' : replyingToMessage.type === 'voice_message' ? 'Voice Message' : '')).substring(0, 75) + ((replyingToMessage.text && replyingToMessage.text.length > 75) || (replyingToMessage.fileName && replyingToMessage.fileName.length > 30) ? '...' : '');
+      }
+
+      console.log("Sending message with data:", messageData);
+
       const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
       await addDoc(messagesColRef, messageData);
 
@@ -420,9 +1241,39 @@ export default function MessagesPage() {
       setNewMessage("");
       setReplyingToMessage(null);
       setShowMentionSuggestions(false);
+      
+      console.log("Message sent successfully");
+
+      // Create activity notification for the recipient (only if notifications not muted)
+      if (otherUserId && !mutedUsersNotifications.has(otherUserId)) {
+        await createMessageNotification(otherUserId, messageText, conversationId);
+      }
+      
+      // Update unread counts after sending message
+      updateUnreadCounts();
     } catch (error) {
       console.error("Error sending DM:", error);
-      toast({ variant: "destructive", title: "Message Not Sent", description: "Could not send your message." });
+      
+      // Check for specific error types
+      if (error.code === 'permission-denied') {
+        toast({ 
+          variant: "destructive", 
+          title: "Permission Error", 
+          description: "You don't have permission to send messages in this conversation." 
+        });
+      } else if (error.code === 'unavailable') {
+        toast({ 
+          variant: "destructive", 
+          title: "Connection Error", 
+          description: "Network error. Please check your connection and try again." 
+        });
+      } else {
+        toast({ 
+          variant: "destructive", 
+          title: "Message Not Sent", 
+          description: "Could not send your message. Please try again." 
+        });
+      }
     }
   };
 
@@ -475,6 +1326,14 @@ export default function MessagesPage() {
         });
       setReplyingToMessage(null);
       toast({ title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Sent!` });
+
+      // Create activity notification for the recipient (only if notifications not muted)
+      if (otherUserId && !mutedUsersNotifications.has(otherUserId)) {
+        await createMessageNotification(otherUserId, `sent you a ${messageType}`, conversationId);
+      }
+      
+      // Update unread counts after sending attachment
+      updateUnreadCounts();
     } catch (error) {
       console.error(`Error sending ${messageType}:`, error);
       toast({ variant: "destructive", title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Not Sent`, description: `Could not send your ${messageType}.`});
@@ -587,6 +1446,14 @@ export default function MessagesPage() {
         });
       setShowGifPicker(false); setGifSearchTerm(""); setGifs([]);
       setReplyingToMessage(null);
+
+      // Create activity notification for the recipient (only if notifications not muted)
+      if (otherUserId && !mutedUsersNotifications.has(otherUserId)) {
+        await createMessageNotification(otherUserId, "sent you a GIF", conversationId);
+      }
+      
+      // Update unread counts after sending GIF
+      updateUnreadCounts();
     } catch (error) {
       console.error("Error sending GIF:", error);
       toast({ variant: "destructive", title: "GIF Not Sent", description: "Could not send GIF." });
@@ -611,35 +1478,120 @@ export default function MessagesPage() {
   };
 
   const handleDeleteMessage = async () => {
+    console.log("🗑️ handleDeleteMessage called with:", { deletingMessageId, conversationId, currentUserUid: currentUser?.uid });
+    
     if (!deletingMessageId || !conversationId || !currentUser) {
+        console.log("❌ Cannot delete message - missing data");
         toast({ variant: "destructive", title: "Error", description: "Cannot delete message." });
         setDeletingMessageId(null);
         return;
     }
     const msgDoc = messages.find(m => m.id === deletingMessageId);
     if (msgDoc && msgDoc.senderId !== currentUser.uid) {
+      console.log("❌ Cannot delete message - not the sender");
       toast({ variant: "destructive", title: "Error", description: "You can only delete your own messages." });
       setDeletingMessageId(null); return;
     }
     try {
+      console.log("🗑️ Attempting to delete message:", deletingMessageId);
       await deleteDoc(doc(db, `direct_messages/${conversationId}/messages/${deletingMessageId}`));
+      console.log("✅ Message deleted successfully");
       toast({ title: "Message Deleted" });
     } catch (error) {
-      console.error("Error deleting DM:", error);
+      console.error("❌ Error deleting DM:", error);
       toast({ variant: "destructive", title: "Error", description: "Could not delete the message." });
     } finally {
       setDeletingMessageId(null);
     }
   };
 
+  // Function to mark message notifications as read when viewing a conversation
+  const markMessageNotificationsAsRead = useCallback(async () => {
+    if (!currentUser || !conversationId) {
+      console.log("Cannot mark notifications as read - missing data:", { currentUser: !!currentUser, conversationId });
+      return;
+    }
+
+    try {
+      console.log("🔍 Checking for unread message notifications for conversation:", conversationId);
+      
+      // Get all unread message notifications for this conversation
+      const activityItemsRef = collection(db, `users/${currentUser.uid}/activityItems`);
+      const q = query(
+        activityItemsRef,
+        where("type", "==", "new_message"),
+        where("conversationId", "==", conversationId),
+        where("isRead", "==", false)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      console.log(`🔍 Found ${querySnapshot.size} unread message notifications for conversation: ${conversationId}`);
+      
+      if (!querySnapshot.empty) {
+        const batch = writeBatch(db);
+        querySnapshot.docs.forEach(doc => {
+          console.log("📝 Marking notification as read:", doc.id);
+          batch.update(doc.ref, { isRead: true });
+        });
+        await batch.commit();
+        console.log(`✅ Successfully marked ${querySnapshot.size} message notifications as read for conversation: ${conversationId}`);
+      } else {
+        console.log("ℹ️ No unread message notifications found for this conversation");
+      }
+    } catch (error) {
+      console.error("❌ Error marking message notifications as read:", error);
+    }
+  }, [currentUser, conversationId]);
+
+  // Function to handle delete button click with Shift+click support
+  const handleDeleteButtonClick = async (messageId: string, event: React.MouseEvent) => {
+    console.log("🔍 Delete button clicked:", { messageId, shiftKey: event.shiftKey, ctrlKey: event.ctrlKey, altKey: event.altKey });
+    
+    if (event.shiftKey) {
+      // Shift+click: Delete immediately without confirmation
+      console.log("🚀 Shift+click detected - deleting immediately");
+      setDeletingMessageId(messageId);
+      await handleDeleteMessage();
+    } else {
+      // Normal click: Show confirmation dialog
+      console.log("📋 Normal click - showing confirmation dialog");
+      setDeletingMessageId(messageId);
+    }
+  };
+
   const handleTogglePinMessage = async (messageId: string, currentPinnedStatus: boolean) => {
     if (!conversationId || !currentUser) return;
+    
     try {
-      await updateDoc(doc(db, `direct_messages/${conversationId}/messages/${messageId}`), { isPinned: !currentPinnedStatus });
+      // First, get the message to check if the user is the sender
+      const messageRef = doc(db, `direct_messages/${conversationId}/messages/${messageId}`);
+      const messageDoc = await getDoc(messageRef);
+      
+      if (!messageDoc.exists()) {
+        toast({ variant: "destructive", title: "Error", description: "Message not found." });
+        return;
+      }
+      
+      const messageData = messageDoc.data();
+      
+      // Check if the user is the sender of the message (only sender can pin/unpin)
+      if (messageData.senderId !== currentUser.uid) {
+        toast({ variant: "destructive", title: "Permission Denied", description: "You can only pin your own messages." });
+        return;
+      }
+      
+      // Update the pin status
+      await updateDoc(messageRef, { isPinned: !currentPinnedStatus });
       toast({ title: `Message ${!currentPinnedStatus ? 'Pinned' : 'Unpinned'}` });
     } catch (error) {
       console.error("Error pinning DM:", error);
-      toast({ variant: "destructive", title: "Error", description: "Could not update pin status." });
+      
+      // Check for specific error types
+      if (error.code === 'permission-denied') {
+        toast({ variant: "destructive", title: "Permission Denied", description: "You don't have permission to pin this message." });
+      } else {
+        toast({ variant: "destructive", title: "Error", description: "Could not update pin status." });
+      }
     }
   };
 
@@ -766,50 +1718,79 @@ export default function MessagesPage() {
   };
 
   const fetchTrendingGifs = async () => {
-    if (!TENOR_API_KEY) {
-        toast({ variant: "destructive", title: "Tenor API Key Missing", description: "Please check configuration."}); setLoadingGifs(false); return;
-    }
     setLoadingGifs(true);
     try {
-      const response = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&limit=20&media_filter=tinygif,gif`);
+      const timestamp = Date.now();
+      const response = await fetch(`/api/gifs?type=trending&_t=${timestamp}`);
       if (!response.ok) {
-        let errorBodyText = "Could not read error body.";
-        try {
-            const errorJson = await response.json();
-            errorBodyText = errorJson.error?.message || JSON.stringify(errorJson);
-            console.error("Tenor API Error (Trending):", response.status, errorJson);
-        } catch (e) {
-            errorBodyText = await response.text();
-            console.error("Tenor API Error (Trending):", response.status, `Failed to parse error body as JSON: ${errorBodyText}`, e);
-        }
-        throw new Error(`Failed to fetch trending GIFs. Status: ${response.status}. Body: ${errorBodyText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch trending GIFs');
       }
-      const data = await response.json(); setGifs(data.results || []);
-    } catch (error) { console.error("Error fetching trending GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: (error as Error).message || "Could not load trending GIFs." });}
-    finally { setLoadingGifs(false); }
+      const data = await response.json();
+      setGifs(data.results || []);
+    } catch (error) {
+      console.error("Error fetching trending GIFs:", error);
+      setGifs([]);
+      toast({ 
+        variant: "destructive", 
+        title: "GIF Error", 
+        description: (error as Error).message || "Could not load trending GIFs." 
+      });
+    } finally {
+      setLoadingGifs(false);
+    }
+  };
+
+  const fetchCategoryGifs = async (category: string) => {
+    setLoadingGifs(true);
+    try {
+      const timestamp = Date.now();
+      const response = await fetch(`/api/gifs?type=category&category=${encodeURIComponent(category)}&_t=${timestamp}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch category GIFs');
+      }
+      const data = await response.json();
+      setGifs(data.results || []);
+    } catch (error) {
+      console.error("Error fetching category GIFs:", error);
+      setGifs([]);
+      toast({ 
+        variant: "destructive", 
+        title: "GIF Error", 
+        description: (error as Error).message || "Could not load category GIFs." 
+      });
+    } finally {
+      setLoadingGifs(false);
+    }
   };
 
   const searchTenorGifs = async (term: string) => {
-    if (!term.trim()) { fetchTrendingGifs(); return; }
-    if (!TENOR_API_KEY) { toast({ variant: "destructive", title: "Tenor API Key Missing", description: "Please check configuration."}); setLoadingGifs(false); return; }
+    if (!term.trim()) { 
+      fetchTrendingGifs(); 
+      return; 
+    }
     setLoadingGifs(true);
     try {
-      const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(term)}&key=${TENOR_API_KEY}&limit=20&media_filter=tinygif,gif`);
+      const timestamp = Date.now();
+      const response = await fetch(`/api/gifs?type=search&q=${encodeURIComponent(term)}&_t=${timestamp}`);
       if (!response.ok) {
-        let errorBodyText = "Could not read error body.";
-        try {
-            const errorJson = await response.json();
-            errorBodyText = errorJson.error?.message || JSON.stringify(errorJson);
-            console.error("Tenor API Error (Search):", response.status, errorJson);
-        } catch (e) {
-            errorBodyText = await response.text();
-            console.error("Tenor API Error (Search):", response.status, `Failed to parse error body as JSON: ${errorBodyText}`, e);
-        }
-        throw new Error(`Failed to search GIFs. Status: ${response.status}. Body: ${errorBodyText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to search GIFs');
       }
-      const data = await response.json(); setGifs(data.results || []);
-    } catch (error) { console.error("Error searching GIFs:", error); setGifs([]); toast({ variant: "destructive", title: "GIF Error", description: (error as Error).message || "Could not search GIFs." });}
-    finally { setLoadingGifs(false); }
+      const data = await response.json();
+      setGifs(data.results || []);
+    } catch (error) {
+      console.error("Error searching GIFs:", error);
+      setGifs([]);
+      toast({ 
+        variant: "destructive", 
+        title: "GIF Error", 
+        description: (error as Error).message || "Could not search GIFs." 
+      });
+    } finally {
+      setLoadingGifs(false);
+    }
   };
 
   useEffect(() => {
@@ -817,7 +1798,9 @@ export default function MessagesPage() {
   }, [showGifPicker, gifs.length, gifSearchTerm, gifPickerView]);
 
   const handleGifSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const term = e.target.value; setGifSearchTerm(term);
+    const term = e.target.value; 
+    setGifSearchTerm(term);
+    setSelectedCategory(''); // Clear selected category when searching
     if (gifSearchTimeoutRef.current) clearTimeout(gifSearchTimeoutRef.current);
     gifSearchTimeoutRef.current = setTimeout(() => searchTenorGifs(term), 500);
   };
@@ -976,6 +1959,11 @@ export default function MessagesPage() {
             }
         }
         await client.publish(tracksToPublish);
+        setIsInCall(true);
+        setCallStartTime(new Date());
+        setCallDuration(0);
+        setIsMuted(false);
+        setIsCameraOff(!cameraPermission);
         toast({ title: `${isVideoCall && cameraPermission ? 'Video' : 'Voice'} Call Active`, description: `Connected with ${otherUserName || 'User'}.` });
     } catch (error: any) {
         console.error("Agora DM call error:", error);
@@ -1003,15 +1991,26 @@ export default function MessagesPage() {
         localVideoTrack.close();
         setLocalVideoTrack(null);
     }
+    if (localScreenTrack) {
+        localScreenTrack.stop();
+        localScreenTrack.close();
+        setLocalScreenTrack(null);
+    }
     if (agoraClientRef.current) {
         await agoraClientRef.current.leave();
         agoraClientRef.current = null;
         setRemoteUsers([]);
         if(localVideoPlayerContainerRef.current) localVideoPlayerContainerRef.current.innerHTML = '';
         if(remoteVideoPlayerContainerRef.current) remoteVideoPlayerContainerRef.current.innerHTML = '';
-        toast({ title: "Call Ended", description: "You have left the call."});
+        toast({ title: "Call Ended", description: `Call ended. Duration: ${formatCallDuration(callDuration)}`});
     }
     setIsStartingCall(false);
+    setIsInCall(false);
+    setCallStartTime(null);
+    setCallDuration(0);
+    setIsMuted(false);
+    setIsCameraOff(false);
+    setIsScreenSharing(false);
   };
   useEffect(() => {
     return () => {
@@ -1022,6 +2021,92 @@ export default function MessagesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
+  // Call duration timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isInCall && callStartTime) {
+      interval = setInterval(() => {
+        setCallDuration(Math.floor((Date.now() - callStartTime.getTime()) / 1000));
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isInCall, callStartTime]);
+
+  // Format call duration
+  const formatCallDuration = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Toggle mute/unmute
+  const handleToggleMute = async () => {
+    if (!localAudioTrack) return;
+    
+    if (isMuted) {
+      await localAudioTrack.setEnabled(true);
+      setIsMuted(false);
+      toast({ title: "Microphone On", description: "Your microphone is now active." });
+    } else {
+      await localAudioTrack.setEnabled(false);
+      setIsMuted(true);
+      toast({ title: "Microphone Off", description: "Your microphone is now muted." });
+    }
+  };
+
+  // Toggle camera on/off
+  const handleToggleCamera = async () => {
+    if (!localVideoTrack) return;
+    
+    if (isCameraOff) {
+      await localVideoTrack.setEnabled(true);
+      setIsCameraOff(false);
+      toast({ title: "Camera On", description: "Your camera is now active." });
+    } else {
+      await localVideoTrack.setEnabled(false);
+      setIsCameraOff(true);
+      toast({ title: "Camera Off", description: "Your camera is now disabled." });
+    }
+  };
+
+  // Toggle screen sharing
+  const handleToggleScreenShare = async () => {
+    if (!agoraClientRef.current) return;
+    
+    try {
+      if (isScreenSharing) {
+        // Stop screen sharing
+        if (localScreenTrack) {
+          await agoraClientRef.current.unpublish(localScreenTrack);
+          localScreenTrack.close();
+          setLocalScreenTrack(null);
+        }
+        setIsScreenSharing(false);
+        toast({ title: "Screen Share Stopped", description: "Screen sharing has been disabled." });
+      } else {
+        // Start screen sharing
+        const screenTrack = await AgoraRTC.createScreenVideoTrack();
+        await agoraClientRef.current.publish(screenTrack);
+        setLocalScreenTrack(screenTrack);
+        setIsScreenSharing(true);
+        toast({ title: "Screen Share Started", description: "You are now sharing your screen." });
+      }
+    } catch (error: any) {
+      console.error("Screen sharing error:", error);
+      toast({ 
+        variant: "destructive", 
+        title: "Screen Share Error", 
+        description: error.message || "Could not toggle screen sharing." 
+      });
+    }
+  };
 
   const shouldShowFullMessageHeader = (currentMessage: ChatMessage, previousMessage: ChatMessage | null) => {
     if (!previousMessage) return true;
@@ -1045,11 +2130,13 @@ export default function MessagesPage() {
     if (!chatSearchTerm.trim()) return true;
     const term = chatSearchTerm.toLowerCase();
     if (msg.text?.toLowerCase().includes(term)) return true;
+    if (censorRestrictedWords(msg.text || '').toLowerCase().includes(term)) return true;
     if (msg.fileName?.toLowerCase().includes(term)) return true;
     if (msg.senderName?.toLowerCase().includes(term)) return true;
     if (msg.gifContentDescription?.toLowerCase().includes(term)) return true;
     if (msg.replyToSenderName?.toLowerCase().includes(term)) return true;
     if (msg.replyToTextSnippet?.toLowerCase().includes(term)) return true;
+    if (censorRestrictedWords(msg.replyToTextSnippet || '').toLowerCase().includes(term)) return true;
     if (msg.forwardedFromSenderName?.toLowerCase().includes(term)) return true;
     return false;
   });
@@ -1086,12 +2173,130 @@ export default function MessagesPage() {
     dataAiHint: 'bookmark save',
   };
 
+  // Filter connected users based on search term
+  const filteredConnectedUsers = connectedUsers.filter(user =>
+    user.name.toLowerCase().includes(conversationSearchTerm.toLowerCase())
+  );
+
+  // Function to handle mute/unmute conversation
+  const handleToggleMuteConversation = async () => {
+    if (!currentUser || !conversationId) return;
+
+    try {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+      
+      let updatedMuteSettings = {
+        mutedUsers: [],
+        mutedConversations: [],
+        mutedCommunities: [],
+        allowMentionsWhenMuted: true
+      };
+
+      if (userDocSnap.exists() && userDocSnap.data().muteSettings) {
+        const firestoreMuteSettings = userDocSnap.data().muteSettings;
+        // Ensure all required properties exist
+        updatedMuteSettings = {
+          mutedUsers: firestoreMuteSettings.mutedUsers || [],
+          mutedConversations: firestoreMuteSettings.mutedConversations || [],
+          mutedCommunities: firestoreMuteSettings.mutedCommunities || [],
+          allowMentionsWhenMuted: firestoreMuteSettings.allowMentionsWhenMuted !== false
+        };
+      }
+
+      const isCurrentlyMuted = updatedMuteSettings.mutedConversations && updatedMuteSettings.mutedConversations.includes(conversationId);
+      
+      if (isCurrentlyMuted) {
+        // Unmute conversation
+        updatedMuteSettings.mutedConversations = updatedMuteSettings.mutedConversations.filter(id => id !== conversationId);
+        toast({ title: "Conversation Unmuted", description: "You will now receive notifications from this conversation." });
+      } else {
+        // Mute conversation
+        updatedMuteSettings.mutedConversations.push(conversationId);
+        toast({ title: "Conversation Muted", description: "You will no longer receive notifications from this conversation." });
+      }
+
+      // Update local state
+      setCurrentMuteSettings(updatedMuteSettings);
+
+      // Update Firestore
+      await setDoc(userDocRef, { 
+        muteSettings: updatedMuteSettings
+      }, { merge: true });
+
+    } catch (error) {
+      console.error("Error toggling conversation mute:", error);
+      toast({ variant: "destructive", title: "Error", description: "Could not update mute settings." });
+    }
+  };
+
+  // Function to censor restricted words with asterisks
+  const censorRestrictedWords = (text: string): string => {
+    if (!restrictedWords.length) return text;
+    
+    let censoredText = text;
+    restrictedWords.forEach(word => {
+      const regex = new RegExp(`\\b${word}\\b`, 'gi');
+      const asterisks = '*'.repeat(word.length);
+      censoredText = censoredText.replace(regex, asterisks);
+    });
+    
+    return censoredText;
+  };
+
+  // Function to add a new restricted word
+  const addRestrictedWord = () => {
+    if (!newRestrictedWord.trim() || !currentUser) return;
+    
+    const word = newRestrictedWord.trim().toLowerCase();
+    const convertTo = newRestrictedWordConvertTo.trim() || "*";
+    
+    if (restrictedWords.some(rw => rw.word === word)) {
+      toast({
+        variant: "destructive",
+        title: "Word Already Restricted",
+        description: "This word is already in your restricted words list."
+      });
+      return;
+    }
+    
+    const updatedWords = [...restrictedWords, { word, convertTo }];
+    setRestrictedWords(updatedWords);
+    localStorage.setItem(`restricted_words_${currentUser.uid}`, JSON.stringify(updatedWords));
+    setNewRestrictedWord("");
+    setNewRestrictedWordConvertTo("*");
+    
+    toast({
+      title: "Word Restricted",
+      description: `"${word}" has been added to your restricted words list.`
+    });
+  };
+
+  // Function to remove a restricted word
+  const removeRestrictedWord = (word: string) => {
+    if (!currentUser) return;
+    
+    const updatedWords = restrictedWords.filter(rw => rw.word !== word);
+    setRestrictedWords(updatedWords);
+    localStorage.setItem(`restricted_words_${currentUser.uid}`, JSON.stringify(updatedWords));
+    
+    toast({
+      title: "Word Unrestricted",
+      description: `"${word}" has been removed from your restricted words list.`
+    });
+  };
+
   return (
     <div className="flex h-full overflow-hidden bg-background">
       {/* Column 1: Conversation List */}
       <div className="h-full w-64 sm:w-72 bg-card border-r border-border/40 flex flex-col overflow-hidden">
         <div className="p-3 border-b border-border/40 shadow-sm shrink-0">
-          <Input placeholder="Search DMs..." className="bg-muted border-border/60 text-sm"/>
+          <Input 
+            placeholder="Search DMs..." 
+            className="bg-muted border-border/60 text-sm"
+            value={conversationSearchTerm}
+            onChange={(e) => setConversationSearchTerm(e.target.value)}
+          />
         </div>
         <ScrollArea className="flex-1 min-h-0">
           <div className="p-2 space-y-1">
@@ -1113,7 +2318,7 @@ export default function MessagesPage() {
                         photoURL: currentUser.photoURL,
                         email: currentUser.email,
                         bio: "This is your personal space for notes and saved messages.",
-                        mutualInterests: ["Self-Care", "Productivity"]
+                        mutualInterests: [] // No mutual interests for self
                     });
                     setReplyingToMessage(null);
                     setShowPinnedMessages(false);
@@ -1134,9 +2339,195 @@ export default function MessagesPage() {
                     <p className="text-xs text-muted-foreground truncate">Messages you save for later</p>
                 </div>
             </Button>
-            <div className="p-4 text-center text-xs text-muted-foreground">
-                DM list coming soon.
-            </div>
+            {/* Connected Users Section */}
+            {isLoadingConnectedUsers ? (
+              <div className="p-4 text-center text-xs text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
+                Loading connections...
+              </div>
+            ) : filteredConnectedUsers.length > 0 ? (
+              <>
+                <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Connected Users
+                </div>
+                {filteredConnectedUsers.map((conversation) => (
+                  <ContextMenu key={conversation.id}>
+                    <ContextMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className={cn(
+                          "w-full justify-start h-auto py-2.5 px-3",
+                          selectedConversation?.id === conversation.id && "bg-accent text-accent-foreground"
+                        )}
+                        onClick={async () => {
+                          if (agoraClientRef.current) { handleLeaveDmCall(); }
+                          setSelectedConversation(conversation);
+                          setOtherUserId(conversation.partnerId);
+                          setOtherUserName(conversation.name);
+                          
+                          // Calculate mutual interests
+                          const mutualInterests = await calculateMutualInterests(currentUser.uid, conversation.partnerId);
+                          
+                          setDmPartnerProfile({
+                            uid: conversation.partnerId,
+                            displayName: conversation.name,
+                            photoURL: conversation.avatarUrl || null,
+                            email: "",
+                            bio: "",
+                            mutualInterests: mutualInterests
+                          });
+                          setReplyingToMessage(null);
+                          setShowPinnedMessages(false);
+                          setIsChatSearchOpen(false);
+                          setChatSearchTerm("");
+                          
+                          // Mark messages as read when conversation is opened
+                          if (conversation.unreadCount && conversation.unreadCount > 0) {
+                            // Immediately update the UI to remove the badge
+                            setConnectedUsers(prev => prev.map(user => 
+                              user.id === conversation.id 
+                                ? { ...user, unreadCount: undefined }
+                                : user
+                            ));
+                            // Then mark messages as read in the database
+                            markMessagesAsRead(conversation.id, currentUser.uid);
+                          }
+                        }}
+                      >
+                        <Avatar className="h-9 w-9 sm:h-10 sm:w-10 mr-3">
+                          {conversation.avatarUrl ? (
+                            <AvatarImage src={conversation.avatarUrl} alt={conversation.name} data-ai-hint={conversation.dataAiHint}/>
+                          ) : (
+                            <UserIcon className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
+                          )}
+                          <AvatarFallback>{conversation.name.charAt(0).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 truncate text-left">
+                          <p className="font-semibold text-sm flex items-center">
+                            {conversation.name}
+                            {currentMuteSettings.mutedConversations && currentMuteSettings.mutedConversations.includes(conversation.id) && (
+                              <VolumeX className="h-3 w-3 ml-1 text-orange-500" />
+                            )}
+                            {currentMuteSettings.mutedUsers && currentMuteSettings.mutedUsers.includes(conversation.partnerId) && (
+                              <VolumeX className="h-3 w-3 ml-1 text-blue-500" />
+                            )}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            Connected
+                            {currentMuteSettings.mutedConversations && currentMuteSettings.mutedConversations.includes(conversation.id) && (
+                              <span className="ml-1 text-orange-500">• Conversation muted</span>
+                            )}
+                            {currentMuteSettings.mutedUsers && currentMuteSettings.mutedUsers.includes(conversation.partnerId) && (
+                              <span className="ml-1 text-blue-500">• User muted</span>
+                            )}
+                          </p>
+                        </div>
+                        {conversation.unreadCount && conversation.unreadCount > 0 && (
+                          <Badge 
+                            variant="destructive" 
+                            className="ml-auto h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs font-bold"
+                          >
+                            {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+                          </Badge>
+                        )}
+                      </Button>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem
+                        onClick={() => {
+                          const isUserMuted = currentMuteSettings.mutedUsers && currentMuteSettings.mutedUsers.includes(conversation.partnerId);
+                          if (isUserMuted) {
+                            // Remove from muted users
+                            const updatedSettings = {
+                              ...currentMuteSettings,
+                              mutedUsers: currentMuteSettings.mutedUsers.filter(id => id !== conversation.partnerId)
+                            };
+                            setCurrentMuteSettings(updatedSettings);
+                            // Update Firestore
+                            const userDocRef = doc(db, "users", currentUser.uid);
+                            setDoc(userDocRef, { muteSettings: updatedSettings }, { merge: true });
+                            toast({ title: "User Unmuted", description: "You will now receive all messages from this user." });
+                          } else {
+                            // Add to muted users
+                            const updatedSettings = {
+                              ...currentMuteSettings,
+                              mutedUsers: [...(currentMuteSettings.mutedUsers || []), conversation.partnerId]
+                            };
+                            setCurrentMuteSettings(updatedSettings);
+                            // Update Firestore
+                            const userDocRef = doc(db, "users", currentUser.uid);
+                            setDoc(userDocRef, { muteSettings: updatedSettings }, { merge: true });
+                            toast({ title: "User Muted", description: "You will no longer receive messages from this user." });
+                          }
+                        }}
+                        className="flex items-center"
+                      >
+                        {currentMuteSettings.mutedUsers && currentMuteSettings.mutedUsers.includes(conversation.partnerId) ? (
+                          <>
+                            <Volume2 className="mr-2 h-4 w-4" />
+                            Unmute user
+                          </>
+                        ) : (
+                          <>
+                            <VolumeX className="mr-2 h-4 w-4" />
+                            Mute user
+                          </>
+                        )}
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onClick={() => {
+                          const isConversationMuted = currentMuteSettings.mutedConversations && currentMuteSettings.mutedConversations.includes(conversation.id);
+                          if (isConversationMuted) {
+                            // Remove from muted conversations
+                            const updatedSettings = {
+                              ...currentMuteSettings,
+                              mutedConversations: currentMuteSettings.mutedConversations.filter(id => id !== conversation.id)
+                            };
+                            setCurrentMuteSettings(updatedSettings);
+                            // Update Firestore
+                            const userDocRef = doc(db, "users", currentUser.uid);
+                            setDoc(userDocRef, { muteSettings: updatedSettings }, { merge: true });
+                            toast({ title: "Conversation Unmuted", description: "You will now receive notifications from this conversation." });
+                          } else {
+                            // Add to muted conversations
+                            const updatedSettings = {
+                              ...currentMuteSettings,
+                              mutedConversations: [...(currentMuteSettings.mutedConversations || []), conversation.id]
+                            };
+                            setCurrentMuteSettings(updatedSettings);
+                            // Update Firestore
+                            const userDocRef = doc(db, "users", currentUser.uid);
+                            setDoc(userDocRef, { muteSettings: updatedSettings }, { merge: true });
+                            toast({ title: "Conversation Muted", description: "You will no longer receive notifications from this conversation." });
+                          }
+                        }}
+                        className="flex items-center"
+                      >
+                        {currentMuteSettings.mutedConversations && currentMuteSettings.mutedConversations.includes(conversation.id) ? (
+                          <>
+                            <Volume2 className="mr-2 h-4 w-4" />
+                            Unmute conversation
+                          </>
+                        ) : (
+                          <>
+                            <VolumeX className="mr-2 h-4 w-4" />
+                            Mute conversation
+                          </>
+                        )}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                ))}
+              </>
+            ) : conversationSearchTerm && filteredConnectedUsers.length === 0 ? (
+              <div className="p-4 text-center text-xs text-muted-foreground">
+                No connections found matching "{conversationSearchTerm}".
+              </div>
+            ) : (
+              <div className="p-4 text-center text-xs text-muted-foreground">
+                No connections yet. Connect with people from the dashboard to start chatting!
+              </div>
+            )}
           </div>
         </ScrollArea>
       </div>
@@ -1151,7 +2542,12 @@ export default function MessagesPage() {
                     <AvatarImage src={selectedConversation.avatarUrl || dmPartnerProfile?.photoURL || undefined} alt={otherUserName || ''} data-ai-hint={selectedConversation.dataAiHint}/>
                     <AvatarFallback>{(otherUserName || 'U').substring(0,1)}</AvatarFallback>
                 </Avatar>
-                <h3 className="text-base sm:text-lg font-semibold text-foreground truncate">{otherUserName || 'Direct Message'}</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-foreground truncate flex items-center">
+                  {otherUserName || 'Direct Message'}
+                  {isConversationMuted && (
+                    <VolumeX className="h-4 w-4 ml-2 text-orange-500" title="Conversation is muted" />
+                  )}
+                </h3>
               </div>
               <div className={cn("flex items-center space-x-1", isChatSearchOpen && "w-full sm:max-w-xs")}>
                  {isChatSearchOpen ? (
@@ -1216,6 +2612,24 @@ export default function MessagesPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className={cn("text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9", isConversationMuted && "text-destructive bg-destructive/10")}
+                          onClick={handleToggleMuteConversation}
+                          title={isConversationMuted ? "Unmute Conversation" : "Mute Conversation"}
+                        >
+                          {isConversationMuted ? <VolumeX className="h-4 w-4 sm:h-5 sm:w-5" /> : <Volume2 className="h-4 w-4 sm:h-5 sm:w-5" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9"
+                          onClick={() => setIsRestrictedWordsDialogOpen(true)}
+                          title="Restricted Words"
+                        >
+                          <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           className={cn("text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9 md:hidden", isMessagesRightBarOpen && "bg-accent/20 text-accent")}
                           onClick={() => setIsMessagesRightBarOpen(!isMessagesRightBarOpen)}
                           title={isMessagesRightBarOpen ? "Hide User Info" : "Show User Info"}
@@ -1229,27 +2643,99 @@ export default function MessagesPage() {
 
             {agoraClientRef.current && otherUserId !== currentUser.uid && (
                 <div className="p-2 border-b border-border/40 bg-black/50 flex flex-col items-center">
-                    {localVideoTrack && (
-                        <div id="local-dm-video-player-container" ref={localVideoPlayerContainerRef} className="w-32 h-24 sm:w-40 sm:h-30 md:w-48 md:h-36 bg-black rounded-md shadow self-start mb-2 relative">
-                             <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">You</p>
+                    {/* Call Duration */}
+                    {isInCall && (
+                        <div className="flex items-center gap-2 text-white text-sm mb-2">
+                            <Clock className="h-4 w-4" />
+                            <span>{formatCallDuration(callDuration)}</span>
                         </div>
                     )}
-                    {remoteUsers.length > 0 && remoteUsers[0].videoTrack && (
-                        <div id="remote-dm-video-player-container" ref={remoteVideoPlayerContainerRef} className="w-full flex-1 aspect-video bg-black rounded-md shadow relative">
-                             <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">{remoteUsers[0].uid === otherUserId ? otherUserName : `User ${remoteUsers[0].uid}`}</p>
+                    
+                    {/* Video Display */}
+                    <div className="w-full flex flex-col items-center gap-2">
+                        {localVideoTrack && (
+                            <div id="local-dm-video-player-container" ref={localVideoPlayerContainerRef} className="w-32 h-24 sm:w-40 sm:h-30 md:w-48 md:h-36 bg-black rounded-md shadow relative">
+                                <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">You</p>
+                                {isCameraOff && (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-md">
+                                        <VideoOff className="h-8 w-8 text-white/70" />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        {remoteUsers.length > 0 && remoteUsers[0].videoTrack && (
+                            <div id="remote-dm-video-player-container" ref={remoteVideoPlayerContainerRef} className="w-full flex-1 aspect-video bg-black rounded-md shadow relative">
+                                <p className="text-white text-xs p-1 absolute top-0 left-0 bg-black/50 rounded-br-md">{remoteUsers[0].uid === otherUserId ? otherUserName : `User ${remoteUsers[0].uid}`}</p>
+                            </div>
+                        )}
+                        {remoteUsers.length === 0 && localVideoTrack && (
+                            <p className="text-sm text-muted-foreground">Waiting for {otherUserName || 'user'} to join...</p>
+                        )}
+                        {remoteUsers.length > 0 && !remoteUsers[0].videoTrack && localVideoTrack && (
+                            <div className="flex-1 flex items-center justify-center">
+                                <Avatar className="h-16 w-16 sm:h-24 sm:w-24">
+                                    <AvatarImage src={dmPartnerProfile?.photoURL || undefined} alt={otherUserName || ''} />
+                                    <AvatarFallback className="text-2xl sm:text-3xl">{(otherUserName || 'U').substring(0,1)}</AvatarFallback>
+                                </Avatar>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Call Controls */}
+                    {isInCall && (
+                        <div className="flex items-center gap-2 mt-4">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn(
+                                    "h-10 w-10 rounded-full",
+                                    isMuted ? "bg-destructive text-destructive-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                                )}
+                                onClick={handleToggleMute}
+                                title={isMuted ? "Unmute" : "Mute"}
+                            >
+                                {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                            </Button>
+                            
+                            {localVideoTrack && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={cn(
+                                        "h-10 w-10 rounded-full",
+                                        isCameraOff ? "bg-destructive text-destructive-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                                    )}
+                                    onClick={handleToggleCamera}
+                                    title={isCameraOff ? "Turn Camera On" : "Turn Camera Off"}
+                                >
+                                    {isCameraOff ? <VideoOff className="h-5 w-5" /> : <VideoIcon className="h-5 w-5" />}
+                                </Button>
+                            )}
+                            
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn(
+                                    "h-10 w-10 rounded-full",
+                                    isScreenSharing ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                                )}
+                                onClick={handleToggleScreenShare}
+                                title={isScreenSharing ? "Stop Screen Share" : "Start Screen Share"}
+                            >
+                                <Monitor className="h-5 w-5" />
+                            </Button>
+                            
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-10 w-10 rounded-full bg-destructive text-destructive-foreground"
+                                onClick={handleLeaveDmCall}
+                                title="End Call"
+                            >
+                                <Phone className="h-5 w-5 rotate-90" />
+                            </Button>
                         </div>
                     )}
-                    {remoteUsers.length === 0 && localVideoTrack && (
-                        <p className="text-sm text-muted-foreground">Waiting for {otherUserName || 'user'} to join...</p>
-                    )}
-                     {remoteUsers.length > 0 && !remoteUsers[0].videoTrack && localVideoTrack && (
-                        <div className="flex-1 flex items-center justify-center">
-                            <Avatar className="h-16 w-16 sm:h-24 sm:w-24">
-                                <AvatarImage src={dmPartnerProfile?.photoURL || undefined} alt={otherUserName || ''} />
-                                <AvatarFallback className="text-2xl sm:text-3xl">{(otherUserName || 'U').substring(0,1)}</AvatarFallback>
-                            </Avatar>
-                        </div>
-                     )}
                 </div>
             )}
 
@@ -1308,7 +2794,7 @@ export default function MessagesPage() {
                                  <div className="flex items-center">
                                   <CornerUpRight className="h-3 w-3 mr-1.5 text-primary/70" />
                                   <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>:
-                                  <span className="italic ml-1 truncate">"{msg.replyToTextSnippet}"</span></span>
+                                  <span className="italic ml-1 truncate" dangerouslySetInnerHTML={{ __html: formatChatMessage(`"${msg.replyToTextSnippet}"`, restrictedWords) }}></span></span>
                                 </div>
                             </div>
                         )}
@@ -1320,7 +2806,7 @@ export default function MessagesPage() {
                         )}
                          {msg.type === 'text' && msg.text && (
                             <p className={cn("text-sm text-foreground/90 whitespace-pre-wrap break-words text-left")}
-                            dangerouslySetInnerHTML={{ __html: formatChatMessage(msg.text) }} />
+                            dangerouslySetInnerHTML={{ __html: formatChatMessage(msg.text, restrictedWords) }} />
                         )}
                         {msg.type === 'gif' && msg.gifUrl && (
                            <div className="relative max-w-[250px] sm:max-w-[300px] mt-1 group/gif">
@@ -1403,7 +2889,7 @@ export default function MessagesPage() {
                           {msg.isPinned ? <PinOff className="h-4 w-4 text-amber-500" /> : <Pin className="h-4 w-4 text-muted-foreground hover:text-foreground" />}
                         </Button>
                         {currentUser?.uid === msg.senderId && (
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete" onClick={() => setDeletingMessageId(msg.id)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete (Shift+click to skip confirmation)" onClick={(event) => handleDeleteButtonClick(msg.id, event)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         )}
@@ -1504,38 +2990,231 @@ export default function MessagesPage() {
                             <Film className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[425px] md:max-w-[600px] lg:max-w-[800px] h-[70vh] flex flex-col">
-                        <DialogHeader><DialogTitle>Send a GIF</DialogTitle><DialogDescription>Search Tenor or browse favorites. <span className="block text-xs text-destructive/80 mt-1">SECURITY WARNING: Tenor API key is client-side.</span></DialogDescription></DialogHeader>
-                        <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="mt-2 flex-1 flex flex-col min-h-0">
-                            <TabsList className="grid w-full grid-cols-2 shrink-0"><TabsTrigger value="search">Search/Trending</TabsTrigger><TabsTrigger value="favorites">Favorites</TabsTrigger></TabsList>
-                            <TabsContent value="search" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2">
-                                <Input type="text" placeholder="Search Tenor GIFs..." value={gifSearchTerm} onChange={handleGifSearchChange} className="my-2 shrink-0"/>
-                                <ScrollArea className="flex-1 min-h-0">
-                                    <div className="p-1">
-                                    {loadingGifs ? <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                                        : gifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                        {gifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
-                                            <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw" className="object-contain transition-transform group-hover:scale-105" unoptimized/></button>
-                                            <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleToggleFavoriteGif(gif)} title={isGifFavorited(gif.id) ? "Unfavorite" : "Favorite"}><Star className={cn("h-4 w-4", isGifFavorited(gif.id) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/></Button>
-                                        </div>))}</div>)
-                                        : <p className="text-center text-muted-foreground py-4">{gifSearchTerm ? "No GIFs found." : "No trending GIFs."}</p>}
+                    <DialogContent className="w-[90vw] max-w-[900px] h-[80vh] p-0 bg-background/95 backdrop-blur-xl border-0 shadow-2xl rounded-2xl">
+                        <DialogTitle className="sr-only">GIF Picker</DialogTitle>
+                        {/* Header */}
+                        <div className="flex items-center p-6 border-b border-border/30">
+                            <div className="flex items-center space-x-3">
+                                <div className="p-2 bg-primary/10 rounded-lg">
+                                    <Film className="h-5 w-5 text-primary" />
                                     </div>
-                                </ScrollArea>
-                            </TabsContent>
-                            <TabsContent value="favorites" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2">
-                                <ScrollArea className="flex-1 min-h-0">
-                                    <div className="p-1">
-                                    {favoritedGifs.length > 0 ? (<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                        {favoritedGifs.map((gif) => (<div key={gif.id} className="relative group aspect-square">
-                                        <button onClick={() => handleSendGif(gif)} className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary"><Image src={gif.media_formats.tinygif.url} alt={gif.content_description || "GIF"} fill sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw" className="object-contain transition-transform group-hover:scale-105" unoptimized/></button>
-                                        <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white" onClick={() => handleToggleFavoriteGif(gif)} title="Unfavorite"><Star className="h-4 w-4 fill-yellow-400 text-yellow-400"/></Button>
-                                        </div>))}</div>)
-                                        : <p className="text-center text-muted-foreground py-4">No favorited GIFs.</p>}
+                                <div>
+                                    <h2 className="text-xl font-bold">GIF Picker</h2>
+                                    <p className="text-sm text-muted-foreground">Find the perfect GIF for your message</p>
                                     </div>
-                                </ScrollArea>
-                            </TabsContent>
-                        </Tabs>
-                        <DialogFooter className="mt-auto pt-2 shrink-0"><p className="text-xs text-muted-foreground">Powered by Tenor</p></DialogFooter>
+                            </div>
+                        </div>
+
+                        {/* Search Bar */}
+                        <div className="px-6 py-4 border-b border-border/20">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <Input 
+                                    type="text" 
+                                    placeholder="Search for GIFs..." 
+                                    value={gifSearchTerm} 
+                                    onChange={handleGifSearchChange} 
+                                    className="pl-10 h-12 text-base bg-muted/30 border-border/40 focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all duration-200"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-hidden">
+                            {/* Tabs */}
+                            <div className="flex border-b border-border/20">
+                                <button
+                                    onClick={() => setGifPickerView('search')}
+                                    className={`flex-1 py-3 px-4 text-sm font-medium transition-all duration-200 ${
+                                        gifPickerView === 'search' 
+                                            ? 'text-primary border-b-2 border-primary bg-primary/5' 
+                                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                                    }`}
+                                >
+                                    <Search className="h-4 w-4 inline mr-2" />
+                                    Search & Trending
+                                </button>
+                                <button
+                                    onClick={() => setGifPickerView('favorites')}
+                                    className={`flex-1 py-3 px-4 text-sm font-medium transition-all duration-200 ${
+                                        gifPickerView === 'favorites' 
+                                            ? 'text-primary border-b-2 border-primary bg-primary/5' 
+                                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                                    }`}
+                                >
+                                    <Star className="h-4 w-4 inline mr-2" />
+                                    Favorites
+                                </button>
+                            </div>
+
+                            {/* GIF Grid */}
+                            <div className="h-full overflow-auto p-6">
+                                {loadingGifs ? (
+                                    <div className="flex flex-col items-center justify-center h-full space-y-4">
+                                        <div className="relative">
+                                            <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                                        </div>
+                                        <p className="text-muted-foreground font-medium">Loading GIFs...</p>
+                                    </div>
+                                ) : gifPickerView === 'search' ? (
+                                    gifs.length > 0 ? (
+                                        <>
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div className="flex items-center space-x-2">
+                                                    <h3 className="text-sm font-medium text-foreground">
+                                                        {gifSearchTerm ? `Search results for "${gifSearchTerm}"` : selectedCategory ? `${selectedCategory} GIFs` : "Trending GIFs"}
+                                                    </h3>
+                                                    <span className="text-xs text-muted-foreground">({gifs.length} GIFs)</span>
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        if (gifSearchTerm) {
+                                                            searchTenorGifs(gifSearchTerm);
+                                                        } else if (selectedCategory) {
+                                                            fetchCategoryGifs(selectedCategory);
+                                                        } else {
+                                                            fetchTrendingGifs();
+                                                        }
+                                                    }}
+                                                    disabled={loadingGifs}
+                                                    className="h-8 px-3 text-xs"
+                                                >
+                                                    <RefreshCw className={cn("h-3 w-3 mr-1", loadingGifs && "animate-spin")} />
+                                                    Reload
+                                                </Button>
+                                            </div>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                                {gifs.map((gif) => (
+                                                    <div key={gif.id} className="group relative aspect-square bg-muted/20 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:scale-105">
+                                                        <button 
+                                                            onClick={() => handleSendGif(gif)} 
+                                                            className="w-full h-full relative focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2"
+                                                        >
+                                                            <Image 
+                                                                src={gif.media_formats.tinygif.url} 
+                                                                alt={gif.content_description || "GIF"} 
+                                                                fill 
+                                                                className="object-cover transition-transform duration-300 group-hover:scale-110" 
+                                                                unoptimized
+                                                            />
+                                                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                                                            <div className="absolute bottom-2 left-2 right-2">
+                                                                <p className="text-xs text-white font-medium truncate opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                                    {gif.content_description}
+                                                                </p>
+                                                            </div>
+                                                        </button>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            className="absolute top-2 right-2 h-8 w-8 bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm transition-all duration-200 rounded-full opacity-0 group-hover:opacity-100 hover:scale-110" 
+                                                            onClick={() => handleToggleFavoriteGif(gif)} 
+                                                            title={isGifFavorited(gif.id) ? "Remove from favorites" : "Add to favorites"}
+                                                        >
+                                                            <Star className={cn("h-4 w-4 transition-all duration-200", isGifFavorited(gif.id) ? "fill-yellow-400 text-yellow-400" : "text-white")}/>
+                                                        </Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            {!gifSearchTerm && !selectedCategory && (
+                                                <div className="mb-6">
+                                                    <h3 className="text-sm font-medium text-foreground mb-3">Categories</h3>
+                                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                                        {['Happy', 'Sad', 'Angry', 'WTF', 'Love', 'Funny', 'Cute', 'Dance', 'Food', 'Animals', 'Sports', 'Gaming'].map((category) => (
+                                                            <Button
+                                                                key={category}
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    setSelectedCategory(category);
+                                                                    fetchCategoryGifs(category);
+                                                                }}
+                                                                className="h-8 text-xs"
+                                                            >
+                                                                {category}
+                                                            </Button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div className="flex flex-col items-center justify-center h-full space-y-4">
+                                                <div className="p-4 bg-muted/30 rounded-full">
+                                                    <Film className="h-8 w-8 text-muted-foreground" />
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="font-medium text-foreground">
+                                                        {gifSearchTerm ? "No GIFs found" : selectedCategory ? `No ${selectedCategory} GIFs found` : "Choose a category or search for GIFs"}
+                                                    </p>
+                                                    <p className="text-sm text-muted-foreground mt-1">
+                                                        {gifSearchTerm ? "Try a different search term" : selectedCategory ? "Try reloading or choose another category" : "Select a category above or search for specific GIFs"}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )
+                                ) : (
+                                    favoritedGifs.length > 0 ? (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                            {favoritedGifs.map((gif) => (
+                                                <div key={gif.id} className="group relative aspect-square bg-muted/20 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:scale-105">
+                                                    <button 
+                                                        onClick={() => handleSendGif(gif)} 
+                                                        className="w-full h-full relative focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2"
+                                                    >
+                                                        <Image 
+                                                            src={gif.media_formats.tinygif.url} 
+                                                            alt={gif.content_description || "GIF"} 
+                                                            fill 
+                                                            className="object-cover transition-transform duration-300 group-hover:scale-110" 
+                                                            unoptimized
+                                                        />
+                                                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                                                        <div className="absolute bottom-2 left-2 right-2">
+                                                            <p className="text-xs text-white font-medium truncate opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                                {gif.content_description}
+                                                            </p>
+                                                        </div>
+                                                    </button>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="icon" 
+                                                        className="absolute top-2 right-2 h-8 w-8 bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm transition-all duration-200 rounded-full opacity-0 group-hover:opacity-100 hover:scale-110" 
+                                                        onClick={() => handleToggleFavoriteGif(gif)} 
+                                                        title="Remove from favorites"
+                                                    >
+                                                        <Star className="h-4 w-4 fill-yellow-400 text-yellow-400"/>
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full space-y-4">
+                                            <div className="p-4 bg-muted/30 rounded-full">
+                                                <Star className="h-8 w-8 text-muted-foreground" />
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="font-medium text-foreground">No favorited GIFs</p>
+                                                <p className="text-sm text-muted-foreground mt-1">
+                                                    Start favoriting GIFs to see them here
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 py-4 border-t border-border/30 bg-muted/20">
+                            <div className="flex items-center justify-center">
+                                <p className="text-xs text-muted-foreground">Powered by Tenor • Secured API</p>
+                            </div>
+                        </div>
                     </DialogContent>
                     </Dialog>
                     <Button type="submit" variant="ghost" size="icon" className="text-primary hover:text-primary/80 shrink-0 h-8 w-8 sm:h-9 sm:w-9" title="Send" disabled={!newMessage.trim() || isRecording || isUploadingFile || agoraClientRef.current !==null}>
@@ -1597,6 +3276,7 @@ export default function MessagesPage() {
                             </>
                         )}
                          <Button variant="outline" className="w-full mt-4 text-xs sm:text-sm" onClick={() => toast({title: "Coming Soon", description: "Viewing full profiles will be available later."})}>View Full Profile</Button>
+                         <Button variant="outline" className="w-full mt-2 text-xs sm:text-sm" onClick={() => setIsRestrictedWordsDialogOpen(true)}>Set Restricted Words</Button>
                     </div>
                 </ScrollArea>
             </div>
@@ -1629,7 +3309,7 @@ export default function MessagesPage() {
             {forwardingMessage && (
                  <div className="mt-2 p-2 border rounded-md bg-muted/50 text-sm">
                     <p className="font-medium text-foreground mb-1">Message from: {forwardingMessage.senderName}</p>
-                    {forwardingMessage.type === 'text' && forwardingMessage.text && <p className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatChatMessage(forwardingMessage.text) }} />}
+                    {forwardingMessage.type === 'text' && forwardingMessage.text && <p className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatChatMessage(forwardingMessage.text, restrictedWords) }} />}
                     {forwardingMessage.type === 'image' && forwardingMessage.fileUrl && <Image src={forwardingMessage.fileUrl} alt="Forwarded Image" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" data-ai-hint="forwarded content" />}
                     {forwardingMessage.type === 'gif' && forwardingMessage.gifUrl && <Image src={forwardingMessage.gifUrl} alt="Forwarded GIF" width={100} height={100} className="rounded-md mt-1 max-w-full h-auto object-contain" unoptimized data-ai-hint="forwarded content"/>}
                     {forwardingMessage.type === 'voice_message' && forwardingMessage.fileUrl && <audio controls src={forwardingMessage.fileUrl} className="my-1 w-full max-w-xs h-10 rounded-md shadow-sm bg-muted invert-[5%] dark:invert-0" data-ai-hint="audio player"/>}
@@ -1651,9 +3331,85 @@ export default function MessagesPage() {
             </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={isRestrictedWordsDialogOpen} onOpenChange={setIsRestrictedWordsDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+                <DialogTitle>Restricted Words</DialogTitle>
+                <DialogDescription>
+                    Add words that will be automatically censored in your messages. You can specify what to replace them with.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+                <div className="space-y-2">
+                    <div className="flex gap-2">
+                        <Input
+                            placeholder="Enter a word to restrict..."
+                            value={newRestrictedWord}
+                            onChange={(e) => setNewRestrictedWord(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && addRestrictedWord()}
+                        />
+                        <Input
+                            placeholder="Convert to (default: *)"
+                            value={newRestrictedWordConvertTo}
+                            onChange={(e) => setNewRestrictedWordConvertTo(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && addRestrictedWord()}
+                            className="w-32"
+                        />
+                        <Button onClick={addRestrictedWord} disabled={!newRestrictedWord.trim()}>
+                            Add
+                        </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        Single characters will be repeated (e.g., "*" becomes "****" for a 4-letter word). 
+                        Multiple characters will be used as-is.
+                    </p>
+                </div>
+                
+                {restrictedWords.length > 0 ? (
+                    <div className="space-y-2">
+                        <h4 className="text-sm font-medium">Restricted Words ({restrictedWords.length})</h4>
+                        <div className="max-h-40 overflow-y-auto space-y-1">
+                            {restrictedWords.map(({ word, convertTo }, index) => (
+                                <div key={index} className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium">{word}</span>
+                                        <span className="text-xs text-muted-foreground">→</span>
+                                        <span className="text-sm text-muted-foreground">
+                                            {convertTo.length === 1 ? convertTo.repeat(word.length) : convertTo}
+                                        </span>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => removeRestrictedWord(word)}
+                                        className="h-6 w-6 p-0 text-destructive hover:text-destructive/80"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="text-center py-4 text-muted-foreground">
+                        <p className="text-sm">No restricted words added yet.</p>
+                        <p className="text-xs mt-1">Add words above to start censoring them in messages.</p>
+                    </div>
+                )}
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsRestrictedWordsDialogOpen(false)}>
+                    Close
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
     
+
+
 

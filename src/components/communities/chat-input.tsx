@@ -1,12 +1,12 @@
 
 "use client";
 
-import React, { useState, useRef, type FormEvent, type ChangeEvent } from 'react';
+import React, { useState, useRef, useEffect, type FormEvent, type ChangeEvent } from 'react';
 import Image from 'next/image';
 import type { User } from 'firebase/auth';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { collection, addDoc, serverTimestamp, Timestamp, updateDoc, runTransaction, doc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp, updateDoc, runTransaction, doc, writeBatch } from 'firebase/firestore';
 import type { ChatMessage, TenorGif } from '@/types/app';
 import dynamic from 'next/dynamic';
 import { Theme as EmojiTheme, EmojiStyle, type EmojiClickData } from 'emoji-picker-react';
@@ -26,6 +26,50 @@ const EmojiPicker = dynamic(() => import('emoji-picker-react'), {
   loading: () => <p className="p-2 text-sm text-muted-foreground">Loading emojis...</p>
 });
 
+// Function to create mention notifications for community pings
+const createMentionNotifications = async (
+  mentionedUserIds: string[],
+  senderId: string,
+  senderName: string,
+  senderAvatarUrl: string | null,
+  communityId: string,
+  channelId: string,
+  messageId: string,
+  messageText: string
+) => {
+  try {
+    const batch = writeBatch(db);
+    
+    for (const mentionedUserId of mentionedUserIds) {
+      // Skip if mentioning self
+      if (mentionedUserId === senderId) continue;
+      
+      const activityRef = doc(collection(db, `users/${mentionedUserId}/activityItems`));
+      const contentSnippet = `mentioned you in #${channelId}`;
+      
+      batch.set(activityRef, {
+        type: 'mention',
+        actorId: senderId,
+        actorName: senderName,
+        actorAvatarUrl: senderAvatarUrl,
+        contentSnippet: contentSnippet,
+        timestamp: serverTimestamp(),
+        isRead: false,
+        communityId: communityId,
+        channelId: channelId,
+        messageId: messageId,
+        targetUserId: mentionedUserId,
+        mentionedUserIds: [mentionedUserId],
+        targetLink: `/communities?community=${communityId}&channel=${channelId}&message=${messageId}`
+      });
+    }
+    
+    await batch.commit();
+    console.log(`Created mention notifications for ${mentionedUserIds.length} users`);
+  } catch (error) {
+    console.error('Error creating mention notifications:', error);
+  }
+};
 
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
 const CLOUDINARY_API_KEY = '775545995624823';
@@ -49,6 +93,10 @@ interface ChatInputProps {
     currentThemeMode: 'light' | 'dark';
     hasMicPermission: boolean | null;
     requestMicPermission: () => Promise<boolean>;
+    replyingToMessage?: ChatMessage | null;
+    onClearReply?: () => void;
+    restrictedWords?: Array<{word: string, convertTo: string}>;
+    censorRestrictedWords?: (text: string) => string;
 }
 
 export default function ChatInput({
@@ -58,11 +106,19 @@ export default function ChatInput({
     communityMembers,
     currentThemeMode,
     hasMicPermission,
-    requestMicPermission
+    requestMicPermission,
+    replyingToMessage: externalReplyingToMessage,
+    onClearReply,
+    restrictedWords = [],
+    censorRestrictedWords
 }: ChatInputProps) {
     const { toast } = useToast();
     const [newMessage, setNewMessage] = useState("");
-    const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null);
+    const [internalReplyingToMessage, setInternalReplyingToMessage] = useState<ChatMessage | null>(null);
+    
+    // Use external replyingToMessage if provided, otherwise use internal state
+    const replyingToMessage = externalReplyingToMessage !== undefined ? externalReplyingToMessage : internalReplyingToMessage;
+    const setReplyingToMessage = externalReplyingToMessage !== undefined ? (onClearReply || (() => {})) : setInternalReplyingToMessage;
     const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
     const mentionSuggestionsRef = useRef<HTMLDivElement>(null);
     const chatInputRef = useRef<HTMLInputElement>(null);
@@ -98,7 +154,7 @@ export default function ChatInput({
           return;
         }
     
-        const messageText = newMessage.trim();
+        const messageText = censorRestrictedWords ? censorRestrictedWords(newMessage.trim()) : newMessage.trim();
         const mentionRegex = /@([\w.-]+)/g;
         let match;
         const mentionedUserDisplayNames: string[] = [];
@@ -108,6 +164,14 @@ export default function ChatInput({
         const resolvedMentionedUserIds = communityMembers
             .filter(member => mentionedUserDisplayNames.includes(member.name))
             .map(member => member.id);
+    
+        // If replying to a message, automatically mention the original sender
+        const allMentionedUserIds = [...resolvedMentionedUserIds];
+        if (replyingToMessage && replyingToMessage.senderId !== currentUser.uid) {
+            if (!allMentionedUserIds.includes(replyingToMessage.senderId)) {
+                allMentionedUserIds.push(replyingToMessage.senderId);
+            }
+        }
     
         const messageData: Partial<ChatMessage> = {
           senderId: currentUser.uid,
@@ -120,8 +184,8 @@ export default function ChatInput({
           isPinned: false,
         };
     
-        if (resolvedMentionedUserIds.length > 0) {
-            messageData.mentionedUserIds = resolvedMentionedUserIds;
+        if (allMentionedUserIds.length > 0) {
+            messageData.mentionedUserIds = allMentionedUserIds;
         }
     
         if (replyingToMessage) {
@@ -133,10 +197,24 @@ export default function ChatInput({
     
         try {
           const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-          await addDoc(messagesRef, messageData);
+          const messageDoc = await addDoc(messagesRef, messageData);
           setNewMessage("");
           setReplyingToMessage(null);
           setShowMentionSuggestions(false);
+          
+          // Create notifications for mentioned users
+          if (allMentionedUserIds.length > 0) {
+            await createMentionNotifications(
+              allMentionedUserIds,
+              currentUser.uid,
+              currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+              currentUser.photoURL || null,
+              selectedCommunity.id,
+              selectedChannel.id,
+              messageDoc.id,
+              messageText
+            );
+          }
         } catch (error) {
             console.error("Error sending message:", error);
             toast({
@@ -160,6 +238,12 @@ export default function ChatInput({
           messageType = 'voice_message';
         }
     
+        // If replying to a message, automatically mention the original sender
+        const mentionedUserIds: string[] = [];
+        if (replyingToMessage && replyingToMessage.senderId !== currentUser.uid) {
+            mentionedUserIds.push(replyingToMessage.senderId);
+        }
+    
         const messageData: Partial<ChatMessage> = {
             senderId: currentUser.uid,
             senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -173,6 +257,10 @@ export default function ChatInput({
             isPinned: false,
         };
     
+        if (mentionedUserIds.length > 0) {
+            messageData.mentionedUserIds = mentionedUserIds;
+        }
+    
         if (replyingToMessage) {
             messageData.replyToMessageId = replyingToMessage.id;
             messageData.replyToSenderName = replyingToMessage.senderName;
@@ -182,9 +270,23 @@ export default function ChatInput({
     
         try {
           const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-          await addDoc(messagesRef, messageData);
+          const messageDoc = await addDoc(messagesRef, messageData);
           setReplyingToMessage(null);
           toast({ title: `${messageType.charAt(0).toUpperCase() + messageType.slice(1).replace('_', ' ')} Sent!`, description: `${fileName} has been sent.` });
+          
+          // Create notifications for mentioned users in attachments
+          if (mentionedUserIds.length > 0) {
+            await createMentionNotifications(
+              mentionedUserIds,
+              currentUser.uid,
+              currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+              currentUser.photoURL || null,
+              selectedCommunity.id,
+              selectedChannel.id,
+              messageDoc.id,
+              `sent a ${messageType}`
+            );
+          }
         } catch (error) {
           console.error(`Error sending ${messageType}:`, error);
           toast({
@@ -274,6 +376,12 @@ export default function ChatInput({
           return;
         }
     
+        // If replying to a message, automatically mention the original sender
+        const mentionedUserIds: string[] = [];
+        if (replyingToMessage && replyingToMessage.senderId !== currentUser.uid) {
+            mentionedUserIds.push(replyingToMessage.senderId);
+        }
+    
         const messageData: Partial<ChatMessage> = {
           senderId: currentUser.uid,
           senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -287,6 +395,11 @@ export default function ChatInput({
           reactions: {},
           isPinned: false,
         };
+        
+        if (mentionedUserIds.length > 0) {
+            messageData.mentionedUserIds = mentionedUserIds;
+        }
+        
         if (replyingToMessage) {
             messageData.replyToMessageId = replyingToMessage.id;
             messageData.replyToSenderName = replyingToMessage.senderName;
@@ -296,11 +409,25 @@ export default function ChatInput({
     
         try {
           const messagesRef = collection(db, `communities/${selectedCommunity.id}/channels/${selectedChannel.id}/messages`);
-          await addDoc(messagesRef, messageData);
+          const messageDoc = await addDoc(messagesRef, messageData);
           setShowGifPicker(false);
           setGifSearchTerm("");
           setGifs([]);
           setReplyingToMessage(null);
+          
+          // Create notifications for mentioned users in GIFs
+          if (mentionedUserIds.length > 0) {
+            await createMentionNotifications(
+              mentionedUserIds,
+              currentUser.uid,
+              currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+              currentUser.photoURL || null,
+              selectedCommunity.id,
+              selectedChannel.id,
+              messageDoc.id,
+              "sent a GIF"
+            );
+          }
         } catch (error) {
             console.error("Error sending GIF message:", error);
             toast({
@@ -584,7 +711,7 @@ export default function ChatInput({
                 {isRecording ? <StopCircle className="h-4 w-4 sm:h-5 sm:w-5" /> : <Mic className="h-4 w-4 sm:h-5 sm:w-5" />}
             </Button>
             {hasMicPermission === false && (
-                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-destructive" title="Microphone permission denied"/>
+                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-destructive"/>
             )}
 
             <Popover open={chatEmojiPickerOpen} onOpenChange={setChatEmojiPickerOpen}>
@@ -614,93 +741,93 @@ export default function ChatInput({
                     <Film className="h-4 w-4 sm:h-5 sm:w-5" />
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px] md:max-w-[600px] lg:max-w-[800px] h-[70vh] flex flex-col">
-                <DialogHeader>
+            <DialogContent className="sm:max-w-[425px] md:max-w-[600px] lg:max-w-[800px] h-[75vh] flex flex-col">
+                <DialogHeader className="pb-2">
                     <DialogTitle>Send a GIF</DialogTitle>
                     <DialogDescription>
                         Search for GIFs from Tenor or browse your favorites.
                     </DialogDescription>
                 </DialogHeader>
-                <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="mt-2 flex-1 flex flex-col min-h-0">
-                    <TabsList className="grid w-full grid-cols-2 shrink-0">
+                <Tabs defaultValue="search" onValueChange={(value) => setGifPickerView(value as 'search' | 'favorites')} className="flex-1 flex flex-col min-h-0">
+                    <TabsList className="grid w-full grid-cols-2 shrink-0 mb-2">
                         <TabsTrigger value="search">Search/Trending</TabsTrigger>
                         <TabsTrigger value="favorites">Favorites</TabsTrigger>
                     </TabsList>
-                    <TabsContent value="search" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2">
+                    <TabsContent value="search" className="flex-1 flex flex-col overflow-hidden min-h-0">
                         <Input
                             type="text"
                             placeholder="Search Tenor GIFs..."
                             value={gifSearchTerm}
                             onChange={handleGifSearchChange}
-                            className="my-2 shrink-0"
+                            className="mb-2 shrink-0"
                         />
                         <ScrollArea className="flex-1 min-h-0">
-                            <div className="p-1">
+                            <div className="p-2">
                             {loadingGifs ? (
                                 <div className="flex justify-center items-center h-full">
                                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                                 </div>
                             ) : gifs.length > 0 ? (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                                 {gifs.map((gif) => (
-                                    <div key={gif.id} className="relative group aspect-square">
+                                    <div key={gif.id} className="relative group aspect-square bg-muted rounded-lg overflow-hidden">
                                         <button
                                             onClick={() => handleSendGif(gif)}
-                                            className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary ring-offset-2 ring-offset-background"
+                                            className="w-full h-full overflow-hidden rounded-lg focus:outline-none focus:ring-2 focus:ring-primary ring-offset-2 ring-offset-background"
                                         >
                                             <Image
                                                 src={gif.media_formats.tinygif.url}
                                                 alt={gif.content_description || "GIF"}
                                                 fill
-                                                sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
-                                                className="object-contain transition-transform group-hover:scale-105"
+                                                sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
+                                                className="object-cover transition-transform group-hover:scale-105"
                                                 unoptimized
                                             />
                                         </button>
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white"
+                                            className="absolute top-1 right-1 h-7 w-7 bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm"
                                             onClick={() => handleToggleFavoriteGif(gif)}
                                             title={isGifFavorited(gif.id) ? "Unfavorite" : "Favorite"}
                                         >
-                                            <Star className={cn("h-4 w-4", isGifFavorited(gif.id) ? "fill-yellow-400 text-yellow-400" : "text-white/70")}/>
+                                            <Star className={cn("h-4 w-4", isGifFavorited(gif.id) ? "fill-yellow-400 text-yellow-400" : "text-white/90")}/>
                                         </Button>
                                     </div>
                                 ))}
                                 </div>
                             ) : (
-                                <p className="text-center text-muted-foreground py-4">
+                                <p className="text-center text-muted-foreground py-8">
                                     {gifSearchTerm ? "No GIFs found for your search." : "No trending GIFs found."}
                                 </p>
                             )}
                             </div>
                         </ScrollArea>
                     </TabsContent>
-                    <TabsContent value="favorites" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2">
+                    <TabsContent value="favorites" className="flex-1 flex flex-col overflow-hidden min-h-0">
                         <ScrollArea className="flex-1 min-h-0">
-                            <div className="p-1">
+                            <div className="p-2">
                             {favoritedGifs.length > 0 ? (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                                 {favoritedGifs.map((gif) => (
-                                    <div key={gif.id} className="relative group aspect-square">
+                                    <div key={gif.id} className="relative group aspect-square bg-muted rounded-lg overflow-hidden">
                                     <button
                                         onClick={() => handleSendGif(gif)}
-                                        className="w-full h-full overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary ring-offset-2 ring-offset-background"
+                                        className="w-full h-full overflow-hidden rounded-lg focus:outline-none focus:ring-2 focus:ring-primary ring-offset-2 ring-offset-background"
                                     >
                                         <Image
                                             src={gif.media_formats.tinygif.url}
                                             alt={gif.content_description || "GIF"}
                                             fill
-                                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
-                                            className="object-contain transition-transform group-hover:scale-105"
+                                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
+                                            className="object-cover transition-transform group-hover:scale-105"
                                             unoptimized
                                         />
                                     </button>
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="absolute top-1 right-1 h-7 w-7 bg-black/30 hover:bg-black/50 text-white"
+                                        className="absolute top-1 right-1 h-7 w-7 bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm"
                                         onClick={() => handleToggleFavoriteGif(gif)}
                                         title="Unfavorite"
                                     >
@@ -710,7 +837,7 @@ export default function ChatInput({
                                 ))}
                                 </div>
                             ) : (
-                                <p className="text-center text-muted-foreground py-4">
+                                <p className="text-center text-muted-foreground py-8">
                                     You haven't favorited any GIFs yet.
                                 </p>
                             )}
@@ -718,7 +845,7 @@ export default function ChatInput({
                         </ScrollArea>
                     </TabsContent>
                 </Tabs>
-                <DialogFooter className="mt-auto pt-2 shrink-0">
+                <DialogFooter className="pt-1 pb-2 shrink-0">
                     <p className="text-xs text-muted-foreground">Powered by Tenor</p>
                 </DialogFooter>
             </DialogContent>

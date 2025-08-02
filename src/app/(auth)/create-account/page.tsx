@@ -22,7 +22,7 @@ import { AuthFormWrapper } from "@/components/auth/auth-form-wrapper";
 import { Mail, LockKeyhole, User, Eye, EyeOff } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { createUserWithEmailAndPassword, onAuthStateChanged, updateProfile } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import SplashScreenDisplay from "@/components/common/splash-screen-display";
 import type { UiScale } from '@/components/theme/theme-provider';
 

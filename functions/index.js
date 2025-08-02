@@ -10,12 +10,20 @@
 
 const {onRequest} = require("firebase-functions/v2/https");
 const {RtcTokenBuilder, RtcRole} = require("agora-access-token");
+const admin = require("firebase-admin");
 
-// Import your new user actions
+// Initialize Firebase Admin SDK
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+// Import your new user actions and signaling server
 const userActions = require("./userActions");
+const signalingServer = require("./signaling");
 
-// Export the callable function
+// Export the callable functions
 exports.deleteUserAccount = userActions.deleteUserAccount;
+exports.webrtcSignaling = signalingServer.webrtcSignaling;
 
 const APP_ID = "530ba273ad0847019e4e48e70135e345";
 const APP_CERTIFICATE = "11b76d5a76324fe5b4c616db8e786333";

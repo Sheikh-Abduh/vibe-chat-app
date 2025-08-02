@@ -5,9 +5,9 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation'; 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import Image from "next/image";
-import { Heart, Users, Loader2 } from 'lucide-react';
+import { Heart, Users, Loader2, UserPlus, Check, X } from 'lucide-react';
 import { db } from '@/lib/firebase'; 
-import { collection, getDocs } from 'firebase/firestore'; 
+import { collection, getDocs, doc, setDoc, getDoc, query, where, serverTimestamp, Timestamp } from 'firebase/firestore'; 
 import { useToast } from '@/hooks/use-toast';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -27,6 +27,18 @@ interface SuggestedPerson {
   avatar: string;
   dataAiHint: string;
   tags: string[];
+  connectionStatus?: 'none' | 'pending' | 'connected';
+}
+
+interface ConnectionRequest {
+  id: string;
+  fromUserId: string;
+  fromUserName: string;
+  fromUserAvatar?: string;
+  toUserId: string;
+  toUserName: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  timestamp: Date;
 }
 
 export default function DashboardPage() {
@@ -38,6 +50,8 @@ export default function DashboardPage() {
   const [currentThemeMode, setCurrentThemeMode] = useState<'light' | 'dark'>('dark');
   const [vibeCommunityMemberCount, setVibeCommunityMemberCount] = useState(0);
   const [isLoadingMemberCount, setIsLoadingMemberCount] = useState(true);
+  const [connectionRequests, setConnectionRequests] = useState<ConnectionRequest[]>([]);
+  const [sendingRequests, setSendingRequests] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(user => {
@@ -45,6 +59,145 @@ export default function DashboardPage() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Check if user has already sent a connection request today
+  const hasSentRequestToday = async (targetUserId: string): Promise<boolean> => {
+    if (!currentUser) return false;
+    
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const requestsRef = collection(db, 'connectionRequests');
+      const q = query(
+        requestsRef,
+        where('fromUserId', '==', currentUser.uid),
+        where('toUserId', '==', targetUserId),
+        where('timestamp', '>=', Timestamp.fromDate(today))
+      );
+      
+      const snapshot = await getDocs(q);
+      return !snapshot.empty;
+    } catch (error) {
+      console.error('Error checking connection requests:', error);
+      return false;
+    }
+  };
+
+  // Send connection request
+  const sendConnectionRequest = async (targetPerson: SuggestedPerson) => {
+    if (!currentUser) {
+      toast({
+        variant: "destructive",
+        title: "Authentication Error",
+        description: "You must be logged in to send connection requests.",
+      });
+      return;
+    }
+
+    // Check if already sent request today
+    const alreadySent = await hasSentRequestToday(targetPerson.id);
+    if (alreadySent) {
+      toast({
+        variant: "destructive",
+        title: "Request Already Sent",
+        description: "You can only send one connection request per person per day.",
+      });
+      return;
+    }
+
+    setSendingRequests(prev => new Set(prev).add(targetPerson.id));
+
+    try {
+      const requestData = {
+        fromUserId: currentUser.uid,
+        fromUserName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+        fromUserAvatar: currentUser.photoURL || null,
+        toUserId: targetPerson.id,
+        toUserName: targetPerson.name,
+        status: 'pending' as const,
+        timestamp: serverTimestamp(),
+      };
+
+      // Add to connection requests collection
+      const requestsRef = collection(db, 'connectionRequests');
+      const requestDocRef = doc(requestsRef);
+      await setDoc(requestDocRef, requestData);
+
+      // Create activity notification for the target user
+      const targetUserActivityRef = collection(db, `users/${targetPerson.id}/activityItems`);
+      await setDoc(doc(targetUserActivityRef), {
+        type: 'connection_request',
+        actorId: currentUser.uid,
+        actorName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+        actorAvatarUrl: currentUser.photoURL || null,
+        contentSnippet: `sent you a connection request`,
+        timestamp: serverTimestamp(),
+        isRead: false,
+        targetUserId: currentUser.uid,
+        requestId: requestDocRef.id,
+      });
+
+      // Update local state
+      setSuggestedPeople(prev => 
+        prev.map(person => 
+          person.id === targetPerson.id 
+            ? { ...person, connectionStatus: 'pending' as const }
+            : person
+        )
+      );
+
+      toast({
+        title: "Connection Request Sent!",
+        description: `Your connection request has been sent to ${targetPerson.name}.`,
+      });
+
+    } catch (error) {
+      console.error('Error sending connection request:', error);
+      toast({
+        variant: "destructive",
+        title: "Request Failed",
+        description: "Could not send connection request. Please try again.",
+      });
+    } finally {
+      setSendingRequests(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(targetPerson.id);
+        return newSet;
+      });
+    }
+  };
+
+  // Load connection status for suggested people
+  const loadConnectionStatus = async (people: SuggestedPerson[]) => {
+    if (!currentUser) return people;
+
+    try {
+      const requestsRef = collection(db, 'connectionRequests');
+      const q = query(
+        requestsRef,
+        where('fromUserId', '==', currentUser.uid)
+      );
+      
+      const snapshot = await getDocs(q);
+      const requests = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as ConnectionRequest[];
+
+      return people.map(person => {
+        const request = requests.find(req => req.toUserId === person.id);
+        if (request) {
+          const status = request.status === 'accepted' ? 'connected' : request.status;
+          return { ...person, connectionStatus: status as 'pending' | 'connected' };
+        }
+        return { ...person, connectionStatus: 'none' as const };
+      });
+    } catch (error) {
+      console.error('Error loading connection status:', error);
+      return people;
+    }
+  };
 
   useEffect(() => {
     if (currentUser) {
@@ -90,7 +243,9 @@ export default function DashboardPage() {
               .sort(() => 0.5 - Math.random()) 
               .slice(0, 4); 
             
-            setSuggestedPeople(samplePeople);
+            // Load connection status for suggested people
+            const peopleWithStatus = await loadConnectionStatus(samplePeople);
+            setSuggestedPeople(peopleWithStatus);
 
           } catch (error) {
             console.error("Dashboard: Error loading users (full error object):", error);
@@ -112,6 +267,59 @@ export default function DashboardPage() {
   }, [currentUser, toast]);
 
   const dynamicVibeCommunityImage = currentThemeMode === 'dark' ? '/bannerd.png' : '/bannerl.png';
+
+  const renderConnectionButton = (person: SuggestedPerson) => {
+    const isSending = sendingRequests.has(person.id);
+    
+    switch (person.connectionStatus) {
+      case 'pending':
+        return (
+          <Button variant="outline" size="sm" className="w-full mt-auto text-xs border-yellow-500/70 text-yellow-600 hover:bg-yellow-500/10" disabled>
+            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+            Pending
+          </Button>
+        );
+      case 'connected':
+        return (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full mt-auto text-xs border-green-500/70 text-green-600 hover:bg-green-500/10 hover:bg-green-500/20"
+            onClick={() => {
+              // Navigate to messages with the connected user
+              const userIds = [currentUser?.uid, person.id].sort();
+              const conversationId = `${userIds[0]}_${userIds[1]}`;
+              router.push(`/messages?conversation=${conversationId}`);
+            }}
+          >
+            <Check className="h-3 w-3 mr-1" />
+            Message
+          </Button>
+        );
+      default:
+        return (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full mt-auto text-xs border-accent/70 text-accent hover:bg-accent/10 hover:text-accent"
+            onClick={() => sendConnectionRequest(person)}
+            disabled={isSending}
+          >
+            {isSending ? (
+              <>
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <UserPlus className="h-3 w-3 mr-1" />
+                Connect
+              </>
+            )}
+          </Button>
+        );
+    }
+  };
 
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden p-4 md:p-6 space-y-8 md:space-y-12">
@@ -179,9 +387,7 @@ export default function DashboardPage() {
                     ))}
                   </div>
                 )}
-                 <Button variant="outline" size="sm" className="w-full mt-auto text-xs border-accent/70 text-accent hover:bg-accent/10 hover:text-accent">
-                    Connect
-                 </Button>
+                {renderConnectionButton(person)}
               </Card>
             ))}
           </div>

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, type ChangeEvent, useRef } from 'react';
+import { useState, useEffect, useCallback, type ChangeEvent, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -28,12 +28,13 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
-import { UserCircle, Edit3, Sparkles, Gift, Hash, Heart, MessageSquare, Info, Loader2, PersonStanding, UploadCloud, ArrowLeft } from 'lucide-react';
+import { UserCircle, Edit3, Sparkles, Gift, Hash, Heart, MessageSquare, Info, Loader2, PersonStanding, UploadCloud, ArrowLeft, Eye, EyeOff, Shield } from 'lucide-react';
 import { auth, db } from '@/lib/firebase'; 
 import { onAuthStateChanged, type User, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore'; 
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea import
+import { Switch } from '@/components/ui/switch';
 
 // Cloudinary configuration (copied from onboarding/avatar)
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -73,8 +74,8 @@ const profileSchema = z.object({
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
 interface UserProfileDetails {
-  photoURL?: string;
-  displayName?: string;
+  photoURL?: string | null;
+  displayName?: string | null;
   aboutMe?: string;
   status?: string;
   hobbies?: string;
@@ -82,6 +83,19 @@ interface UserProfileDetails {
   gender?: string;
   tags?: string;
   passion?: string;
+  // Privacy settings
+  isProfilePublic?: boolean;
+  publicFields?: {
+    displayName?: boolean;
+    aboutMe?: boolean;
+    status?: boolean;
+    hobbies?: boolean;
+    age?: boolean;
+    gender?: boolean;
+    tags?: boolean;
+    passion?: boolean;
+    photoURL?: boolean;
+  };
 }
 
 export default function EditProfilePage() {
@@ -91,10 +105,51 @@ export default function EditProfilePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | undefined>(undefined);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Privacy settings state
+  const [isProfilePublic, setIsProfilePublic] = useState(false);
+  const [publicFields, setPublicFields] = useState({
+    displayName: true,
+    aboutMe: true,
+    status: true,
+    hobbies: true,
+    age: false,
+    gender: false,
+    tags: true,
+    passion: true,
+    photoURL: true,
+  });
+
+  // Function to save privacy settings immediately
+  const savePrivacySettings = useCallback(async () => {
+    if (!currentUser) return;
+    
+    setIsSavingPrivacy(true);
+    try {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      await setDoc(userDocRef, {
+        profileDetails: {
+          isProfilePublic,
+          publicFields
+        }
+      }, { merge: true });
+      console.log('✅ Privacy settings saved');
+    } catch (error) {
+      console.error('Error saving privacy settings:', error);
+      toast({
+        variant: "destructive",
+        title: "Privacy Settings Error",
+        description: "Could not save privacy settings. Please try again.",
+      });
+    } finally {
+      setIsSavingPrivacy(false);
+    }
+  }, [currentUser, isProfilePublic, publicFields, toast]);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -114,7 +169,7 @@ export default function EditProfilePage() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
-        setAvatarPreview(user.photoURL);
+        setAvatarPreview(user.photoURL || undefined);
         
         const userDocRef = doc(db, "users", user.uid);
         const userDocSnap = await getDoc(userDocRef);
@@ -123,6 +178,20 @@ export default function EditProfilePage() {
         if (userDocSnap.exists()) {
           fetchedProfileDetails = userDocSnap.data()?.profileDetails || {};
         }
+        
+        // Load privacy settings
+        setIsProfilePublic(fetchedProfileDetails.isProfilePublic ?? false);
+        setPublicFields({
+          displayName: fetchedProfileDetails.publicFields?.displayName ?? true,
+          aboutMe: fetchedProfileDetails.publicFields?.aboutMe ?? true,
+          status: fetchedProfileDetails.publicFields?.status ?? true,
+          hobbies: fetchedProfileDetails.publicFields?.hobbies ?? true,
+          age: fetchedProfileDetails.publicFields?.age ?? false,
+          gender: fetchedProfileDetails.publicFields?.gender ?? false,
+          tags: fetchedProfileDetails.publicFields?.tags ?? true,
+          passion: fetchedProfileDetails.publicFields?.passion ?? true,
+          photoURL: fetchedProfileDetails.publicFields?.photoURL ?? true,
+        });
         
         form.reset({
           displayName: user.displayName || fetchedProfileDetails.displayName || "",
@@ -222,8 +291,8 @@ export default function EditProfilePage() {
     }
     
     const profileDetailsToSave: UserProfileDetails = {
-      photoURL: newAvatarUrlFromCloudinary || currentUser.photoURL || undefined, 
-      displayName: data.displayName || currentUser.displayName || undefined,
+      photoURL: newAvatarUrlFromCloudinary || currentUser.photoURL || null, 
+      displayName: data.displayName || currentUser.displayName || null,
       aboutMe: data.aboutMe || "",
       status: data.status || "",
       hobbies: data.hobbies || "",
@@ -231,7 +300,14 @@ export default function EditProfilePage() {
       gender: data.gender || "",
       tags: data.tags || "",
       passion: data.passion || "",
+      isProfilePublic: isProfilePublic,
+      publicFields: publicFields,
     };
+
+    // Filter out undefined values for Firestore compatibility
+    const filteredProfileDetails = Object.fromEntries(
+      Object.entries(profileDetailsToSave).filter(([_, value]) => value !== undefined)
+    ) as UserProfileDetails;
 
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
@@ -242,15 +318,15 @@ export default function EditProfilePage() {
       }
       
       let firestoreChangesMade = false;
-      for (const key in profileDetailsToSave) {
-        if (profileDetailsToSave[key as keyof UserProfileDetails] !== existingProfileDetails[key as keyof UserProfileDetails]) {
+      for (const key in filteredProfileDetails) {
+        if (filteredProfileDetails[key as keyof UserProfileDetails] !== existingProfileDetails[key as keyof UserProfileDetails]) {
           firestoreChangesMade = true;
           break;
         }
       }
 
       if (firestoreChangesMade) {
-        await setDoc(userDocRef, { profileDetails: profileDetailsToSave }, { merge: true });
+        await setDoc(userDocRef, { profileDetails: filteredProfileDetails }, { merge: true });
         anyChangesMade = true;
       }
       
@@ -278,16 +354,30 @@ export default function EditProfilePage() {
         const updatedUser = auth.currentUser;
         if (updatedUser) {
             setCurrentUser(updatedUser); // Update local state
-            setAvatarPreview(updatedUser.photoURL); // Update preview
+            setAvatarPreview(updatedUser.photoURL || undefined); // Update preview
             form.reset({ // Reset form with potentially updated values
                 displayName: updatedUser.displayName || profileDetailsToSave.displayName || "",
-                aboutMe: profileDetailsToSave.aboutMe,
-                status: profileDetailsToSave.status,
-                hobbies: profileDetailsToSave.hobbies,
-                age: profileDetailsToSave.age,
-                gender: profileDetailsToSave.gender,
-                tags: profileDetailsToSave.tags,
-                passion: profileDetailsToSave.passion,
+                aboutMe: profileDetailsToSave.aboutMe || "",
+                status: profileDetailsToSave.status || "",
+                hobbies: profileDetailsToSave.hobbies || "",
+                age: profileDetailsToSave.age || "",
+                gender: profileDetailsToSave.gender || "",
+                tags: profileDetailsToSave.tags || "",
+                passion: profileDetailsToSave.passion || "",
+            });
+            
+            // Update privacy settings state to reflect saved values
+            setIsProfilePublic(profileDetailsToSave.isProfilePublic ?? false);
+            setPublicFields({
+              displayName: profileDetailsToSave.publicFields?.displayName ?? true,
+              aboutMe: profileDetailsToSave.publicFields?.aboutMe ?? true,
+              status: profileDetailsToSave.publicFields?.status ?? true,
+              hobbies: profileDetailsToSave.publicFields?.hobbies ?? true,
+              age: profileDetailsToSave.publicFields?.age ?? false,
+              gender: profileDetailsToSave.publicFields?.gender ?? false,
+              tags: profileDetailsToSave.publicFields?.tags ?? true,
+              passion: profileDetailsToSave.publicFields?.passion ?? true,
+              photoURL: profileDetailsToSave.publicFields?.photoURL ?? true,
             });
         }
     }
@@ -304,8 +394,8 @@ export default function EditProfilePage() {
 
   return (
     <div className="flex h-full items-center justify-center overflow-hidden p-4">
-      <Card className="flex flex-col w-full max-w-lg bg-card border-border/50 shadow-xl max-h-[90vh]">
-        <CardHeader className="shrink-0">
+      <Card className="flex flex-col w-full max-w-lg bg-card border-border/50 shadow-xl h-[90vh]">
+        <CardHeader className="shrink-0 pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <Edit3 className="mr-3 h-7 w-7 sm:h-8 sm:w-8 text-primary" />
@@ -321,9 +411,9 @@ export default function EditProfilePage() {
             Update your profile information, username, and avatar.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 p-0 min-h-0"> 
+        <CardContent className="flex-1 p-0 overflow-hidden"> 
           <ScrollArea className="h-full">
-            <div className="p-6 pt-6">
+            <div className="p-6 pb-4">
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 sm:space-y-8">
 
@@ -336,7 +426,7 @@ export default function EditProfilePage() {
                         className={`h-20 w-20 sm:h-24 sm:w-24 border-2 border-primary shadow-md ${isUploadingAvatar ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-90'} transition-opacity`}
                         onClick={handleUploadAvatarButtonClick}
                       >
-                        <AvatarImage src={avatarPreview || undefined} alt="User Avatar Preview" className="object-cover"/>
+                        <AvatarImage src={avatarPreview} alt="User Avatar Preview" className="object-cover"/>
                         <AvatarFallback className="bg-muted hover:bg-muted/80">
                           <UserCircle className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground/70" />
                         </AvatarFallback>
@@ -562,12 +652,218 @@ export default function EditProfilePage() {
                       </FormItem>
                     )}
                   />
+
+                  {/* Privacy Settings Section */}
+                  <div className="space-y-6 pt-6 border-t border-border/50">
+                    <div className="flex items-center space-x-2">
+                      <Shield className="h-5 w-5 text-accent" />
+                      <h3 className="text-lg font-semibold text-foreground">Privacy Settings</h3>
+                      {isSavingPrivacy && (
+                        <div className="flex items-center space-x-1 text-xs text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>Saving...</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Profile Visibility Toggle */}
+                    <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-card/50">
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          {isProfilePublic ? (
+                            <Eye className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <EyeOff className="h-4 w-4 text-orange-500" />
+                          )}
+                          <span className="font-medium text-foreground">
+                            {isProfilePublic ? 'Public Profile' : 'Private Profile'}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {isProfilePublic 
+                            ? 'Your profile is visible to other users' 
+                            : 'Your profile is hidden from other users'
+                          }
+                        </p>
+                      </div>
+                      <Switch
+                        checked={isProfilePublic}
+                        onCheckedChange={(checked) => {
+                          setIsProfilePublic(checked);
+                          // Save immediately
+                          setTimeout(() => savePrivacySettings(), 100);
+                        }}
+                        className="data-[state=checked]:bg-accent"
+                      />
+                    </div>
+
+                    {/* Field Visibility Controls */}
+                    {isProfilePublic && (
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-medium text-foreground">Choose what to show publicly:</h4>
+                        
+                        <div className="grid gap-3">
+                          {/* Display Name */}
+                          <div className="flex items-center justify-between p-3 rounded-lg border border-border/30 bg-card/30">
+                            <div className="flex items-center space-x-3">
+                              <UserCircle className="h-4 w-4 text-accent" />
+                              <span className="text-sm text-foreground">Display Name</span>
+                            </div>
+                            <Switch
+                              checked={publicFields.displayName}
+                              onCheckedChange={(checked) => {
+                                setPublicFields(prev => ({ ...prev, displayName: checked }));
+                                setTimeout(() => savePrivacySettings(), 100);
+                              }}
+                              className="data-[state=checked]:bg-accent"
+                            />
+                          </div>
+
+                          {/* Profile Photo */}
+                          <div className="flex items-center justify-between p-3 rounded-lg border border-border/30 bg-card/30">
+                            <div className="flex items-center space-x-3">
+                              <Avatar className="h-4 w-4">
+                                <AvatarImage src={avatarPreview} />
+                                <AvatarFallback className="text-xs">P</AvatarFallback>
+                              </Avatar>
+                              <span className="text-sm text-foreground">Profile Photo</span>
+                            </div>
+                            <Switch
+                              checked={publicFields.photoURL}
+                              onCheckedChange={(checked) => {
+                                setPublicFields(prev => ({ ...prev, photoURL: checked }));
+                                setTimeout(() => savePrivacySettings(), 100);
+                              }}
+                              className="data-[state=checked]:bg-accent"
+                            />
+                          </div>
+
+                          {/* About Me */}
+                          <div className="flex items-center justify-between p-3 rounded-lg border border-border/30 bg-card/30">
+                            <div className="flex items-center space-x-3">
+                              <Info className="h-4 w-4 text-accent" />
+                              <span className="text-sm text-foreground">About Me</span>
+                            </div>
+                            <Switch
+                              checked={publicFields.aboutMe}
+                              onCheckedChange={(checked) => {
+                                setPublicFields(prev => ({ ...prev, aboutMe: checked }));
+                                setTimeout(() => savePrivacySettings(), 100);
+                              }}
+                              className="data-[state=checked]:bg-accent"
+                            />
+                          </div>
+
+                          {/* Status */}
+                          <div className="flex items-center justify-between p-3 rounded-lg border border-border/30 bg-card/30">
+                            <div className="flex items-center space-x-3">
+                              <MessageSquare className="h-4 w-4 text-accent" />
+                              <span className="text-sm text-foreground">Status</span>
+                            </div>
+                            <Switch
+                              checked={publicFields.status}
+                              onCheckedChange={(checked) => {
+                                setPublicFields(prev => ({ ...prev, status: checked }));
+                                setTimeout(() => savePrivacySettings(), 100);
+                              }}
+                              className="data-[state=checked]:bg-accent"
+                            />
+                          </div>
+
+                          {/* Hobbies */}
+                          <div className="flex items-center justify-between p-3 rounded-lg border border-border/30 bg-card/30">
+                            <div className="flex items-center space-x-3">
+                              <Sparkles className="h-4 w-4 text-accent" />
+                              <span className="text-sm text-foreground">Hobbies</span>
+                            </div>
+                            <Switch
+                              checked={publicFields.hobbies}
+                              onCheckedChange={(checked) => {
+                                setPublicFields(prev => ({ ...prev, hobbies: checked }));
+                                setTimeout(() => savePrivacySettings(), 100);
+                              }}
+                              className="data-[state=checked]:bg-accent"
+                            />
+                          </div>
+
+                          {/* Age */}
+                          <div className="flex items-center justify-between p-3 rounded-lg border border-border/30 bg-card/30">
+                            <div className="flex items-center space-x-3">
+                              <Gift className="h-4 w-4 text-accent" />
+                              <span className="text-sm text-foreground">Age Range</span>
+                            </div>
+                            <Switch
+                              checked={publicFields.age}
+                              onCheckedChange={(checked) => {
+                                setPublicFields(prev => ({ ...prev, age: checked }));
+                                setTimeout(() => savePrivacySettings(), 100);
+                              }}
+                              className="data-[state=checked]:bg-accent"
+                            />
+                          </div>
+
+                          {/* Gender */}
+                          <div className="flex items-center justify-between p-3 rounded-lg border border-border/30 bg-card/30">
+                            <div className="flex items-center space-x-3">
+                              <PersonStanding className="h-4 w-4 text-accent" />
+                              <span className="text-sm text-foreground">Gender</span>
+                            </div>
+                            <Switch
+                              checked={publicFields.gender}
+                              onCheckedChange={(checked) => {
+                                setPublicFields(prev => ({ ...prev, gender: checked }));
+                                setTimeout(() => savePrivacySettings(), 100);
+                              }}
+                              className="data-[state=checked]:bg-accent"
+                            />
+                          </div>
+
+                          {/* Tags */}
+                          <div className="flex items-center justify-between p-3 rounded-lg border border-border/30 bg-card/30">
+                            <div className="flex items-center space-x-3">
+                              <Hash className="h-4 w-4 text-accent" />
+                              <span className="text-sm text-foreground">Tags</span>
+                            </div>
+                            <Switch
+                              checked={publicFields.tags}
+                              onCheckedChange={(checked) => {
+                                setPublicFields(prev => ({ ...prev, tags: checked }));
+                                setTimeout(() => savePrivacySettings(), 100);
+                              }}
+                              className="data-[state=checked]:bg-accent"
+                            />
+                          </div>
+
+                          {/* Primary Passion */}
+                          <div className="flex items-center justify-between p-3 rounded-lg border border-border/30 bg-card/30">
+                            <div className="flex items-center space-x-3">
+                              <Heart className="h-4 w-4 text-accent" />
+                              <span className="text-sm text-foreground">Primary Passion</span>
+                            </div>
+                            <Switch
+                              checked={publicFields.passion}
+                              onCheckedChange={(checked) => {
+                                setPublicFields(prev => ({ ...prev, passion: checked }));
+                                setTimeout(() => savePrivacySettings(), 100);
+                              }}
+                              className="data-[state=checked]:bg-accent"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="text-xs text-muted-foreground/80 p-3 bg-muted/30 rounded-lg">
+                          <strong>Note:</strong> When your profile is private, other users cannot see any of your information. 
+                          When public, only the fields you enable above will be visible to others.
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </form>
               </Form>
             </div>
           </ScrollArea>
         </CardContent>
-        <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-6 sm:pt-8 pb-6 shrink-0">
+        <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4 pb-6 shrink-0 border-t border-border/50">
           <Button
             type="button"
             variant="outline"

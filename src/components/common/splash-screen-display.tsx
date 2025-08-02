@@ -13,7 +13,7 @@ export default function SplashScreenDisplay() {
           priority
           className="animate-pulse"
           style={{
-            filter: `drop-shadow(0 0 10px hsl(var(--primary))) drop-shadow(0 0 5px hsl(var(--accent)/0.6))`
+            filter: `drop-shadow(0 0 10px rgba(255, 255, 255, 0.4)) drop-shadow(0 0 5px rgba(255, 255, 255, 0.3))`
           }}
           data-ai-hint="abstract logo"
         />
@@ -26,7 +26,7 @@ export default function SplashScreenDisplay() {
           height={43}  
           priority
           style={{
-            filter: `drop-shadow(0 0 8px hsl(var(--primary)/0.9)) drop-shadow(0 0 15px hsl(var(--primary)/0.5)) drop-shadow(0 0 25px hsl(var(--accent)/0.3))`
+            filter: `drop-shadow(0 0 8px rgba(255, 255, 255, 0.5)) drop-shadow(0 0 15px rgba(255, 255, 255, 0.3)) drop-shadow(0 0 25px rgba(255, 255, 255, 0.2))`
           }}
           data-ai-hint="typography wordmark"
         />

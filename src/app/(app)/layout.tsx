@@ -198,19 +198,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-             <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={pathname.startsWith('/activity')} tooltip="Activity">
-                  <Link href="/activity">
-                    <BellDot />
-                    Activity
-                    {unreadActivityCount > 0 && (
-                      <span className="ml-auto inline-block px-2 py-0.5 text-xs font-semibold bg-destructive text-destructive-foreground rounded-full">
-                        {unreadActivityCount > 9 ? '9+' : unreadActivityCount}
-                      </span>
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.startsWith('/settings')} tooltip="Settings">
                 <Link href="/settings">

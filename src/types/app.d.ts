@@ -26,5 +26,6 @@ export type ChatMessage = {
     replyToTextSnippet?: string;
     isForwarded?: boolean;
     forwardedFromSenderName?: string;
-    mentionedUserIds?: string[]; 
+    mentionedUserIds?: string[];
+    readBy?: string[];
   };
