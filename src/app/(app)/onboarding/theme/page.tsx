@@ -20,22 +20,40 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 type ThemeMode = 'light' | 'dark';
 
-interface AccentColorOption {
+interface ColorPalette {
   name: string;
-  value: string;
-  foreground: string; 
-  className: string;
+  description: string;
+  primary: { value: string; foreground: string; };
+  secondary: { value: string; foreground: string; };
+  preview: { colors: string[]; };
 }
 
-const accentOptions: AccentColorOption[] = [
-  { name: 'Neon Purple', value: '289 85% 55%', foreground: '0 0% 100%', className: 'bg-[hsl(289_85%_55%)]' }, // Updated PRD Primary
-  { name: 'Neon Green', value: '110 100% 50%', foreground: '220 3% 10%', className: 'bg-[hsl(110_100%_50%)]' }, // Updated PRD Accent
-  { name: 'Crimson Red', value: '348 83% 47%', foreground: '0 0% 100%', className: 'bg-[hsl(348_83%_47%)]' },
-  { name: 'Electric Blue', value: '217 91% 59%', foreground: '0 0% 100%', className: 'bg-[hsl(217_91%_59%)]' },
-  { name: 'Sunny Yellow', value: '45 100% 51%', foreground: '220 3% 10%', className: 'bg-[hsl(45_100%_51%)]' },
-  { name: 'Emerald Green', value: '145 63% 42%', foreground: '0 0% 100%', className: 'bg-[hsl(145_63%_42%)]' }, // Old default secondary for onboarding page
-  { name: 'Vibrant Orange', value: '24 95% 53%', foreground: '0 0% 100%', className: 'bg-[hsl(24_95%_53%)]'}
+// Simplified palette options for onboarding
+const onboardingPalettes: ColorPalette[] = [
+  {
+    name: 'Nebula',
+    description: 'Deep navy, cosmic purple, and bright teal',
+    primary: { value: '250 84% 54%', foreground: '0 0% 100%' },
+    secondary: { value: '180 100% 50%', foreground: '220 26% 14%' },
+    preview: { colors: ['hsl(220_26%_14%)', 'hsl(250_84%_54%)', 'hsl(180_100%_50%)'] }
+  },
+  {
+    name: 'Pulse',
+    description: 'Electric blue, mint green, and vibrant violet',
+    primary: { value: '217 91% 59%', foreground: '0 0% 100%' },
+    secondary: { value: '150 100% 66%', foreground: '220 3% 10%' },
+    preview: { colors: ['hsl(217_91%_59%)', 'hsl(150_100%_66%)', 'hsl(271_81%_56%)'] }
+  },
+  {
+    name: 'Aurora',
+    description: 'Gradient mix of cyan, magenta, and violet',
+    primary: { value: '300 76% 72%', foreground: '0 0% 100%' },
+    secondary: { value: '180 100% 50%', foreground: '0 0% 100%' },
+    preview: { colors: ['hsl(180_100%_50%)', 'hsl(300_76%_72%)', 'hsl(270_50%_60%)'] }
+  }
 ];
+
+const defaultPalette = onboardingPalettes[0]; // Default to Nebula
 
 // Default theme values (from globals.css - dark mode)
 const defaultDarkVars = {
@@ -56,19 +74,16 @@ const defaultLightVars = {
   '--border': '0 0% 85%', '--input': '0 0% 92%',
 };
 
-// PRD specified defaults
-const prdPrimaryAccent = accentOptions.find(opt => opt.value === '289 85% 55%')!; 
-const prdSecondaryAccent = accentOptions.find(opt => opt.value === '110 100% 50%')!;
-
 const defaultAppThemeForOnboarding = {
     mode: 'dark' as ThemeMode,
-    primary: prdPrimaryAccent, 
-    secondary: prdSecondaryAccent, // Using PRD Neon Green for secondary accent preview consistency
+    palette: defaultPalette,
     scale: 'default' as UiScale,
 };
 
 interface UserAppSettings {
     themeMode?: ThemeMode;
+    colorPalette?: string;
+    // Legacy compatibility
     themePrimaryAccent?: string;
     themePrimaryAccentFg?: string;
     themeSecondaryAccent?: string;
@@ -87,7 +102,7 @@ export default function ThemeSelectionPage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   const [selectedMode, setSelectedMode] = useState<ThemeMode>(defaultAppThemeForOnboarding.mode);
-  const [selectedAccent, setSelectedAccent] = useState<AccentColorOption>(defaultAppThemeForOnboarding.primary);
+  const [selectedPalette, setSelectedPalette] = useState<ColorPalette>(defaultAppThemeForOnboarding.palette);
 
   const [initialMode, setInitialMode] = useState<ThemeMode | null>(null);
   const [initialAccentValue, setInitialAccentValue] = useState<string | null>(null);
@@ -117,13 +132,15 @@ export default function ThemeSelectionPage() {
         setInitialAccentValue(primaryColor);
         setInitialAccentFgValue(primaryFgColor);
 
-        const foundAccent = accentOptions.find(opt => opt.value === primaryColor && opt.foreground === primaryFgColor);
-        setSelectedAccent(foundAccent || defaultAppThemeForOnboarding.primary);
+        const foundPalette = onboardingPalettes.find(p => 
+          p.primary.value === primaryColor && p.primary.foreground === primaryFgColor
+        );
+        setSelectedPalette(foundPalette || defaultAppThemeForOnboarding.palette);
     }
   }, []);
 
 
-  const applyTheme = useCallback((mode: ThemeMode, primaryAccentChoice: AccentColorOption) => {
+  const applyTheme = useCallback((mode: ThemeMode, palette: ColorPalette) => {
     if (typeof window !== 'undefined') {
       const root = document.documentElement;
       const themeVars = mode === 'dark' ? defaultDarkVars : defaultLightVars;
@@ -131,21 +148,19 @@ export default function ThemeSelectionPage() {
       for (const [key, value] of Object.entries(themeVars)) {
         root.style.setProperty(key, value);
       }
-      root.style.setProperty('--primary', primaryAccentChoice.value);
-      root.style.setProperty('--primary-foreground', primaryAccentChoice.foreground); 
-      root.style.setProperty('--ring', primaryAccentChoice.value);
-
-      // Keep secondary accent fixed to the PRD default for this specific page's live preview
-      root.style.setProperty('--accent', defaultAppThemeForOnboarding.secondary.value);
-      root.style.setProperty('--accent-foreground', defaultAppThemeForOnboarding.secondary.foreground);
+      root.style.setProperty('--primary', palette.primary.value);
+      root.style.setProperty('--primary-foreground', palette.primary.foreground); 
+      root.style.setProperty('--ring', palette.primary.value);
+      root.style.setProperty('--accent', palette.secondary.value);
+      root.style.setProperty('--accent-foreground', palette.secondary.foreground);
     }
   }, []);
 
   useEffect(() => {
     if (initialMode && initialAccentValue ) {
-        applyTheme(selectedMode, selectedAccent);
+        applyTheme(selectedMode, selectedPalette);
     }
-  }, [selectedMode, selectedAccent, applyTheme, initialMode, initialAccentValue]);
+  }, [selectedMode, selectedPalette, applyTheme, initialMode, initialAccentValue]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -184,10 +199,12 @@ export default function ThemeSelectionPage() {
 
     const themeSettingsToSave: Partial<UserAppSettings> = {
       themeMode: selectedMode,
-      themePrimaryAccent: selectedAccent.value,
-      themePrimaryAccentFg: selectedAccent.foreground,
-      themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value, 
-      themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.foreground,
+      colorPalette: selectedPalette.name,
+      // Also save individual colors for backward compatibility
+      themePrimaryAccent: selectedPalette.primary.value,
+      themePrimaryAccentFg: selectedPalette.primary.foreground,
+      themeSecondaryAccent: selectedPalette.secondary.value, 
+      themeSecondaryAccentFg: selectedPalette.secondary.foreground,
       uiScale: defaultAppThemeForOnboarding.scale, 
     };
 
@@ -232,14 +249,15 @@ export default function ThemeSelectionPage() {
     setIsSubmitting(true);
     
     // Apply application defaults before proceeding
-    applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.primary);
+    applyTheme(defaultAppThemeForOnboarding.mode, defaultAppThemeForOnboarding.palette);
 
     const defaultSettingsToSave: Partial<UserAppSettings> = {
         themeMode: defaultAppThemeForOnboarding.mode,
-        themePrimaryAccent: defaultAppThemeForOnboarding.primary.value,
-        themePrimaryAccentFg: defaultAppThemeForOnboarding.primary.foreground,
-        themeSecondaryAccent: defaultAppThemeForOnboarding.secondary.value,
-        themeSecondaryAccentFg: defaultAppThemeForOnboarding.secondary.foreground,
+        colorPalette: defaultAppThemeForOnboarding.palette.name,
+        themePrimaryAccent: defaultAppThemeForOnboarding.palette.primary.value,
+        themePrimaryAccentFg: defaultAppThemeForOnboarding.palette.primary.foreground,
+        themeSecondaryAccent: defaultAppThemeForOnboarding.palette.secondary.value,
+        themeSecondaryAccentFg: defaultAppThemeForOnboarding.palette.secondary.foreground,
         uiScale: defaultAppThemeForOnboarding.scale,
     };
 
@@ -277,18 +295,30 @@ export default function ThemeSelectionPage() {
         const userDocRef = doc(db, "users", currentUser.uid);
         getDoc(userDocRef).then(snap => {
             let finalMode = initialMode;
-            let finalPrimaryValue = initialAccentValue;
-            let finalPrimaryFgValue = initialAccentFgValue;
+            let finalPalette = defaultAppThemeForOnboarding.palette;
 
-            if (snap.exists() && snap.data().appSettings?.themePrimaryAccent) {
+            if (snap.exists() && snap.data().appSettings) {
                  const savedSettings = snap.data().appSettings as UserAppSettings;
                  finalMode = savedSettings.themeMode || initialMode;
-                 finalPrimaryValue = savedSettings.themePrimaryAccent || initialAccentValue;
-                 finalPrimaryFgValue = savedSettings.themePrimaryAccentFg || initialAccentFgValue;
+                 
+                 if (savedSettings.colorPalette) {
+                   const foundPalette = onboardingPalettes.find(p => p.name === savedSettings.colorPalette);
+                   if (foundPalette) {
+                     finalPalette = foundPalette;
+                   }
+                 } else if (savedSettings.themePrimaryAccent) {
+                   // Backward compatibility
+                   const foundPalette = onboardingPalettes.find(p => 
+                     p.primary.value === savedSettings.themePrimaryAccent && 
+                     p.primary.foreground === savedSettings.themePrimaryAccentFg
+                   );
+                   if (foundPalette) {
+                     finalPalette = foundPalette;
+                   }
+                 }
             }
             
-            const finalPrimaryAccent = accentOptions.find(opt => opt.value === finalPrimaryValue && opt.foreground === finalPrimaryFgValue) || defaultAppThemeForOnboarding.primary;
-            applyTheme(finalMode, finalPrimaryAccent);
+            applyTheme(finalMode, finalPalette);
         });
       }
     };
@@ -301,39 +331,39 @@ export default function ThemeSelectionPage() {
 
 
   return (
-    <div className="flex h-full items-center justify-center overflow-y-auto overflow-x-hidden bg-background p-4 selection:bg-primary/30 selection:text-primary-foreground">
-      <Card className="flex flex-col w-full max-w-lg max-h-[90vh] bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
-        <CardHeader className="text-center pt-6 pb-4 shrink-0">
-          <CardTitle className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
+    <div className="flex h-full items-center justify-center overflow-y-auto overflow-x-hidden bg-background p-3 sm:p-4 md:p-6 selection:bg-primary/30 selection:text-primary-foreground">
+      <Card className="flex flex-col w-full max-w-sm sm:max-w-md md:max-w-lg max-h-[95vh] sm:max-h-[90vh] bg-card border-border/50 shadow-[0_0_25px_hsl(var(--primary)/0.2),_0_0_10px_hsl(var(--accent)/0.1)]">
+        <CardHeader className="text-center pt-4 sm:pt-6 pb-3 sm:pb-4 shrink-0">
+          <CardTitle className="text-2xl sm:text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.7)' }}>
             Customize Your vibe
           </CardTitle>
-          <CardDescription className="text-muted-foreground pt-1">
-            Choose your preferred theme mode and primary accent color.
+          <CardDescription className="text-sm sm:text-base text-muted-foreground pt-1">
+            Choose your preferred theme mode and color palette.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex-1 p-0 overflow-hidden min-h-0">
           <ScrollArea className="h-full">
-            <div className="space-y-8 px-6 pt-2 pb-6">
+            <div className="space-y-6 sm:space-y-8 px-4 sm:px-6 pt-2 pb-4 sm:pb-6">
               <div className="space-y-3">
-                <Label className="text-lg font-semibold text-foreground flex items-center">
-                  <Palette className="mr-2 h-6 w-6 text-accent" /> Theme Mode
+                <Label className="text-base sm:text-lg font-semibold text-foreground flex items-center">
+                  <Palette className="mr-2 h-5 w-5 sm:h-6 sm:w-6 text-accent" /> Theme Mode
                 </Label>
                 <RadioGroup
                   value={selectedMode}
                   onValueChange={(value: string) => setSelectedMode(value as ThemeMode)}
-                  className="grid grid-cols-2 gap-4"
+                  className="grid grid-cols-2 gap-3 sm:gap-4"
                 >
                   <div>
                     <RadioGroupItem value="light" id="light" className="peer sr-only" />
                     <Label
                       htmlFor="light"
                       className={cn(
-                        "flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer",
+                        "flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-3 sm:p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer",
                         "peer-data-[state=checked]:border-primary peer-data-[state=checked]:shadow-[0_0_10px_hsl(var(--primary)/0.5)]"
                       )}
                     >
-                      <Sun className="mb-2 h-7 w-7" />
-                      Light Mode
+                      <Sun className="mb-2 h-6 w-6 sm:h-7 sm:w-7" />
+                      <span className="text-sm sm:text-base">Light Mode</span>
                     </Label>
                   </div>
                   <div>
@@ -341,39 +371,53 @@ export default function ThemeSelectionPage() {
                     <Label
                       htmlFor="dark"
                       className={cn(
-                        "flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer",
+                        "flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-3 sm:p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer",
                         "peer-data-[state=checked]:border-primary peer-data-[state=checked]:shadow-[0_0_10px_hsl(var(--primary)/0.5)]"
                       )}
                     >
-                      <Moon className="mb-2 h-7 w-7" />
-                      Dark Mode
+                      <Moon className="mb-2 h-6 w-6 sm:h-7 sm:w-7" />
+                      <span className="text-sm sm:text-base">Dark Mode</span>
                     </Label>
                   </div>
                 </RadioGroup>
               </div>
 
               <div className="space-y-3">
-                <Label className="text-lg font-semibold text-foreground flex items-center">
-                  <Palette className="mr-2 h-6 w-6 text-accent" /> Primary Accent Color
+                <Label className="text-base sm:text-lg font-semibold text-foreground flex items-center">
+                  <Palette className="mr-2 h-5 w-5 sm:h-6 sm:w-6 text-accent" /> Color Palette
                 </Label>
-                <div className="grid grid-cols-3 sm:grid-cols-3 gap-3">
-                  {accentOptions.map((accent) => (
+                <div className="grid grid-cols-1 gap-3 sm:gap-4">
+                  {onboardingPalettes.map((palette) => (
                     <Button
-                      key={accent.name}
+                      key={palette.name}
                       variant="outline"
-                      onClick={() => setSelectedAccent(accent)}
+                      onClick={() => setSelectedPalette(palette)}
                       className={cn(
-                        "h-20 w-full flex flex-col items-center justify-center border-2 p-2 transition-all duration-200 ease-in-out",
-                        selectedAccent.value === accent.value ? 'border-primary shadow-[0_0_10px_hsl(var(--primary)/0.7)] scale-105' : 'border-muted hover:border-foreground/50',
+                        "h-16 sm:h-20 w-full flex items-center justify-between border-2 p-3 sm:p-4 transition-all duration-200 ease-in-out",
+                        selectedPalette.name === palette.name ? 'border-primary shadow-[0_0_10px_hsl(var(--primary)/0.7)] scale-105' : 'border-muted hover:border-foreground/50',
                         "focus:ring-2 focus:ring-offset-2 focus:ring-ring"
                       )}
-                      style={{ borderColor: selectedAccent.value === accent.value ? `hsl(${accent.value})` : undefined }}
+                      style={{ borderColor: selectedPalette.name === palette.name ? `hsl(${palette.primary.value})` : undefined }}
                     >
-                      <div className={cn("h-8 w-8 rounded-full mb-2 border border-foreground/20", accent.className)} />
-                      <span className="text-xs text-center text-muted-foreground">{accent.name}</span>
-                      {selectedAccent.value === accent.value && (
-                        <CheckCircle className="h-5 w-5 text-primary absolute top-1 right-1" style={{ color: `hsl(${accent.value})` }}/>
-                      )}
+                      {/* Palette Info */}
+                      <div className="text-left flex-1 min-w-0">
+                        <span className="font-semibold text-sm sm:text-base text-foreground">{palette.name}</span>
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-2">{palette.description}</p>
+                      </div>
+                      
+                      {/* Palette Preview */}
+                      <div className="flex items-center space-x-1.5 sm:space-x-2 ml-3 sm:ml-4 shrink-0">
+                        {palette.preview.colors.map((color, index) => (
+                          <div 
+                            key={index}
+                            className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border border-foreground/20"
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                        {selectedPalette.name === palette.name && (
+                          <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-primary ml-1.5 sm:ml-2" style={{ color: `hsl(${palette.primary.value})` }}/>
+                        )}
+                      </div>
                     </Button>
                   ))}
                 </div>
@@ -381,23 +425,23 @@ export default function ThemeSelectionPage() {
             </div>
           </ScrollArea>
         </CardContent>
-        <CardFooter className="flex flex-col sm:flex-row gap-4 pt-6 pb-6 shrink-0">
+        <CardFooter className="flex flex-col gap-3 sm:gap-4 pt-4 sm:pt-6 pb-4 sm:pb-6 shrink-0">
           <Button
             onClick={handleSave}
             disabled={isSubmitting || !currentUser}
-            className="w-full sm:w-1/2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base py-3
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm sm:text-base py-2.5 sm:py-3
                        shadow-[0_0_10px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        focus:shadow-[0_0_18px_hsl(var(--primary)/0.8)]
                        transition-all duration-300 ease-in-out transform hover:scale-105 focus:scale-105 focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary"
           >
-            {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle className="mr-2 h-5 w-5" /> }
+            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4 sm:h-5 sm:w-5" /> }
             {isSubmitting ? 'Saving...' : 'Save & Continue'}
           </Button>
           <Button
             variant="ghost"
             onClick={handleSkip}
             disabled={isSubmitting || !currentUser}
-            className="w-full sm:w-1/2 text-muted-foreground hover:text-accent/80"
+            className="w-full text-muted-foreground hover:text-accent/80 text-sm sm:text-base"
           >
             Skip and use defaults
           </Button>

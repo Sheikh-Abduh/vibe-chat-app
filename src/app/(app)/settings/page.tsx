@@ -3,7 +3,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Settings, Palette, UserCircle, Bell, Link2, Cog, ChevronRight, FileText } from "lucide-react";
+import { Settings, Palette, UserCircle, Bell, Link2, Cog, ChevronRight, FileText, Users } from "lucide-react";
 import Link from "next/link";
 
 interface SettingsCategory {
@@ -50,6 +50,14 @@ const settingsCategories: SettingsCategory[] = [
     actionText: "Manage Integrations",
   },
   {
+    id: "interactions",
+    title: "Interactions",
+    description: "Manage your connections and disconnected users. Control who can message you directly.",
+    icon: Users,
+    href: "/settings/interactions",
+    actionText: "Manage Interactions",
+  },
+  {
     id: "formatting-tips",
     title: "Text Formatting",
     description: "Learn how to format your messages with bold, italics, and more.",
@@ -69,37 +77,37 @@ const settingsCategories: SettingsCategory[] = [
 
 export default function SettingsPage() {
   return (
-    <div className="h-full overflow-y-auto overflow-x-hidden p-6"> 
+    <div className="h-full overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6"> 
       <section>
-        <div className="flex items-center mb-8">
-          <Settings className="mr-3 h-9 w-9 text-primary" />
-          <h1 className="text-4xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.6)' }}>
+        <div className="flex items-center mb-6 sm:mb-8">
+          <Settings className="mr-2 sm:mr-3 h-7 w-7 sm:h-8 sm:w-8 md:h-9 md:w-9 text-primary" />
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 5px hsl(var(--primary)/0.6)' }}>
             Settings
           </h1>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
           {settingsCategories.map((category) => (
             <Card key={category.id} className="bg-card border-border/50 shadow-lg hover:shadow-[0_0_15px_hsl(var(--accent)/0.2)] transition-shadow duration-300 flex flex-col">
-              <CardHeader className="flex flex-row items-center space-x-4 pb-4">
-                <category.icon className="h-8 w-8 text-accent" />
-                <CardTitle className="text-2xl text-foreground">{category.title}</CardTitle>
+              <CardHeader className="flex flex-row items-center space-x-3 sm:space-x-4 pb-3 sm:pb-4">
+                <category.icon className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 text-accent" />
+                <CardTitle className="text-lg sm:text-xl md:text-2xl text-foreground">{category.title}</CardTitle>
               </CardHeader>
               <CardContent className="flex-grow">
-                <CardDescription className="text-sm text-muted-foreground line-clamp-3">
+                <CardDescription className="text-xs sm:text-sm text-muted-foreground line-clamp-3">
                   {category.description}
                 </CardDescription>
               </CardContent>
-              <div className="p-4 pt-2">
+              <div className="p-3 sm:p-4 pt-2">
                 {category.href ? (
-                  <Button variant="outline" className="w-full group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.3)] hover:shadow-[0_0_10px_hsl(var(--accent)/0.5)] transition-all duration-300" asChild disabled={category.disabled}>
+                  <Button variant="outline" className="w-full group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.3)] hover:shadow-[0_0_10px_hsl(var(--accent)/0.5)] transition-all duration-300 text-xs sm:text-sm" asChild disabled={category.disabled}>
                     <Link href={category.href}>
                       {category.actionText || `Go to ${category.title}`}
-                      <ChevronRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                      <ChevronRight className="ml-2 h-3 w-3 sm:h-4 sm:w-4 group-hover:translate-x-1 transition-transform" />
                     </Link>
                   </Button>
                 ) : (
-                  <Button variant="outline" className="w-full" disabled>
+                  <Button variant="outline" className="w-full text-xs sm:text-sm" disabled>
                     {category.actionText || `Manage ${category.title}`} (soon)
                   </Button>
                 )}

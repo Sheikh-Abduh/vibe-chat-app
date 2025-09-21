@@ -131,7 +131,8 @@ const SidebarProvider = React.forwardRef<
 
     return (
       <SidebarContext.Provider value={contextValue}>
-        <TooltipProvider delayDuration={0}>
+        {/* Temporarily disabled TooltipProvider to prevent infinite loops */}
+        {/* <TooltipProvider delayDuration={0}> */}
           <div
             style={
               {
@@ -149,7 +150,7 @@ const SidebarProvider = React.forwardRef<
           >
             {children}
           </div>
-        </TooltipProvider>
+        {/* </TooltipProvider> */}
       </SidebarContext.Provider>
     )
   }
@@ -194,7 +195,7 @@ const Sidebar = React.forwardRef<
 
     if (isMobile) {
       return (
-        <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+        <Sheet key="sidebar-mobile" open={openMobile} onOpenChange={setOpenMobile} {...props}>
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
@@ -571,6 +572,11 @@ const SidebarMenuButton = React.forwardRef<
       return button
     }
 
+    // Temporarily disable tooltips to prevent infinite loops
+    // TODO: Re-enable when DismissableLayer infinite loop is fixed
+    return button
+
+    /*
     if (typeof tooltip === "string") {
       tooltip = {
         children: tooltip,
@@ -588,6 +594,7 @@ const SidebarMenuButton = React.forwardRef<
         />
       </Tooltip>
     )
+    */
   }
 )
 SidebarMenuButton.displayName = "SidebarMenuButton"

@@ -20,10 +20,16 @@ if (!admin.apps.length) {
 // Import your new user actions and signaling server
 const userActions = require("./userActions");
 const signalingServer = require("./signaling");
+const messageCleanup = require("./messageCleanup");
 
 // Export the callable functions
 exports.deleteUserAccount = userActions.deleteUserAccount;
 exports.webrtcSignaling = signalingServer.webrtcSignaling;
+
+// Export message cleanup functions
+exports.cleanupOldMessages = messageCleanup.cleanupOldMessages;
+exports.manualMessageCleanup = messageCleanup.manualMessageCleanup;
+exports.getCleanupStats = messageCleanup.getCleanupStats;
 
 const APP_ID = "530ba273ad0847019e4e48e70135e345";
 const APP_CERTIFICATE = "11b76d5a76324fe5b4c616db8e786333";
@@ -46,6 +52,8 @@ exports.generateAgoraToken = onRequest((request, response) => {
   );
   response.send({token});
 });
+
+// Removed HTTP signaling endpoints (sendSignal, getSignals)
 
 
 // Create and deploy your first functions

@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from '../ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { canUserSendMessage } from '@/lib/community-utils';
 
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), {
   ssr: false,
@@ -112,6 +113,9 @@ export default function ChatInput({
     restrictedWords = [],
     censorRestrictedWords
 }: ChatInputProps) {
+    // Check if user can send messages in this community
+    const canSendMessage = canUserSendMessage(selectedCommunity, currentUser);
+    
     const { toast } = useToast();
     const [newMessage, setNewMessage] = useState("");
     const [internalReplyingToMessage, setInternalReplyingToMessage] = useState<ChatMessage | null>(null);
@@ -148,6 +152,16 @@ export default function ChatInput({
     const handleSendMessage = async (e?: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLInputElement>) => {
         if (e && 'preventDefault' in e) {
           e.preventDefault();
+        }
+    
+        // Check if user can send messages in this community
+        if (!canUserSendMessage(selectedCommunity, currentUser)) {
+          toast({
+            variant: "destructive",
+            title: "Access Denied",
+            description: "You must be a member of this community to send messages.",
+          });
+          return;
         }
     
         if (newMessage.trim() === "" || !currentUser || !selectedCommunity || !selectedChannel || selectedChannel.type !== 'text') {
@@ -226,6 +240,16 @@ export default function ChatInput({
       };
     
       const sendAttachmentMessageToFirestore = async (fileUrl: string, fileName: string, fileType: string) => {
+        // Check if user can send messages in this community
+        if (!canUserSendMessage(selectedCommunity, currentUser)) {
+          toast({
+            variant: "destructive",
+            title: "Access Denied",
+            description: "You must be a member of this community to send attachments.",
+          });
+          return;
+        }
+    
         if (!currentUser || !selectedCommunity || !selectedChannel) {
           toast({ variant: "destructive", title: "Error", description: "Cannot send attachment." });
           return;
@@ -298,6 +322,16 @@ export default function ChatInput({
       };
     
       const uploadFileToCloudinaryAndSend = async (file: File, isVoiceMessage: boolean = false) => {
+        // Check if user can send messages in this community
+        if (!canUserSendMessage(selectedCommunity, currentUser)) {
+          toast({
+            variant: "destructive",
+            title: "Access Denied",
+            description: `You must be a member of this community to send ${isVoiceMessage ? 'voice messages' : 'files'}.`,
+          });
+          return;
+        }
+    
         if (!currentUser) return;
         setIsUploadingFile(true);
     

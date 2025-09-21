@@ -1,0 +1,155 @@
+/* Call Interface Responsive Styles */
+
+/* Touch optimization for mobile devices */
+.touch-manipulation {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Responsive video container */
+.call-video-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Responsive avatar sizes */
+.call-avatar-sm {
+  @apply h-16 w-16 sm:h-18 sm:w-18 lg:h-20 lg:w-20;
+}
+
+.call-avatar-md {
+  @apply h-20 w-20 sm:h-24 sm:w-24 lg:h-28 lg:w-28;
+}
+
+.call-avatar-lg {
+  @apply h-24 w-24 sm:h-28 sm:w-28 lg:h-32 lg:w-32 xl:h-40 xl:w-40;
+}
+
+/* Responsive button sizes */
+.call-button-sm {
+  @apply h-10 w-10 sm:h-12 sm:w-12;
+}
+
+.call-button-md {
+  @apply h-12 w-12 sm:h-14 sm:w-14 lg:h-16 lg:w-16;
+}
+
+.call-button-lg {
+  @apply h-14 w-14 sm:h-16 sm:w-16 lg:h-18 lg:w-18;
+}
+
+/* Responsive text sizes */
+.call-text-sm {
+  @apply text-xs sm:text-sm;
+}
+
+.call-text-md {
+  @apply text-sm sm:text-base lg:text-lg;
+}
+
+.call-text-lg {
+  @apply text-base sm:text-lg lg:text-xl xl:text-2xl;
+}
+
+.call-text-xl {
+  @apply text-lg sm:text-xl lg:text-2xl xl:text-3xl;
+}
+
+/* Responsive spacing */
+.call-spacing-sm {
+  @apply gap-2 sm:gap-3;
+}
+
+.call-spacing-md {
+  @apply gap-3 sm:gap-4 lg:gap-6;
+}
+
+.call-spacing-lg {
+  @apply gap-4 sm:gap-6 lg:gap-8;
+}
+
+/* Responsive padding */
+.call-padding-sm {
+  @apply p-2 sm:p-3;
+}
+
+.call-padding-md {
+  @apply p-3 sm:p-4 lg:p-6;
+}
+
+.call-padding-lg {
+  @apply p-4 sm:p-6 lg:p-8;
+}
+
+/* Mobile-first responsive breakpoints */
+@media (max-width: 640px) {
+  /* Mobile optimizations */
+  .call-interface {
+    font-size: 14px;
+  }
+  
+  .call-controls {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  
+  .call-header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  /* Tablet optimizations */
+  .call-interface {
+    font-size: 16px;
+  }
+}
+
+@media (min-width: 1025px) {
+  /* Desktop optimizations */
+  .call-interface {
+    font-size: 18px;
+  }
+}
+
+/* Landscape orientation adjustments */
+@media (orientation: landscape) and (max-height: 500px) {
+  .call-avatar-lg {
+    @apply h-16 w-16 sm:h-20 sm:w-20;
+  }
+  
+  .call-padding-md {
+    @apply p-2 sm:p-3;
+  }
+}
+
+/* High DPI display optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .call-interface {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  .call-interface * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus improvements for keyboard navigation */
+.call-interface button:focus-visible {
+  outline: 2px solid theme('colors.primary.500');
+  outline-offset: 2px;
+}
+
+/* Dark mode optimizations */
+@media (prefers-color-scheme: dark) {
+  .call-interface {
+    color-scheme: dark;
+  }
+}

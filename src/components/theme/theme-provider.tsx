@@ -25,10 +25,48 @@ const defaultLightVars: Record<string, string> = {
   '--border': '0 0% 85%', '--input': '0 0% 92%',
 };
 
-const appDefaultPrimary = '289 85% 45%'; 
-const appDefaultPrimaryFg = '0 0% 100%';
-const appDefaultSecondaryAccent = '127 100% 43%'; 
-const appDefaultSecondaryAccentFg = '220 3% 10%';
+// Default color palettes - same as in appearance settings
+interface ColorPalette {
+  name: string;
+  primary: { value: string; foreground: string; };
+  secondary: { value: string; foreground: string; };
+}
+
+const colorPalettes: ColorPalette[] = [
+  {
+    name: 'Nebula',
+    primary: { value: '250 84% 54%', foreground: '0 0% 100%' },
+    secondary: { value: '180 100% 50%', foreground: '220 26% 14%' }
+  },
+  {
+    name: 'Solaris',
+    primary: { value: '35 91% 58%', foreground: '0 0% 100%' },
+    secondary: { value: '16 90% 66%', foreground: '0 0% 100%' }
+  },
+  {
+    name: 'Obsidian',
+    primary: { value: '200 6% 10%', foreground: '120 100% 50%' },
+    secondary: { value: '195 100% 50%', foreground: '200 6% 10%' }
+  },
+  {
+    name: 'Aurora',
+    primary: { value: '300 76% 72%', foreground: '0 0% 100%' },
+    secondary: { value: '180 100% 50%', foreground: '0 0% 100%' }
+  },
+  {
+    name: 'Pulse',
+    primary: { value: '217 91% 59%', foreground: '0 0% 100%' },
+    secondary: { value: '150 100% 66%', foreground: '220 3% 10%' }
+  }
+];
+
+const defaultPalette = colorPalettes[0]; // Nebula
+
+// Legacy defaults for backward compatibility
+const appDefaultPrimary = defaultPalette.primary.value; 
+const appDefaultPrimaryFg = defaultPalette.primary.foreground;
+const appDefaultSecondaryAccent = defaultPalette.secondary.value; 
+const appDefaultSecondaryAccentFg = defaultPalette.secondary.foreground;
 const appDefaultUiScale = 'default';
 
 export type UiScale = 'compact' | 'default' | 'comfortable';
@@ -36,6 +74,9 @@ export type UiScale = 'compact' | 'default' | 'comfortable';
 interface UserAppSettings {
   onboardingComplete?: boolean;
   themeMode?: 'light' | 'dark';
+  // New palette system
+  colorPalette?: string;
+  // Legacy individual color settings (for backward compatibility)
   themePrimaryAccent?: string;
   themePrimaryAccentFg?: string;
   themeSecondaryAccent?: string;
@@ -58,11 +99,28 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const root = document.documentElement;
 
       const mode = settings?.themeMode || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-      const primaryAccent = settings?.themePrimaryAccent || appDefaultPrimary;
-      const primaryAccentFg = settings?.themePrimaryAccentFg || appDefaultPrimaryFg;
-      const secondaryAccent = settings?.themeSecondaryAccent || appDefaultSecondaryAccent;
-      const secondaryAccentFg = settings?.themeSecondaryAccentFg || appDefaultSecondaryAccentFg;
       const uiScale = settings?.uiScale || appDefaultUiScale;
+
+      // Determine colors to use
+      let primaryAccent = appDefaultPrimary;
+      let primaryAccentFg = appDefaultPrimaryFg;
+      let secondaryAccent = appDefaultSecondaryAccent;
+      let secondaryAccentFg = appDefaultSecondaryAccentFg;
+
+      if (settings?.colorPalette) {
+        // New palette system
+        const palette = colorPalettes.find(p => p.name === settings.colorPalette) || defaultPalette;
+        primaryAccent = palette.primary.value;
+        primaryAccentFg = palette.primary.foreground;
+        secondaryAccent = palette.secondary.value;
+        secondaryAccentFg = palette.secondary.foreground;
+      } else if (settings?.themePrimaryAccent && settings?.themeSecondaryAccent) {
+        // Legacy individual color system
+        primaryAccent = settings.themePrimaryAccent;
+        primaryAccentFg = settings.themePrimaryAccentFg || appDefaultPrimaryFg;
+        secondaryAccent = settings.themeSecondaryAccent;
+        secondaryAccentFg = settings.themeSecondaryAccentFg || appDefaultSecondaryAccentFg;
+      }
 
       const baseVarsToApply = mode === 'light' ? defaultLightVars : defaultDarkVars;
       
@@ -103,3 +161,4 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   return <>{children}</>;
 }
+

@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
@@ -22,7 +23,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Cog, Eye, MessageCircle, ShieldAlert, Trash2, Loader2 } from 'lucide-react';
 import { auth, db } from '@/lib/firebase'; 
-import { onAuthStateChanged, type User, signOut } from 'firebase/auth';
+import { onAuthStateChanged, type User, signOut, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore'; 
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -42,6 +43,10 @@ export default function AdvancedSettingsPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [isSavingDmPreference, setIsSavingDmPreference] = useState(false);
+  const [isSavingProfileVisibility, setIsSavingProfileVisibility] = useState(false);
 
   const [dmPreference, setDmPreference] = useState<DmPreference>("anyone");
   const [profileVisibility, setProfileVisibility] = useState<ProfileVisibility>("public");
@@ -67,7 +72,11 @@ export default function AdvancedSettingsPage() {
   }, [router]);
 
   const saveAdvancedSetting = async (key: keyof UserAdvancedSettings, value: string) => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      toast({ variant: "destructive", title: "Error", description: "You must be logged in to save settings." });
+      return;
+    }
+    
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
       const userDocSnap = await getDoc(userDocRef);
@@ -82,22 +91,40 @@ export default function AdvancedSettingsPage() {
       await setDoc(userDocRef, {
         advancedSettings: updatedSettings
       }, { merge: true });
-      toast({ title: "Setting Updated", description: `${key.replace(/([A-Z])/g, ' $1').trim()} preference saved.` });
+      
+      // More descriptive success messages
+      const settingNames = {
+        dmPreference: 'Direct Message preference',
+        profileVisibility: 'Profile visibility'
+      };
+      
+      toast({ 
+        title: "Setting Updated", 
+        description: `${settingNames[key] || key} has been saved successfully.` 
+      });
     } catch (error) {
       console.error("Error saving advanced setting:", error);
-      toast({ variant: "destructive", title: "Save Failed", description: "Could not save preference." });
+      toast({ 
+        variant: "destructive", 
+        title: "Save Failed", 
+        description: "Could not save your preference. Please try again." 
+      });
     }
   };
 
 
-  const handleDmPreferenceChange = (value: DmPreference) => {
+  const handleDmPreferenceChange = async (value: DmPreference) => {
     setDmPreference(value);
-    saveAdvancedSetting('dmPreference', value);
+    setIsSavingDmPreference(true);
+    await saveAdvancedSetting('dmPreference', value);
+    setIsSavingDmPreference(false);
   };
 
-  const handleProfileVisibilityChange = (value: ProfileVisibility) => {
+  const handleProfileVisibilityChange = async (value: ProfileVisibility) => {
     setProfileVisibility(value);
-    saveAdvancedSetting('profileVisibility', value);
+    setIsSavingProfileVisibility(true);
+    await saveAdvancedSetting('profileVisibility', value);
+    setIsSavingProfileVisibility(false);
   };
 
   const handleDeleteAccount = async () => {
@@ -105,44 +132,165 @@ export default function AdvancedSettingsPage() {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to delete your account." });
       return;
     }
-    setIsDeleting(true);
-    // IMPORTANT: Implement re-authentication for production here!
-    // Example:
-    // const password = prompt("Please re-enter your password to confirm account deletion:");
-    // if (!password) {
-    //   toast({ title: "Deletion Cancelled", description: "Password not provided." });
-    //   setIsDeleting(false);
-    //   return;
-    // }
-    // try {
-    //   const credential = EmailAuthProvider.credential(currentUser.email!, password);
-    //   await reauthenticateWithCredential(currentUser, credential);
-    // } catch (reauthError) {
-    //   toast({ variant: "destructive", title: "Re-authentication Failed", description: "Incorrect password. Account deletion cancelled." });
-    //   setIsDeleting(false);
-    //   return;
-    // }
+    
+    // Show password dialog for re-authentication
+    setShowPasswordDialog(true);
+  };
 
+  const confirmDeleteAccount = async () => {
+    if (!currentUser || !deletePassword.trim()) {
+      toast({ variant: "destructive", title: "Error", description: "Please enter your password to confirm." });
+      return;
+    }
+    
+    setIsDeleting(true);
+    setShowPasswordDialog(false);
+    
     try {
-      const functionsInstance = getFunctions();
-      const deleteUserAccountFn = httpsCallable(functionsInstance, 'deleteUserAccount');
-      await deleteUserAccountFn(); 
-      toast({
-        title: "Account Deletion Successful",
-        description: "Your account and associated data have been deleted. You will be logged out.",
-        duration: 5000,
-      });
-      await signOut(auth);
-      router.push('/login');
+      // Re-authenticate user for security
+      if (currentUser.email) {
+        const credential = EmailAuthProvider.credential(currentUser.email, deletePassword);
+        await reauthenticateWithCredential(currentUser, credential);
+      } else {
+        throw new Error("No email found for re-authentication");
+      }
+      
+      // Try Cloud Function first, fallback to client-side deletion
+      let deletionSuccessful = false;
+      
+      try {
+        // Attempt Cloud Function deletion
+        const functionsInstance = getFunctions();
+        const deleteUserAccountFn = httpsCallable(functionsInstance, 'deleteUserAccount');
+        await deleteUserAccountFn();
+        deletionSuccessful = true;
+        
+        toast({
+          title: "Account Deletion Successful",
+          description: "Your account and associated data have been deleted via secure server process.",
+          duration: 5000,
+        });
+      } catch (cloudFunctionError: any) {
+        console.log("Cloud Function unavailable, attempting client-side deletion:", cloudFunctionError.message);
+        
+        // Check if this is a specific Cloud Function unavailability error
+        const isCloudFunctionUnavailable = 
+          cloudFunctionError.code === 'functions/not-found' ||
+          cloudFunctionError.code === 'functions/unavailable' ||
+          cloudFunctionError.code === 'functions/internal' ||
+          cloudFunctionError.message?.includes('internal') ||
+          cloudFunctionError.message?.includes('not found');
+        
+        if (isCloudFunctionUnavailable) {
+          toast({
+            title: "Using Alternative Deletion Method",
+            description: "Cloud services unavailable. Using secure client-side deletion...",
+            duration: 3000,
+          });
+        }
+        
+        // Fallback: Client-side deletion for free tier users
+        try {
+          toast({
+            title: "Processing Account Deletion",
+            description: "Deleting your account data...",
+            duration: 2000,
+          });
+          
+          // Delete user data from Firestore (client-side)
+          const userDocRef = doc(db, "users", currentUser.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          
+          if (userDocSnap.exists()) {
+            // Mark user document as deleted (soft delete approach)
+            await setDoc(userDocRef, { 
+              deleted: true, 
+              deletedAt: new Date(),
+              deletedBy: 'client-side-fallback'
+            }, { merge: true });
+            
+            console.log("User document marked as deleted");
+          }
+          
+          // Delete from Firebase Auth (this will also trigger cleanup)
+          await currentUser.delete();
+          deletionSuccessful = true;
+          
+          toast({
+            title: "Account Deletion Successful",
+            description: "Your account has been deleted. Some data cleanup may occur in the background.",
+            duration: 5000,
+          });
+        } catch (clientError: any) {
+          console.error("Client-side deletion also failed:", clientError);
+          throw clientError; // Re-throw to be handled by outer catch
+        }
+      }
+      
+      if (deletionSuccessful) {
+        // Sign out and redirect
+        await signOut(auth);
+        router.push('/login');
+      }
+      
     } catch (error: any) {
       console.error("Delete account error:", error);
+      let errorMessage = "Could not delete your account. Please try again later.";
+      
+      if (error.code) {
+        switch (error.code) {
+          case 'auth/wrong-password':
+          case 'auth/invalid-credential':
+            errorMessage = "Incorrect password. Please try again.";
+            break;
+          case 'auth/too-many-requests':
+            errorMessage = "Too many failed attempts. Please try again later.";
+            break;
+          case 'auth/user-mismatch':
+            errorMessage = "Authentication error. Please log out and log back in.";
+            break;
+          case 'functions/unauthenticated':
+            errorMessage = "Authentication expired. Please log out and log back in.";
+            break;
+          case 'functions/not-found':
+            errorMessage = "User account not found. It may have already been deleted.";
+            break;
+          case 'functions/permission-denied':
+            errorMessage = "Insufficient permissions to delete account. Please contact support.";
+            break;
+          case 'functions/internal':
+            errorMessage = "Server error occurred during account deletion. Using alternative deletion method...";
+            break;
+          case 'functions/unavailable':
+            errorMessage = "Account deletion service is temporarily unavailable. Please try again later.";
+            break;
+          default:
+            // Check for more detailed error information
+            if (error.details) {
+              errorMessage = error.details;
+            } else if (error.message) {
+              // Extract meaningful message from Firebase error
+              if (error.message.includes('User not found')) {
+                errorMessage = "User account not found. It may have already been deleted.";
+              } else if (error.message.includes('permission')) {
+                errorMessage = "Permission denied. Please contact support.";
+              } else if (error.message.includes('network')) {
+                errorMessage = "Network error. Please check your connection and try again.";
+              } else {
+                errorMessage = `Account deletion failed: ${error.message}`;
+              }
+            }
+        }
+      }
+      
       toast({
         variant: "destructive",
         title: "Account Deletion Failed",
-        description: error.message || "Could not delete your account. Please try again later.",
+        description: errorMessage,
       });
     } finally {
       setIsDeleting(false);
+      setDeletePassword("");
     }
   };
 
@@ -169,15 +317,21 @@ export default function AdvancedSettingsPage() {
               <ShieldAlert className="mr-2 h-6 w-6 text-accent" /> Privacy Controls
             </CardTitle>
             <CardDescription className="text-muted-foreground pt-1">
-              Manage who can interact with you and see your profile.
+              Manage who can interact with you and see your profile. For detailed profile field visibility settings, visit your <span className="text-accent hover:underline cursor-pointer" onClick={() => router.push('/settings/profile')}>Profile Settings</span>.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 pt-4">
             <div>
               <Label className="text-base font-semibold text-foreground flex items-center mb-2">
                 <MessageCircle className="mr-2 h-5 w-5 text-muted-foreground" /> Who can DM you?
+                {isSavingDmPreference && <Loader2 className="ml-2 h-4 w-4 animate-spin text-accent" />}
               </Label>
-              <RadioGroup value={dmPreference} onValueChange={(val) => handleDmPreferenceChange(val as DmPreference)} className="space-y-1">
+              <RadioGroup 
+                value={dmPreference} 
+                onValueChange={(val) => handleDmPreferenceChange(val as DmPreference)} 
+                className="space-y-1"
+                disabled={isSavingDmPreference}
+              >
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="anyone" id="dm-anyone" />
                   <Label htmlFor="dm-anyone" className="font-normal text-foreground cursor-pointer">Anyone</Label>
@@ -196,8 +350,14 @@ export default function AdvancedSettingsPage() {
             <div>
               <Label className="text-base font-semibold text-foreground flex items-center mb-2">
                 <Eye className="mr-2 h-5 w-5 text-muted-foreground" /> Who can see your profile?
+                {isSavingProfileVisibility && <Loader2 className="ml-2 h-4 w-4 animate-spin text-accent" />}
               </Label>
-              <RadioGroup value={profileVisibility} onValueChange={(val) => handleProfileVisibilityChange(val as ProfileVisibility)} className="space-y-1">
+              <RadioGroup 
+                value={profileVisibility} 
+                onValueChange={(val) => handleProfileVisibilityChange(val as ProfileVisibility)} 
+                className="space-y-1"
+                disabled={isSavingProfileVisibility}
+              >
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="public" id="profile-public" />
                   <Label htmlFor="profile-public" className="font-normal text-foreground cursor-pointer">Public</Label>
@@ -233,7 +393,7 @@ export default function AdvancedSettingsPage() {
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This action cannot be undone. This will permanently delete your account and associated data.
-                    {/* For security, you might be asked to re-enter your password. */}
+                    You will be asked to re-enter your password for security.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -243,8 +403,50 @@ export default function AdvancedSettingsPage() {
                     disabled={isDeleting}
                     className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                   >
+                    Continue to Password Verification
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            
+            {/* Password Confirmation Dialog */}
+            <AlertDialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirm Account Deletion</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Please enter your password to confirm account deletion. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="py-4">
+                  <Label htmlFor="delete-password" className="text-sm font-medium">Password</Label>
+                  <Input
+                    id="delete-password"
+                    type="password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className="mt-2"
+                    disabled={isDeleting}
+                  />
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel 
+                    disabled={isDeleting}
+                    onClick={() => {
+                      setDeletePassword("");
+                      setShowPasswordDialog(false);
+                    }}
+                  >
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={confirmDeleteAccount}
+                    disabled={isDeleting || !deletePassword.trim()}
+                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                  >
                     {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    {isDeleting ? "Deleting..." : "Yes, delete account"}
+                    {isDeleting ? "Deleting..." : "Delete My Account"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

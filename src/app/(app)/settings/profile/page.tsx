@@ -18,13 +18,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+// Select components are already imported above; avoid duplicate import
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
@@ -35,6 +29,15 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea import
 import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import Image from "next/image";
+import type { VibeUserTag } from "@/components/user/user-tag";
 
 // Cloudinary configuration (copied from onboarding/avatar)
 const CLOUDINARY_CLOUD_NAME = 'dxqfnat7w';
@@ -69,6 +72,7 @@ const profileSchema = z.object({
   gender: z.string().optional(),
   tags: z.string().optional().describe("Comma-separated list of tags"),
   passion: z.string().optional(),
+  vibeTag: z.enum(["AURA","BONE","FORM","INIT","LITE"]).optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -83,6 +87,7 @@ interface UserProfileDetails {
   gender?: string;
   tags?: string;
   passion?: string;
+  vibeTag?: VibeUserTag;
   // Privacy settings
   isProfilePublic?: boolean;
   publicFields?: {
@@ -162,6 +167,7 @@ export default function EditProfilePage() {
       gender: "",
       tags: "",
       passion: "",
+      vibeTag: undefined,
     },
   });
 
@@ -202,6 +208,7 @@ export default function EditProfilePage() {
           gender: fetchedProfileDetails.gender || "",
           tags: fetchedProfileDetails.tags || "",
           passion: fetchedProfileDetails.passion || "",
+          vibeTag: fetchedProfileDetails.vibeTag as VibeUserTag | undefined,
         });
         setIsCheckingAuth(false);
       } else {
@@ -267,7 +274,7 @@ export default function EditProfilePage() {
         const cloudinaryData = await response.json();
         if (cloudinaryData.secure_url) {
           newAvatarUrlFromCloudinary = cloudinaryData.secure_url;
-          authUpdates.photoURL = newAvatarUrlFromCloudinary;
+          authUpdates.photoURL = newAvatarUrlFromCloudinary || undefined;
         } else throw new Error('Cloudinary did not return a URL.');
       } catch (error: any) {
         console.error("Error uploading avatar:", error);
@@ -300,6 +307,7 @@ export default function EditProfilePage() {
       gender: data.gender || "",
       tags: data.tags || "",
       passion: data.passion || "",
+      vibeTag: data.vibeTag,
       isProfilePublic: isProfilePublic,
       publicFields: publicFields,
     };
@@ -364,6 +372,7 @@ export default function EditProfilePage() {
                 gender: profileDetailsToSave.gender || "",
                 tags: profileDetailsToSave.tags || "",
                 passion: profileDetailsToSave.passion || "",
+                vibeTag: profileDetailsToSave.vibeTag,
             });
             
             // Update privacy settings state to reflect saved values
@@ -474,6 +483,39 @@ export default function EditProfilePage() {
                         </FormControl>
                         <FormDescription className="text-xs text-muted-foreground/80">
                           This name will be visible to others.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="vibeTag"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
+                          <Hash className="mr-2 h-5 w-5 text-accent" /> Tag
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || undefined}>
+                          <FormControl>
+                            <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+                              <SelectValue placeholder="Select your tag" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-popover border-border/80 text-popover-foreground">
+                            {(["AURA","BONE","FORM","INIT","LITE"] as VibeUserTag[]).map((tag) => (
+                              <SelectItem key={tag} value={tag} className="hover:bg-accent/20 focus:bg-accent/30">
+                                <div className="flex items-center gap-2">
+                                  <Image src={`/${tag}.png`} alt={`${tag} icon`} width={18} height={18} />
+                                  <span>{tag}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription className="text-xs text-muted-foreground/80">
+                          Choose one of the five Vibe tags. You can change this anytime.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -658,6 +700,7 @@ export default function EditProfilePage() {
                     <div className="flex items-center space-x-2">
                       <Shield className="h-5 w-5 text-accent" />
                       <h3 className="text-lg font-semibold text-foreground">Privacy Settings</h3>
+                      <span className="text-xs text-muted-foreground">• Individual field visibility</span>
                       {isSavingPrivacy && (
                         <div className="flex items-center space-x-1 text-xs text-muted-foreground">
                           <Loader2 className="h-3 w-3 animate-spin" />
@@ -665,6 +708,9 @@ export default function EditProfilePage() {
                         </div>
                       )}
                     </div>
+                    <p className="text-xs text-muted-foreground pt-1">
+                      For general privacy controls (who can DM you, profile visibility), visit <span className="text-accent hover:underline cursor-pointer" onClick={() => router.push('/settings/advanced')}>Advanced Settings</span>.
+                    </p>
                     
                     {/* Profile Visibility Toggle */}
                     <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-card/50">

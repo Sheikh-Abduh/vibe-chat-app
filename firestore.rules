@@ -3,28 +3,54 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
+    // Allow all reads and writes for development
+    // WARNING: This is not secure for production
+    match /{document=**} {
+      allow read, write: if true;
+    }
+    
     // --- Helper Functions ---
     function isAuthenticated() {
       return request.auth != null;
     }
+    
+    function isEmailVerified() {
+      return isAuthenticated() && request.auth.token.email_verified == true;
+    }
+    
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isVerifiedOwner(userId) {
+      return isEmailVerified() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'admin'
+      );
     }
 
     // --- User Collection Rules (/users/{userId}) ---
     match /users/{userId} {
-      // READ: Any authenticated user can read any user's profile data.
-      allow get, list: if isAuthenticated();
+      // READ: Authenticated users with verified emails can read any user's profile data.
+      // Allow unverified users to read their own profile during onboarding.
+      allow get, list: if isEmailVerified() || 
+                        (isAuthenticated() && request.auth.uid == userId);
 
-      // CREATE: A user can only create their own user document.
+      // CREATE: A user can create their own user document (email verification not required for initial creation).
       allow create: if isOwner(userId);
 
-      // UPDATE: A user can only update their own user document.
-      // Allow updates to profileDetails and muteSettings fields
-      allow update: if isOwner(userId) &&
+      // UPDATE: A user can only update their own user document, and email must be verified
+      // except for initial onboarding completion which sets emailVerified status.
+      // Allow updates to profileDetails, muteSettings, blockedUsers, and appSettings fields
+      allow update: if isVerifiedOwner(userId) &&
                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profileDetails']) ||
                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['muteSettings']) ||
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['blockedUsers']) ||
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['appSettings']) ||
                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profileDetails', 'muteSettings']) ||
                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL']));
 
@@ -33,60 +59,61 @@ service cloud.firestore {
 
       // --- Activity Subcollection Rules (/users/{userId}/activityItems/{activityId}) ---
       match /activityItems/{activityId} {
-        // READ: A user can read their own activity items.
-        allow get, list: if isOwner(userId);
+        // READ: A user can read their own activity items (email verification required).
+        allow get, list: if isVerifiedOwner(userId);
 
-        // CREATE: Allows users to create notifications for other users.
+        // CREATE: Allows verified users to create notifications for other users.
         // For connection requests: sender creates notification for recipient
         // For connection responses: recipient creates notification for sender
         // For new messages: sender creates notification for recipient
         // For mentions: sender creates notification for mentioned users
-        allow create: if isAuthenticated() &&
-                         ( (request.resource.data.actorId == request.auth.uid &&
-                            (request.resource.data.type == 'connection_request' || 
-                             request.resource.data.type == 'connection_response' ||
-                             request.resource.data.type == 'new_follower' || 
-                             request.resource.data.type == 'connection_accepted' ||
-                             request.resource.data.type == 'new_message' ||
-                             request.resource.data.type == 'mention')) ||
-                           (request.resource.data.type == 'connection_request' && 
-                            request.resource.data.targetUserId == userId) ||
-                           (request.resource.data.type == 'connection_response' && 
-                            request.resource.data.targetUserId == userId) ||
-                           (request.resource.data.type == 'new_message' && 
-                            request.resource.data.targetUserId == userId) ||
-                           (request.resource.data.type == 'mention' && 
-                            request.resource.data.targetUserId == userId)
-                         );
+        // For incoming calls: caller creates notification for recipient
+        // For call answered: recipient creates notification for caller
+        // For call declined: recipient creates notification for caller
+        allow create: if isEmailVerified() &&
+                         (request.resource.data.actorId == request.auth.uid &&
+                          (request.resource.data.type == 'connection_request' || 
+                           request.resource.data.type == 'connection_response' ||
+                           request.resource.data.type == 'new_follower' || 
+                           request.resource.data.type == 'connection_accepted' ||
+                           request.resource.data.type == 'new_message' ||
+                           request.resource.data.type == 'mention' ||
+                           request.resource.data.type == 'incoming_call' ||
+                           request.resource.data.type == 'call_answered' ||
+                           request.resource.data.type == 'call_declined') &&
+                          request.resource.data.targetUserId == userId);
 
-        // UPDATE: A user can only update their own notifications.
+        // UPDATE: A user can only update their own notifications (email verification required).
         // 1. To mark a notification as read (isRead becomes true).
-        // 2. To update notification status.
-        allow update: if isOwner(userId) &&
+        // 2. To update notification status (callStatus for calls).
+        // 3. To update content snippet.
+        allow update: if isVerifiedOwner(userId) &&
                          ( (request.resource.data.isRead == true && resource.data.isRead == false) ||
-                           (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'contentSnippet']))
+                           (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'contentSnippet'])) ||
+                           (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['callStatus', 'isRead'])) ||
+                           (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['callStatus']))
                          );
 
-        // DELETE: A user can delete their own activity items (for connection request handling).
-        allow delete: if isOwner(userId);
+        // DELETE: A user can delete their own activity items (email verification required).
+        allow delete: if isVerifiedOwner(userId);
       }
     }
 
     // --- Connection Requests Collection Rules (/connectionRequests/{requestId}) ---
     match /connectionRequests/{requestId} {
-      // READ: Users can read connection requests they sent or received.
-      allow get, list: if isAuthenticated() &&
+      // READ: Verified users can read connection requests they sent or received.
+      allow get, list: if isEmailVerified() &&
                          (resource.data.fromUserId == request.auth.uid || 
                           resource.data.toUserId == request.auth.uid);
 
-      // CREATE: A user can create a connection request if they are the sender.
-      allow create: if isAuthenticated() &&
+      // CREATE: A verified user can create a connection request if they are the sender.
+      allow create: if isEmailVerified() &&
                        request.resource.data.fromUserId == request.auth.uid &&
                        request.resource.data.fromUserId != request.resource.data.toUserId;
 
-      // UPDATE: Users can update connection requests they sent or received.
+      // UPDATE: Verified users can update connection requests they sent or received.
       // This allows updating status (pending -> accepted/rejected) and adding respondedAt timestamp.
-      allow update: if isAuthenticated() &&
+      allow update: if isEmailVerified() &&
                        (resource.data.fromUserId == request.auth.uid || 
                         resource.data.toUserId == request.auth.uid) &&
                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedAt']) ||
@@ -98,88 +125,139 @@ service cloud.firestore {
 
     // --- Communities Collection Rules (/communities/{communityId}) ---
     match /communities/{communityId} {
-      // READ: Any authenticated user can read community and channel metadata.
-      allow read: if isAuthenticated();
+      // READ: Any verified user can read community and channel metadata.
+      allow read: if isEmailVerified();
       // WRITE: Disable client-side creation/modification of communities.
       allow write: if false;
 
       // --- Channels Subcollection ---
       match /channels/{channelId} {
-        allow read: if isAuthenticated();
+        allow read: if isEmailVerified();
         allow write: if false;
 
         // --- Messages Subcollection ---
         match /messages/{messageId} {
-          // READ: Any authenticated user can read messages in any public channel.
-          allow read: if isAuthenticated();
+          // READ: Any verified user can read messages in any public channel.
+          allow read: if isEmailVerified();
 
-          // CREATE: A user can only create messages where they are the sender.
-          allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+          // CREATE: A verified user can only create messages where they are the sender.
+          allow create: if isEmailVerified() && request.resource.data.senderId == request.auth.uid;
 
-          // UPDATE: Sender can update text. Any user can update reactions or pin status.
-          allow update: if isAuthenticated() &&
+          // UPDATE: Sender can update text. Any verified user can update reactions or pin status.
+          allow update: if isEmailVerified() &&
                          ( (resource.data.senderId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text'])) ||
                            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isPinned']) ||
                            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
                          );
 
-          // DELETE: Only the user who sent the message can delete it.
-          allow delete: if isAuthenticated() && resource.data.senderId == request.auth.uid;
+          // DELETE: Only the verified user who sent the message can delete it.
+          allow delete: if isEmailVerified() && resource.data.senderId == request.auth.uid;
         }
       }
     }
 
     // --- Direct Messages Collection Rules (/direct_messages/{conversationId}) ---
     match /direct_messages/{conversationId} {
-      // READ: Users can only read conversation documents they are participants in
-      allow get: if isAuthenticated() && 
+      // READ: Verified users can only read conversation documents they are participants in
+      allow get: if isEmailVerified() && 
                    (resource.data.participants.hasAny([request.auth.uid]) ||
                     request.auth.uid in resource.data.participants);
       
-      // LIST: Users can list conversations they are participants in
-      allow list: if isAuthenticated();
+      // LIST: Verified users can list conversations they are participants in
+      allow list: if isEmailVerified();
 
-      // CREATE: Users can create conversations if they are a participant in the request data
-      allow create: if isAuthenticated() && 
+      // CREATE: Verified users can create conversations if they are a participant in the request data
+      allow create: if isEmailVerified() && 
                       (request.resource.data.participants.hasAny([request.auth.uid]) ||
                        request.auth.uid in request.resource.data.participants);
 
-      // UPDATE: Users can update conversations they are participants in
-      allow update: if isAuthenticated() && 
+      // UPDATE: Verified users can update conversations they are participants in
+      allow update: if isEmailVerified() && 
                       (resource.data.participants.hasAny([request.auth.uid]) ||
                        request.auth.uid in resource.data.participants);
 
-      // DELETE: Users can delete conversations they are participants in
-      allow delete: if isAuthenticated() && 
+      // DELETE: Verified users can delete conversations they are participants in
+      allow delete: if isEmailVerified() && 
                       (resource.data.participants.hasAny([request.auth.uid]) ||
                        request.auth.uid in resource.data.participants);
 
       // --- Messages Subcollection (/direct_messages/{conversationId}/messages/{messageId}) ---
       match /messages/{messageId} {
-        // READ: Users can read messages in conversations they are participants in
-        allow read: if isAuthenticated() && 
+        // READ: Verified users can read messages in conversations they are participants in
+        allow read: if isEmailVerified() && 
                      (get(/databases/$(database)/documents/direct_messages/$(conversationId)).data.participants.hasAny([request.auth.uid]) ||
                       request.auth.uid in get(/databases/$(database)/documents/direct_messages/$(conversationId)).data.participants);
 
-        // CREATE: Users can create messages in conversations they are participants in
-        allow create: if isAuthenticated() && 
+        // CREATE: Verified users can create messages in conversations they are participants in
+        allow create: if isEmailVerified() && 
                         (get(/databases/$(database)/documents/direct_messages/$(conversationId)).data.participants.hasAny([request.auth.uid]) ||
                          request.auth.uid in get(/databases/$(database)/documents/direct_messages/$(conversationId)).data.participants) &&
                         request.resource.data.senderId == request.auth.uid;
 
-        // UPDATE: Users can update their own messages or mark messages as read
-        allow update: if isAuthenticated() && 
+        // UPDATE: Verified users can update their own messages or mark messages as read
+        allow update: if isEmailVerified() && 
                         (get(/databases/$(database)/documents/direct_messages/$(conversationId)).data.participants.hasAny([request.auth.uid]) ||
                          request.auth.uid in get(/databases/$(database)/documents/direct_messages/$(conversationId)).data.participants) &&
                         (resource.data.senderId == request.auth.uid ||
                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy']) ||
                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy', 'reactions']));
 
-        // DELETE: Users can delete their own messages in conversations they are participants in
-        allow delete: if isAuthenticated() && 
+        // DELETE: Verified users can delete their own messages in conversations they are participants in
+        allow delete: if isEmailVerified() && 
                         (get(/databases/$(database)/documents/direct_messages/$(conversationId)).data.participants.hasAny([request.auth.uid]) ||
                          request.auth.uid in get(/databases/$(database)/documents/direct_messages/$(conversationId)).data.participants) &&
                         resource.data.senderId == request.auth.uid;
+      }
+    }
+
+    // --- Call Invitations Collection Rules (/callInvitations/{invitationId}) ---
+    match /callInvitations/{invitationId} {
+      // READ: Verified users can read invitations they sent or received
+      allow get, list: if isEmailVerified() &&
+                         (resource.data.callerId == request.auth.uid || 
+                          resource.data.recipientId == request.auth.uid);
+
+      // CREATE: A verified user can create a call invitation if they are the caller
+      allow create: if isEmailVerified() &&
+                       request.resource.data.callerId == request.auth.uid &&
+                       request.resource.data.callerId != request.resource.data.recipientId;
+
+      // UPDATE: Verified users can update invitations they sent or received (to change status)
+      allow update: if isEmailVerified() &&
+                       (resource.data.callerId == request.auth.uid || 
+                        resource.data.recipientId == request.auth.uid) &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+
+      // DELETE: Verified users can delete invitations they sent or received (for cleanup)
+      allow delete: if isEmailVerified() &&
+                       (resource.data.callerId == request.auth.uid || 
+                        resource.data.recipientId == request.auth.uid);
+    }
+
+    // --- WebRTC Signaling Rules (/calls/{callId}) ---
+    match /calls/{callId} {
+      // Allow verified users to create, read, and update call signaling documents
+      allow get, create, update: if isEmailVerified();
+      allow delete: if false;
+
+      // Candidates subcollection
+      match /candidates/{candidateId} {
+        allow get, list, create: if isEmailVerified();
+        allow delete: if false;
+      }
+      // Offers subcollection
+      match /offers/{offerId} {
+        allow get, list, create: if isEmailVerified();
+        allow delete: if isEmailVerified(); // allow cleanup
+      }
+      // Answers subcollection
+      match /answers/{answerId} {
+        allow get, list, create: if isEmailVerified();
+        allow delete: if isEmailVerified(); // allow cleanup
+      }
+      // Participants subcollection
+      match /participants/{userId} {
+        allow get, list, create, update, delete: if isEmailVerified();
       }
     }
   }

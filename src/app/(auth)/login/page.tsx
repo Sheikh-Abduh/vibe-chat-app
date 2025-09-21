@@ -28,6 +28,7 @@ import {
   browserLocalPersistence,
   browserSessionPersistence,
   onAuthStateChanged,
+  signOut,
   type User
 } from "firebase/auth";
 import SplashScreenDisplay from "@/components/common/splash-screen-display";
@@ -81,6 +82,23 @@ export default function LoginPage() {
       
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
       const user = userCredential.user;
+
+      // Check if email is verified
+      if (!user.emailVerified) {
+        toast({
+          variant: "destructive",
+          title: "Email Not Verified",
+          description: "Please verify your email address before logging in. Check your inbox for a verification link.",
+          duration: 6000,
+        });
+        
+        // Sign out the user since they shouldn't be logged in without verification
+        await signOut(auth);
+        
+        // Redirect to verify email page
+        router.push('/verify-email');
+        return;
+      }
 
       toast({
         title: "Login Successful!",
@@ -192,6 +210,14 @@ export default function LoginPage() {
                   </div>
                 </FormControl>
                 <FormMessage />
+                <div className="text-right">
+                  <Link 
+                    href="/forgot-password" 
+                    className="text-sm text-accent hover:text-accent/80 hover:underline underline-offset-4 transition-colors"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
               </FormItem>
             )}
           />

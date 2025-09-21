@@ -17,20 +17,30 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { AuthFormWrapper } from "@/components/auth/auth-form-wrapper";
 import { Mail, LockKeyhole, User, Eye, EyeOff } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, onAuthStateChanged, updateProfile } from "firebase/auth";
+import { createUserWithEmailAndPassword, onAuthStateChanged, updateProfile, sendEmailVerification } from "firebase/auth";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import SplashScreenDisplay from "@/components/common/splash-screen-display";
 import type { UiScale } from '@/components/theme/theme-provider';
+import Image from "next/image";
+import type { VibeUserTag } from "@/components/user/user-tag";
 
 const createAccountSchema = z.object({
   username: z.string().min(3, { message: "Username must be at least 3 characters." }),
   email: z.string().email({ message: "Invalid email address." }),
   password: z.string().min(7, { message: "Password must be at least 7 characters." }),
   confirmPassword: z.string().min(1, { message: "Please confirm your password." }),
+  vibeTag: z.enum(["AURA","BONE","FORM","INIT","LITE"], { required_error: "Select a tag" })
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match.",
   path: ["confirmPassword"],
@@ -48,6 +58,12 @@ export default function CreateAccountPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
+        // If user is authenticated but email not verified, redirect to verify email
+        if (!user.emailVerified) {
+          router.replace('/verify-email');
+          return;
+        }
+        
         // Check Firestore for onboarding complete as the source of truth
         const userDocRef = doc(db, "users", user.uid);
         getDoc(userDocRef).then(userDocSnap => {
@@ -75,6 +91,7 @@ export default function CreateAccountPage() {
       email: "",
       password: "",
       confirmPassword: "",
+      vibeTag: undefined as unknown as VibeUserTag,
     },
   });
 
@@ -87,16 +104,20 @@ export default function CreateAccountPage() {
 
       const userDocRef = doc(db, "users", user.uid);
 
-      const defaultThemePrimaryValue = '289 85% 55%'; // Electric Purple (PRD)
+      // Default to Nebula color palette for new users
+      const defaultColorPalette = 'Nebula';
+      const defaultThemePrimaryValue = '250 84% 54%'; // Nebula - Cosmic purple
       const defaultThemePrimaryFgValue = '0 0% 100%';
-      const defaultThemeSecondaryValue = '110 100% 50%'; // Neon Green (PRD)
-      const defaultThemeSecondaryFgValue = '220 3% 10%';
+      const defaultThemeSecondaryValue = '180 100% 50%'; // Nebula - Bright teal
+      const defaultThemeSecondaryFgValue = '220 26% 14%';
       const defaultUiScaleValue: UiScale = 'default';
       const defaultThemeModeValue: 'light' | 'dark' = 'dark';
 
       const initialAppSettings = {
         onboardingComplete: false,
         themeMode: defaultThemeModeValue,
+        colorPalette: defaultColorPalette, // New palette system
+        // Legacy compatibility fields
         themePrimaryAccent: defaultThemePrimaryValue,
         themePrimaryAccentFg: defaultThemePrimaryFgValue,
         themeSecondaryAccent: defaultThemeSecondaryValue,
@@ -115,6 +136,7 @@ export default function CreateAccountPage() {
         gender: "Not set",
         tags: "Not set",
         passion: "Not set",
+        vibeTag: data.vibeTag,
       };
 
       const initialAdvancedSettings = {
@@ -139,11 +161,23 @@ export default function CreateAccountPage() {
         notificationSettings: initialNotificationSettings,
       });
       
+      // Send email verification
+      await sendEmailVerification(user, {
+        url: `${window.location.origin}/login`, // Redirect URL after verification
+        handleCodeInApp: false,
+      });
+      
       toast({
         title: "Account Created Successfully!",
-        description: "Let's set up your profile.",
+        description: "Please check your email and verify your account before logging in.",
+        duration: 6000,
       });
-      router.push('/onboarding/avatar'); 
+      
+      // Store email for verification flow in case user gets signed out
+      localStorage.setItem('pendingVerificationEmail', data.email);
+      
+      // Redirect to email verification page instead of onboarding
+      router.push('/verify-email'); 
     } catch (error: any) {
       console.error("Create account error:", error);
       let errorMessage = "An unexpected error occurred. Please try again.";
@@ -208,6 +242,33 @@ export default function CreateAccountPage() {
                       autoComplete="username"
                     />
                   </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="vibeTag"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-muted-foreground">Choose your tag</FormLabel>
+                <FormControl>
+                  <Select onValueChange={field.onChange} value={field.value || undefined}>
+                    <SelectTrigger className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent text-foreground">
+                      <SelectValue placeholder="Select a tag" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border/80 text-popover-foreground">
+                      {(["AURA","BONE","FORM","INIT","LITE"] as VibeUserTag[]).map((tag) => (
+                        <SelectItem key={tag} value={tag} className="flex items-center gap-2">
+                          <div className="flex items-center gap-2">
+                            <Image src={`/${tag}.png`} alt={`${tag} icon`} width={18} height={18} />
+                            <span>{tag}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </FormControl>
                 <FormMessage />
               </FormItem>

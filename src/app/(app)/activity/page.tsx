@@ -10,16 +10,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { BellDot, MessageSquareReply, AtSign, ArrowLeft, Users, Heart, Loader2, UserPlus, Check, X } from 'lucide-react';
+import { BellDot, MessageSquareReply, AtSign, ArrowLeft, Users, Heart, Loader2, UserPlus, Check, X, Phone, Crown, Shield } from 'lucide-react';
 import SplashScreenDisplay from '@/components/common/splash-screen-display';
 import { formatDistanceToNowStrict } from 'date-fns';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
+import { createUserDataGetter, isUserDeleted } from '@/lib/user-filtering';
 
 // Defines the structure of an activity item fetched from Firestore
 interface ActivityItem {
   id: string;
-  type: 'mention' | 'reply' | 'reaction' | 'community_join' | 'new_follower' | 'system_message' | 'connection_request' | 'connection_response' | 'new_message';
+  type: 'mention' | 'reply' | 'reaction' | 'community_join' | 'new_follower' | 'system_message' | 'connection_request' | 'connection_response' | 'new_message' | 'role_promoted' | 'role_demoted';
   actorId?: string; 
   actorName?: string; 
   actorAvatarUrl?: string; 
@@ -35,6 +36,11 @@ interface ActivityItem {
   requestId?: string;
   conversationId?: string;
   mentionedUserIds?: string[];
+  roleChangeDetails?: {
+    fromRole: string;
+    toRole: string;
+    communityName: string;
+  };
 }
 
 interface MuteSettings {
@@ -53,6 +59,7 @@ export default function ActivityPage() {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(true);
   const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
+  const [isMarkingAsRead, setIsMarkingAsRead] = useState(false);
   
   // Mute settings state
   const [muteSettings, setMuteSettings] = useState<MuteSettings>({
@@ -184,21 +191,42 @@ export default function ActivityPage() {
   }, [muteSettings]);
 
   const markActivitiesAsRead = async (activityIdsToMark: string[]) => {
-    if (!currentUser || activityIdsToMark.length === 0) return;
+    console.log('🔍 markActivitiesAsRead called with:', { activityIdsToMark, currentUser: !!currentUser });
+    
+    if (!currentUser || activityIdsToMark.length === 0) {
+      console.log('❌ Cannot mark activities as read:', { currentUser: !!currentUser, activityIdsToMark });
+      return;
+    }
+    
+    setIsMarkingAsRead(true);
     const batch = writeBatch(db);
+    
+    console.log('📝 Creating batch update for activities:', activityIdsToMark);
     activityIdsToMark.forEach(id => {
       const activityRef = doc(db, `users/${currentUser.uid}/activityItems`, id);
+      console.log('📄 Adding update for activity:', id, 'at path:', `users/${currentUser.uid}/activityItems/${id}`);
       batch.update(activityRef, { isRead: true });
     });
+    
     try {
+      console.log('🚀 Committing batch update...');
       await batch.commit();
+      console.log('✅ Successfully marked', activityIdsToMark.length, 'notifications as read');
+      
+      // Show success toast
+      toast({
+        title: "Notifications Marked as Read",
+        description: `Successfully marked ${activityIdsToMark.length} notification${activityIdsToMark.length > 1 ? 's' : ''} as read.`,
+      });
     } catch (error) {
-      console.error("Error marking activities as read: ", error);
+      console.error("❌ Error marking activities as read: ", error);
       toast({
         variant: "destructive",
         title: "Error updating notifications",
-        description: "Could not mark notifications as read.",
+        description: "Could not mark notifications as read. Check console for details.",
       });
+    } finally {
+      setIsMarkingAsRead(false);
     }
   };
 
@@ -376,6 +404,9 @@ export default function ActivityPage() {
           allowMentionsWhenMuted: true
         };
         
+        // Create user data getter for deleted user filtering
+        const getUserData = createUserDataGetter(getDoc, doc, db);
+        
         // Process activities sequentially to check message notifications
         for (const docSnap of querySnapshot.docs) {
           const data = docSnap.data();
@@ -399,6 +430,24 @@ export default function ActivityPage() {
             conversationId: data.conversationId,
             mentionedUserIds: data.mentionedUserIds || [],
           } as ActivityItem;
+          
+          // Filter out notifications from deleted users
+          if (data.actorId && data.actorId !== 'system') {
+            try {
+              const actorUserData = await getUserData(data.actorId);
+              if (isUserDeleted(actorUserData)) {
+                console.log('🚫 Filtering out notification from deleted user:', data.actorId, data.type);
+                filteredCount++;
+                continue; // Skip this activity from deleted user
+              }
+            } catch (error) {
+              console.error(`Error checking actor deletion status for ${data.actorId}:`, error);
+              // If we can't verify user status, skip for safety
+              console.log('🚫 Filtering out notification due to verification error:', data.actorId, data.type);
+              filteredCount++;
+              continue;
+            }
+          }
           
           // Check if this activity should be filtered based on mute settings
           let shouldFilter = false;
@@ -459,7 +508,6 @@ export default function ActivityPage() {
             unreadActivityIds.push(activity.id);
           }
         }
-        
         console.log('📊 Activity feed summary:', {
           totalActivities: querySnapshot.size,
           filteredOut: filteredCount,
@@ -469,8 +517,36 @@ export default function ActivityPage() {
         setActivities(fetchedActivities);
         setIsLoadingActivities(false);
 
-        if (unreadActivityIds.length > 0) {
-          markActivitiesAsRead(unreadActivityIds);
+        // Mark all unread activities as read when page loads
+        const allUnreadActivities = fetchedActivities.filter(activity => !activity.isRead);
+        console.log('📊 Activity processing:', {
+          totalActivities: fetchedActivities.length,
+          unreadActivities: allUnreadActivities.length,
+          unreadActivityIds: allUnreadActivities.map(a => a.id),
+          activityTypes: fetchedActivities.map(a => a.type)
+        });
+        
+        if (allUnreadActivities.length > 0) {
+          const allUnreadActivityIds = allUnreadActivities.map(activity => activity.id);
+          console.log('📱 Marking all notifications as read on page load:', allUnreadActivityIds.length, 'notifications');
+          
+          // Show toast notification
+          toast({
+            title: "Marking Notifications as Read",
+            description: `Marking ${allUnreadActivityIds.length} notification${allUnreadActivityIds.length > 1 ? 's' : ''} as read...`,
+          });
+          
+          markActivitiesAsRead(allUnreadActivityIds);
+          
+          // Mark activities as read in local state for immediate UI update
+          const updatedActivities = fetchedActivities.map(activity => ({
+            ...activity,
+            isRead: true
+          }));
+          setActivities(updatedActivities);
+        } else {
+          console.log('📱 No unread activities to mark as read');
+          setActivities(fetchedActivities);
         }
       }, (error: any) => {
         console.error("Error fetching activity items: ", error);
@@ -486,6 +562,63 @@ export default function ActivityPage() {
       return () => unsubscribeFirestore();
     }
   }, [currentUser, toast, muteSettings, muteSettingsLoaded, checkIfMessageNotificationShouldBeRead]);
+
+  // Mark all notifications as read when user visits the activity page
+  useEffect(() => {
+    if (currentUser && activities.length > 0) {
+      const unreadActivities = activities.filter(activity => !activity.isRead);
+      if (unreadActivities.length > 0) {
+        const unreadActivityIds = unreadActivities.map(activity => activity.id);
+        console.log('📱 Marking all notifications as read:', unreadActivityIds.length, 'notifications');
+        markActivitiesAsRead(unreadActivityIds);
+        
+        // Mark activities as read in local state for immediate UI update
+        const updatedActivities = activities.map(activity => ({
+          ...activity,
+          isRead: true
+        }));
+        setActivities(updatedActivities);
+      }
+    }
+  }, [currentUser, activities, markActivitiesAsRead]);
+
+  // Additional effect to ensure all notifications are marked as read on page mount
+  useEffect(() => {
+    const markAllAsReadOnMount = async () => {
+      if (!currentUser) return;
+      
+      try {
+        // Get all unread activities directly from Firestore
+        const activityItemsRef = collection(db, `users/${currentUser.uid}/activityItems`);
+        const unreadQuery = query(activityItemsRef, where("isRead", "==", false));
+        const unreadSnapshot = await getDocs(unreadQuery);
+        
+        if (!unreadSnapshot.empty) {
+          const unreadActivityIds = unreadSnapshot.docs.map(doc => doc.id);
+          console.log('🔄 Marking', unreadActivityIds.length, 'notifications as read on activity page mount');
+          
+          // Show brief toast
+          if (unreadActivityIds.length > 0) {
+            toast({
+              title: "Notifications Marked as Read",
+              description: `${unreadActivityIds.length} notification${unreadActivityIds.length > 1 ? 's' : ''} marked as read.`,
+              duration: 2000,
+            });
+          }
+          
+          // Mark them as read
+          await markActivitiesAsRead(unreadActivityIds);
+        }
+      } catch (error) {
+        console.error('❌ Error marking activities as read on mount:', error);
+      }
+    };
+    
+    // Only run this once when the component mounts and user is available
+    if (currentUser && muteSettingsLoaded) {
+      markAllAsReadOnMount();
+    }
+  }, [currentUser, muteSettingsLoaded]); // Only depend on currentUser and muteSettingsLoaded
 
   if (isCheckingAuth) {
     return <SplashScreenDisplay />;
@@ -511,6 +644,10 @@ export default function ActivityPage() {
         return <MessageSquareReply className="h-5 w-5 text-blue-500" />;
       case 'system_message':
         return <BellDot className="h-5 w-5 text-yellow-500" />;
+      case 'role_promoted':
+        return <Crown className="h-5 w-5 text-amber-500" />;
+      case 'role_demoted':
+        return <Shield className="h-5 w-5 text-orange-500" />;
       default:
         return <BellDot className="h-5 w-5 text-muted-foreground" />;
     }
@@ -589,6 +726,22 @@ export default function ActivityPage() {
               </Button>
             </div>
           )}
+          {(activity.type === 'role_promoted' || activity.type === 'role_demoted') && activity.communityId && (
+            <div className="flex space-x-2 mt-2">
+              <Button
+                size="sm"
+                className="h-7 px-3 text-xs bg-indigo-600 hover:bg-indigo-700"
+                onClick={() => {
+                  router.push(`/communities?communityId=${activity.communityId}`);
+                  // Mark as read when clicked
+                  markActivitiesAsRead([activity.id]);
+                }}
+              >
+                {activity.type === 'role_promoted' ? <Crown className="h-3 w-3 mr-1" /> : <Shield className="h-3 w-3 mr-1" />}
+                View Community
+              </Button>
+            </div>
+          )}
         </div>
         <div className="shrink-0">
           {renderIcon(activity.type)}
@@ -608,10 +761,14 @@ export default function ActivityPage() {
     }
 
     return (
-      <div className={`block p-3 rounded-lg border border-border/30 relative ${!activity.isRead ? 'bg-blue-50/50 border-blue-200/50' : ''}`}>
+      <div className={`block p-3 rounded-lg border border-border/30 relative ${
+        !activity.isRead 
+          ? 'bg-blue-50/50 border-blue-200/50' 
+          : ''
+      }`}>
         {content}
         {!activity.isRead && (
-          <div className="absolute top-2 right-2 w-2 h-2 bg-blue-500 rounded-full"></div>
+          <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-blue-500"></div>
         )}
       </div>
     );
@@ -627,11 +784,17 @@ export default function ActivityPage() {
         <BellDot className="mr-3 h-8 w-8 text-primary" />
         <h1 className="text-3xl font-bold tracking-tight text-primary" style={{ textShadow: '0 0 4px hsl(var(--primary)/0.6)' }}>
           Activity Feed
+          {isMarkingAsRead && (
+            <span className="ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-blue-500 rounded-full">
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+              Marking as read...
+            </span>
+          )}
         </h1>
         <Button 
           variant="outline" 
           size="sm" 
-          className="ml-auto text-xs"
+          className="ml-auto text-xs mr-2"
           onClick={() => {
             console.log('🔍 Debug: Current mute settings:', muteSettings);
             loadMuteSettings();
@@ -639,18 +802,186 @@ export default function ActivityPage() {
         >
           Debug Mute
         </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="text-xs"
+          onClick={() => {
+            if ('Notification' in window) {
+              if (Notification.permission === 'default') {
+                Notification.requestPermission().then(permission => {
+                  if (permission === 'granted') {
+                    toast({ title: "Notifications Enabled", description: "You'll now receive call notifications!" });
+                  }
+                });
+              } else if (Notification.permission === 'denied') {
+                toast({ 
+                  title: "Notifications Disabled", 
+                  description: "Please enable notifications in your browser settings to receive call alerts.",
+                  variant: "destructive"
+                });
+              } else {
+                toast({ title: "Notifications Active", description: "Call notifications are already enabled!" });
+              }
+            }
+          }}
+        >
+          {Notification?.permission === 'granted' ? '🔔' : '🔕'} Notifications
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="text-xs ml-2"
+          disabled={isMarkingAsRead || activities.filter(a => !a.isRead).length === 0}
+          onClick={async () => {
+            const unreadActivities = activities.filter(activity => !activity.isRead);
+            if (unreadActivities.length > 0) {
+              setIsMarkingAsRead(true);
+              try {
+                const activityIds = unreadActivities.map(activity => activity.id);
+                console.log('📝 Marking all activities as read:', activityIds);
+                await markActivitiesAsRead(activityIds);
+                toast({
+                  title: "All Activities Marked as Read",
+                  description: `Marked ${unreadActivities.length} notification${unreadActivities.length > 1 ? 's' : ''} as read.`,
+                });
+              } catch (error) {
+                console.error('❌ Error marking all activities as read:', error);
+                toast({
+                  variant: "destructive",
+                  title: "Error",
+                  description: "Failed to mark activities as read. Please try again.",
+                });
+              } finally {
+                setIsMarkingAsRead(false);
+              }
+            } else {
+              toast({ 
+                title: "No Unread Activities", 
+                description: "All activities are already marked as read." 
+              });
+            }
+          }}
+        >
+          {isMarkingAsRead ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+              Marking...
+            </>
+          ) : (
+            <>
+              ✓ Mark All as Read
+              {activities.filter(a => !a.isRead).length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-500 text-white rounded-full">
+                  {activities.filter(a => !a.isRead).length}
+                </span>
+              )}
+            </>
+          )}
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="text-xs ml-2"
+          onClick={() => {
+            // Test marking activities as read
+            const unreadActivities = activities.filter(activity => !activity.isRead);
+            if (unreadActivities.length > 0) {
+              const activityIds = unreadActivities.map(activity => activity.id);
+              console.log('🧪 Testing mark as read for:', activityIds);
+              markActivitiesAsRead(activityIds);
+            } else {
+              toast({ title: "No Unread Activities", description: "All activities are already marked as read." });
+            }
+          }}
+        >
+          🧪 Test Mark Read
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="text-xs ml-2"
+          onClick={() => {
+            // Debug current activities state
+            console.log('🔍 Current activities state:', {
+              totalActivities: activities.length,
+              activities: activities.map(a => ({
+                id: a.id,
+                type: a.type,
+                isRead: a.isRead,
+                actorName: a.actorName,
+                contentSnippet: a.contentSnippet
+              })),
+              unreadCount: activities.filter(a => !a.isRead).length
+            });
+            toast({ 
+              title: "Debug Info", 
+              description: `Total: ${activities.length}, Unread: ${activities.filter(a => !a.isRead).length}` 
+            });
+          }}
+        >
+          🔍 Debug State
+        </Button>
       </div>
 
       <Card className="w-full flex-1 flex flex-col bg-card border-border/50 shadow-lg overflow-hidden">
         <CardHeader>
-          <CardTitle className="text-xl text-foreground">
-          Recent Activity
-          {activities.filter(a => !a.isRead).length > 0 && (
-            <span className="ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-blue-500 rounded-full">
-              {activities.filter(a => !a.isRead).length}
-            </span>
-          )}
-        </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-xl text-foreground">
+              Recent Activity
+              {activities.filter(a => !a.isRead).length > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-blue-500 rounded-full">
+                  {activities.filter(a => !a.isRead).length}
+                </span>
+              )}
+            </CardTitle>
+            {activities.filter(a => !a.isRead).length > 0 && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="text-xs"
+                disabled={isMarkingAsRead}
+                onClick={async () => {
+                  const unreadActivities = activities.filter(activity => !activity.isRead);
+                  if (unreadActivities.length > 0) {
+                    setIsMarkingAsRead(true);
+                    try {
+                      const activityIds = unreadActivities.map(activity => activity.id);
+                      console.log('📝 Marking all activities as read:', activityIds);
+                      await markActivitiesAsRead(activityIds);
+                      toast({
+                        title: "All Activities Marked as Read",
+                        description: `Marked ${unreadActivities.length} notification${unreadActivities.length > 1 ? 's' : ''} as read.`,
+                      });
+                    } catch (error) {
+                      console.error('❌ Error marking all activities as read:', error);
+                      toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to mark activities as read. Please try again.",
+                      });
+                    } finally {
+                      setIsMarkingAsRead(false);
+                    }
+                  }
+                }}
+              >
+                {isMarkingAsRead ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    Marking...
+                  </>
+                ) : (
+                  <>
+                    ✓ Mark All as Read
+                    <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-500 text-white rounded-full">
+                      {activities.filter(a => !a.isRead).length}
+                    </span>
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
           <CardDescription className="text-muted-foreground pt-1">
             <div>
               Stay updated with mentions, replies, and other important events.
