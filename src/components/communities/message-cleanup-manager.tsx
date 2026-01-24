@@ -10,7 +10,7 @@ import { Trash2, Clock, AlertTriangle, CheckCircle, Loader2, BarChart3, Bug } fr
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
 import { format } from 'date-fns';
-import CleanupDebugHelper from './cleanup-debug-helper';
+
 import ClientSideCleanup from './client-side-cleanup';
 
 interface CleanupResult {
@@ -39,7 +39,6 @@ export default function MessageCleanupManager({ isVisible, onClose, currentUser 
   const [isLoading, setIsLoading] = useState(false);
   const [cleanupHistory, setCleanupHistory] = useState<CleanupLog[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [showDebugHelper, setShowDebugHelper] = useState(false);
   const [hasError, setHasError] = useState(false);
   const { toast } = useToast();
 
@@ -101,7 +100,7 @@ export default function MessageCleanupManager({ isVisible, onClose, currentUser 
         description = "The cleanup functions haven't been deployed yet. Please deploy them first.";
       } else if (error.code === 'functions/internal') {
         errorMessage = "Internal Server Error";
-        description = "There was an internal error. Check the debug helper below for more details.";
+        description = "There was an internal error. Please try again later.";
       }
       
       toast({
@@ -184,30 +183,7 @@ export default function MessageCleanupManager({ isVisible, onClose, currentUser 
               </p>
             </div>
             
-            {hasError && (
-              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                    <span className="text-sm font-medium text-red-800 dark:text-red-200">
-                      Cleanup Error Detected
-                    </span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowDebugHelper(!showDebugHelper)}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Bug className="h-4 w-4 mr-1" />
-                    {showDebugHelper ? 'Hide' : 'Show'} Debug Helper
-                  </Button>
-                </div>
-                <p className="text-sm text-red-700 dark:text-red-300 mt-1">
-                  Use the debug helper to diagnose and fix the issue.
-                </p>
-              </div>
-            )}
+
           </div>
 
           <Separator />
@@ -307,25 +283,7 @@ export default function MessageCleanupManager({ isVisible, onClose, currentUser 
             )}
           </div>
 
-          {/* Debug Helper */}
-          {showDebugHelper && (
-            <div className="mt-6 space-y-4">
-              <CleanupDebugHelper currentUser={currentUser} />
-              
-              <div className="border-t pt-4">
-                <h3 className="font-medium mb-3">Temporary Solution</h3>
-                <ClientSideCleanup 
-                  currentUser={currentUser}
-                  onCleanupComplete={(result) => {
-                    if (result.success) {
-                      // Refresh history after successful cleanup
-                      loadCleanupHistory();
-                    }
-                  }}
-                />
-              </div>
-            </div>
-          )}
+
         </CardContent>
       </Card>
     </div>

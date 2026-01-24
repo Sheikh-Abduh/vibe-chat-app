@@ -76,7 +76,7 @@ export const BlockButton: React.FC<BlockButtonProps> = ({
         <Button
           variant={variant}
           size={size}
-          className={`text-destructive hover:text-destructive hover:bg-destructive/10 ${className}`}
+          className={className} // Removed forced text-destructive classes
           disabled={isBlocking}
         >
           {isBlocking ? (

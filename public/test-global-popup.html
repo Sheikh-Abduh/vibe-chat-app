@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Global Call Popup</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background: #f5f5f5;
+        }
+        .container { 
+            margin: 20px 0; 
+            padding: 20px; 
+            border: 1px solid #ddd; 
+            border-radius: 8px; 
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        input, button, select { 
+            padding: 10px; 
+            margin: 5px; 
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background: #0070f3;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #0051a2;
+        }
+        .log { 
+            background: #2d2d2d; 
+            color: #fff;
+            padding: 15px; 
+            border-radius: 5px; 
+            margin: 15px 0; 
+            font-family: 'Courier New', monospace; 
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success { color: #4caf50; }
+        .error { color: #f44336; }
+        .info { color: #2196f3; }
+        .warning { color: #ff9800; }
+        h1, h2 {
+            color: #333;
+        }
+        .instructions {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Global Call Popup</h1>
+    
+    <div class="instructions">
+        <h3>Instructions:</h3>
+        <ol>
+            <li>Open this page in one browser tab</li>
+            <li>Log into the VIBE app in another browser tab</li>
+            <li>Get your user ID from the VIBE app (check browser console)</li>
+            <li>Enter your user ID below and click "Send Test Call"</li>
+            <li>The call popup should appear in the VIBE app</li>
+        </ol>
+    </div>
+    
+    <div class="container">
+        <h2>Firebase Setup</h2>
+        <button id="initFirebase">Initialize Firebase</button>
+        <button id="checkConnection">Check Connection</button>
+        <div id="firebaseStatus" class="log">Not initialized</div>
+    </div>
+    
+    <div class="container">
+        <h2>Send Test Call to VIBE User</h2>
+        <input type="text" id="receiverId" placeholder="Your VIBE User ID" style="width: 300px;">
+        <select id="callType">
+            <option value="audio">Audio Call</option>
+            <option value="video">Video Call</option>
+        </select>
+        <input type="text" id="callerName" placeholder="Caller Name" value="Test Caller" style="width: 150px;">
+        <button id="sendCall">Send Test Call</button>
+        <div id="sendResult" class="log">Enter your VIBE user ID and click send</div>
+    </div>
+    
+    <div class="container">
+        <h2>Test Call Data</h2>
+        <button id="sendTestData">Send Test Data</button>
+        <button id="clearTestData">Clear Test Data</button>
+        <div id="testDataResult" class="log">Test data operations</div>
+    </div>
+
+    <script>
+        let database = null;
+
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyA1x_MWgIJlEB8BToP2Mc7LLAZv0pPjtc8",
+            authDomain: "vibe-35004.firebaseapp.com",
+            databaseURL: "https://vibe-35004-default-rtdb.firebaseio.com",
+            projectId: "vibe-35004",
+            storageBucket: "vibe-35004.appspot.com",
+            messagingSenderId: "667054799663",
+            appId: "1:667054799663:web:849dc655b5ef124d9fffda"
+        };
+
+        document.getElementById('initFirebase').addEventListener('click', () => {
+            try {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                database = firebase.database();
+                document.getElementById('firebaseStatus').innerHTML = '<span class="success">✅ Firebase initialized successfully</span>';
+                document.getElementById('firebaseStatus').className = 'log success';
+            } catch (error) {
+                document.getElementById('firebaseStatus').innerHTML = '<span class="error">❌ Firebase initialization error: ' + error.message + '</span>';
+                document.getElementById('firebaseStatus').className = 'log error';
+            }
+        });
+
+        document.getElementById('checkConnection').addEventListener('click', async () => {
+            if (!database) {
+                document.getElementById('firebaseStatus').innerHTML = '<span class="error">❌ Firebase not initialized</span>';
+                return;
+            }
+            
+            try {
+                const connectedRef = database.ref('.info/connected');
+                connectedRef.on('value', (snap) => {
+                    if (snap.val() === true) {
+                        document.getElementById('firebaseStatus').innerHTML = '<span class="success">✅ Firebase connected</span>';
+                    } else {
+                        document.getElementById('firebaseStatus').innerHTML = '<span class="warning">⚠️ Firebase not connected</span>';
+                    }
+                });
+            } catch (error) {
+                document.getElementById('firebaseStatus').innerHTML = '<span class="error">❌ Firebase connection error: ' + error.message + '</span>';
+            }
+        });
+
+        document.getElementById('sendCall').addEventListener('click', async () => {
+            if (!database) {
+                document.getElementById('sendResult').innerHTML = '<span class="error">❌ Firebase not initialized</span>';
+                return;
+            }
+            
+            const receiverId = document.getElementById('receiverId').value;
+            const callType = document.getElementById('callType').value;
+            const callerName = document.getElementById('callerName').value || 'Test Caller';
+            
+            if (!receiverId) {
+                document.getElementById('sendResult').innerHTML = '<span class="error">❌ Please enter your VIBE user ID</span>';
+                return;
+            }
+            
+            try {
+                const signal = {
+                    callerId: 'test_caller',
+                    callerName: callerName,
+                    callerAvatar: 'https://via.placeholder.com/150',
+                    callType: callType,
+                    timestamp: Date.now(),
+                    status: 'ringing'
+                };
+                
+                console.log('Sending call signal:', signal);
+                
+                // Send call signal to receiver
+                await database.ref(`calls/${receiverId}/incoming`).set(signal);
+                
+                document.getElementById('sendResult').innerHTML = 
+                    '<span class="success">✅ Call signal sent successfully!</span><br><br>' +
+                    '<strong>Details:</strong><br>' +
+                    'Receiver ID: ' + receiverId + '<br>' +
+                    'Call Type: ' + callType + '<br>' +
+                    'Caller Name: ' + callerName + '<br><br>' +
+                    '<em>Check your VIBE app - the call popup should appear!</em>';
+                    
+                // Show browser notification
+                if (Notification.permission === 'granted') {
+                    new Notification('Test Call Sent', {
+                        body: `Sent ${callType} call to ${receiverId}`,
+                        tag: 'test-call-sent'
+                    });
+                }
+            } catch (error) {
+                document.getElementById('sendResult').innerHTML = '<span class="error">❌ Error sending call: ' + error.message + '</span>';
+                console.error('Error sending call:', error);
+            }
+        });
+
+        document.getElementById('sendTestData').addEventListener('click', async () => {
+            if (!database) {
+                document.getElementById('testDataResult').innerHTML = '<span class="error">❌ Firebase not initialized</span>';
+                return;
+            }
+            
+            try {
+                // Test writing to database
+                const testData = {
+                    test: 'test_data',
+                    timestamp: Date.now(),
+                    message: 'This is test data'
+                };
+                
+                await database.ref('test/data').set(testData);
+                document.getElementById('testDataResult').innerHTML = '<span class="success">✅ Test data written successfully</span>';
+                
+                // Test reading from database
+                const snapshot = await database.ref('test/data').once('value');
+                if (snapshot.exists()) {
+                    document.getElementById('testDataResult').innerHTML += 
+                        '<br><span class="info">✅ Test data read successfully:</span><br>' +
+                        JSON.stringify(snapshot.val(), null, 2);
+                }
+            } catch (error) {
+                document.getElementById('testDataResult').innerHTML = '<span class="error">❌ Error with test data: ' + error.message + '</span>';
+                console.error('Error with test data:', error);
+            }
+        });
+
+        document.getElementById('clearTestData').addEventListener('click', async () => {
+            if (!database) {
+                document.getElementById('testDataResult').innerHTML = '<span class="error">❌ Firebase not initialized</span>';
+                return;
+            }
+            
+            try {
+                await database.ref('test/data').remove();
+                document.getElementById('testDataResult').innerHTML = '<span class="success">✅ Test data cleared</span>';
+            } catch (error) {
+                document.getElementById('testDataResult').innerHTML = '<span class="error">❌ Error clearing test data: ' + error.message + '</span>';
+                console.error('Error clearing test data:', error);
+            }
+        });
+    </script>
+</body>
+</html>

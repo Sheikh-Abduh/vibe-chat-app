@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -149,6 +149,12 @@ interface Community {
     moderator: CommunityPermissions;
     admin: CommunityPermissions;
     owner: CommunityPermissions;
+    channels?: {
+      [channelId: string]: {
+        allowedRoles: string[];
+        allowedMessageTypes: string[];
+      }
+    };
   };
 }
 
@@ -250,8 +256,8 @@ interface CommunitySettingsProps {
   community: Community | null;
   currentUser: User | null;
   onSave: (updates: Partial<Community>) => Promise<void>;
-  onChannelCreate: (channel: { name: string; description: string; type: 'text'; icon?: React.ElementType }) => Promise<void>;
-  onChannelUpdate: (channelId: string, updates: { name?: string; description?: string; icon?: React.ElementType }) => Promise<void>;
+  onChannelCreate: (channel: { name: string; description: string; type: 'text'; icon?: React.ElementType; permissions?: { allowedRoles: string[]; allowedMessageTypes: string[] } }) => Promise<void>;
+  onChannelUpdate: (channelId: string, updates: { name?: string; description?: string; icon?: React.ElementType; permissions?: { allowedRoles: string[]; allowedMessageTypes: string[] } }) => Promise<void>;
   onChannelDelete: (channelId: string) => Promise<void>;
   onCommunityDelete?: () => Promise<void>;
   channels: Channel[];
@@ -362,6 +368,27 @@ export default function CommunitySettings({
       canManageServer: true,
     }
   );
+  
+  // Channel permissions state
+  const [channelPermissions, setChannelPermissions] = useState<{
+    [channelId: string]: {
+      allowedRoles: string[];
+      allowedMessageTypes: string[];
+    }
+  }>({});
+  
+  useEffect(() => {
+    if (community) {
+      const permissions: { [key: string]: { allowedRoles: string[], allowedMessageTypes: string[] } } = {};
+      channels.forEach(channel => {
+        permissions[channel.id] = {
+          allowedRoles: community.permissions?.channels?.[channel.id]?.allowedRoles || [],
+          allowedMessageTypes: community.permissions?.channels?.[channel.id]?.allowedMessageTypes || []
+        };
+      });
+      setChannelPermissions(permissions);
+    }
+  }, [community, channels]);
 
   if (!community || !currentUser) return null;
 
@@ -487,11 +514,15 @@ export default function CommunitySettings({
     }
 
     try {
-      await onChannelCreate({
+      const newChannel = await onChannelCreate({
         name: newChannelName.trim(),
         description: newChannelDescription.trim(),
         type: 'text',
-        icon: newChannelIcon
+        icon: newChannelIcon,
+        permissions: {
+          allowedRoles: ['owner', 'admin', 'moderator', 'member'],
+          allowedMessageTypes: ['text', 'images', 'files', 'links', 'embeds']
+        }
       });
       setNewChannelName('');
       setNewChannelDescription('');
@@ -524,7 +555,11 @@ export default function CommunitySettings({
       await onChannelUpdate(editingChannel, {
         name: editChannelName.trim(),
         description: editChannelDescription.trim(),
-        icon: editChannelIcon
+        icon: editChannelIcon,
+        permissions: channelPermissions[editingChannel.id] || {
+          allowedRoles: ['owner', 'admin', 'moderator', 'member'],
+          allowedMessageTypes: ['text', 'images', 'files', 'links', 'embeds']
+        }
       });
       setEditingChannel(null);
       setEditChannelName('');
@@ -867,6 +902,7 @@ export default function CommunitySettings({
           moderator: moderatorPermissions,
           admin: adminPermissions,
           owner: community.permissions?.owner || defaultOwnerPermissions, // Safe fallback for owner permissions
+          channels: channelPermissions
         }
       };
 
@@ -1633,6 +1669,126 @@ export default function CommunitySettings({
                   </div>
                 </CardContent>
               </Card>
+              
+              {/* Channel Permissions */}
+              {channels.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center">
+                      <Lock className="mr-2 h-5 w-5" />
+                      Channel Permissions
+                    </CardTitle>
+                    <CardDescription>Control who can send messages and what content is allowed in each channel</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Tabs defaultValue={channels[0]?.id} className="w-full">
+                      <TabsList className="mb-4 flex flex-wrap h-auto">
+                        {channels.map((channel) => (
+                          <TabsTrigger key={channel.id} value={channel.id} className="mb-1">
+                            {React.createElement(channel.icon || Hash, { className: "mr-2 h-4 w-4" })}
+                            {channel.name}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                      
+                      {channels.map((channel) => (
+                        <TabsContent key={channel.id} value={channel.id} className="space-y-4 pt-2">
+                          <div className="space-y-4">
+                            <div>
+                              <h4 className="text-sm font-medium mb-2">Who can send messages in #{channel.name}?</h4>
+                              <div className="space-y-2">
+                                {['owner', 'admin', 'moderator', 'member'].map((role) => (
+                                  <div key={role} className="flex items-center space-x-2">
+                                    <Checkbox 
+                                      id={`${channel.id}-role-${role}`}
+                                      checked={channelPermissions[channel.id]?.allowedRoles.includes(role)}
+                                      onCheckedChange={(checked) => {
+                                        const newPermissions = { ...channelPermissions };
+                                        if (!newPermissions[channel.id]) {
+                                          newPermissions[channel.id] = {
+                                            allowedRoles: [],
+                                            allowedMessageTypes: []
+                                          };
+                                        }
+                                        
+                                        if (checked) {
+                                          // Add role if not already included
+                                          if (!newPermissions[channel.id].allowedRoles.includes(role)) {
+                                            newPermissions[channel.id].allowedRoles.push(role);
+                                          }
+                                        } else {
+                                          // Remove role
+                                          newPermissions[channel.id].allowedRoles = 
+                                            newPermissions[channel.id].allowedRoles.filter(r => r !== role);
+                                        }
+                                        
+                                        setChannelPermissions(newPermissions);
+                                      }}
+                                    />
+                                    <Label htmlFor={`${channel.id}-role-${role}`} className="flex items-center">
+                                      {role === 'owner' && <Crown className="mr-1 h-3 w-3 text-amber-500" />}
+                                      {role === 'admin' && <Shield className="mr-1 h-3 w-3 text-red-500" />}
+                                      {role === 'moderator' && <UserCheck className="mr-1 h-3 w-3 text-blue-500" />}
+                                      {role === 'member' && <Users className="mr-1 h-3 w-3 text-gray-500" />}
+                                      {role.charAt(0).toUpperCase() + role.slice(1)}
+                                    </Label>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <h4 className="text-sm font-medium mb-2">What content is allowed in #{channel.name}?</h4>
+                              <div className="space-y-2">
+                                {[
+                                  { id: 'text', label: 'Text Messages', icon: MessageSquare },
+                                  { id: 'images', label: 'Images', icon: ImageIcon },
+                                  { id: 'files', label: 'Files', icon: FileText },
+                                  { id: 'links', label: 'Links', icon: Link },
+                                  { id: 'embeds', label: 'Embeds', icon: Code }
+                                ].map((type) => (
+                                  <div key={type.id} className="flex items-center space-x-2">
+                                    <Checkbox 
+                                      id={`${channel.id}-type-${type.id}`}
+                                      checked={channelPermissions[channel.id]?.allowedMessageTypes.includes(type.id)}
+                                      onCheckedChange={(checked) => {
+                                        const newPermissions = { ...channelPermissions };
+                                        if (!newPermissions[channel.id]) {
+                                          newPermissions[channel.id] = {
+                                            allowedRoles: [],
+                                            allowedMessageTypes: []
+                                          };
+                                        }
+                                        
+                                        if (checked) {
+                                          // Add message type if not already included
+                                          if (!newPermissions[channel.id].allowedMessageTypes.includes(type.id)) {
+                                            newPermissions[channel.id].allowedMessageTypes.push(type.id);
+                                          }
+                                        } else {
+                                          // Remove message type
+                                          newPermissions[channel.id].allowedMessageTypes = 
+                                            newPermissions[channel.id].allowedMessageTypes.filter(t => t !== type.id);
+                                        }
+                                        
+                                        setChannelPermissions(newPermissions);
+                                      }}
+                                    />
+                                    <Label htmlFor={`${channel.id}-type-${type.id}`} className="flex items-center">
+                                      {React.createElement(type.icon, { className: "mr-1 h-3 w-3" })}
+                                      {type.label}
+                                    </Label>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </TabsContent>
+                      ))}
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="members" className="space-y-6">

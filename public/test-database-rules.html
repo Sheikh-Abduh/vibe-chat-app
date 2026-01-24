@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Database Rules</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+</head>
+<body>
+    <div style="max-width: 800px; margin: 0 auto; padding: 20px;">
+        <h1>Test Database Rules</h1>
+        
+        <div id="auth-section">
+            <h2>Authentication</h2>
+            <button id="login-btn">Login with Google</button>
+            <button id="logout-btn">Logout</button>
+            <div id="user-info"></div>
+        </div>
+        
+        <div id="test-section" style="margin-top: 20px;">
+            <h2>Database Tests</h2>
+            <div>
+                <label>User ID to test with:</label>
+                <input type="text" id="test-user-id" placeholder="Enter a user ID">
+                <button id="set-user-id">Use My ID</button>
+            </div>
+            <br>
+            <button id="test-write">Test Write to Calls</button>
+            <button id="test-read">Test Read from Calls</button>
+            <div id="test-results" style="margin-top: 10px; padding: 10px; background: #f0f0f0;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBhfsaN9wCA0C50wzFp064X4S5X7Q2dX7c",
+            authDomain: "vibe-24b62.firebaseapp.com",
+            databaseURL: "https://vibe-24b62-default-rtdb.firebaseio.com",
+            projectId: "vibe-24b62",
+            storageBucket: "vibe-24b62.appspot.com",
+            messagingSenderId: "1072735150347",
+            appId: "1:1072735150347:web:4c90c9728eb87430"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
+        // DOM elements
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const userInfo = document.getElementById('user-info');
+        const testUserIdInput = document.getElementById('test-user-id');
+        const setUserIdBtn = document.getElementById('set-user-id');
+        const testWriteBtn = document.getElementById('test-write');
+        const testReadBtn = document.getElementById('test-read');
+        const testResults = document.getElementById('test-results');
+
+        // Auth state listener
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                userInfo.innerHTML = `
+                    <p>Logged in as: ${user.email}</p>
+                    <p>User ID: ${user.uid}</p>
+                `;
+                testUserIdInput.value = user.uid;
+            } else {
+                userInfo.innerHTML = '<p>Not logged in</p>';
+            }
+        });
+
+        // Login
+        loginBtn.addEventListener('click', () => {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider);
+        });
+
+        // Logout
+        logoutBtn.addEventListener('click', () => {
+            auth.signOut();
+        });
+
+        // Set user ID
+        setUserIdBtn.addEventListener('click', () => {
+            const user = auth.currentUser;
+            if (user) {
+                testUserIdInput.value = user.uid;
+            } else {
+                alert('Please log in first');
+            }
+        });
+
+        // Test write
+        testWriteBtn.addEventListener('click', async () => {
+            const user = auth.currentUser;
+            if (!user) {
+                alert('Please log in first');
+                return;
+            }
+
+            const testUserId = testUserIdInput.value;
+            if (!testUserId) {
+                alert('Please enter a user ID');
+                return;
+            }
+
+            try {
+                testResults.innerHTML = 'Testing write...';
+                const testRef = database.ref(`calls/${testUserId}/incoming`);
+                await testRef.set({
+                    callerId: user.uid,
+                    callerName: 'Test User',
+                    callType: 'audio',
+                    timestamp: Date.now(),
+                    status: 'ringing'
+                });
+                testResults.innerHTML = '✅ Write test successful';
+            } catch (error) {
+                testResults.innerHTML = `❌ Write test failed: ${error.message}`;
+                console.error('Write error:', error);
+            }
+        });
+
+        // Test read
+        testReadBtn.addEventListener('click', async () => {
+            const user = auth.currentUser;
+            if (!user) {
+                alert('Please log in first');
+                return;
+            }
+
+            const testUserId = testUserIdInput.value;
+            if (!testUserId) {
+                alert('Please enter a user ID');
+                return;
+            }
+
+            try {
+                testResults.innerHTML = 'Testing read...';
+                const testRef = database.ref(`calls/${testUserId}/incoming`);
+                const snapshot = await testRef.get();
+                
+                if (snapshot.exists()) {
+                    testResults.innerHTML = `✅ Read test successful: ${JSON.stringify(snapshot.val())}`;
+                } else {
+                    testResults.innerHTML = '✅ Read test successful: No data found';
+                }
+            } catch (error) {
+                testResults.innerHTML = `❌ Read test failed: ${error.message}`;
+                console.error('Read error:', error);
+            }
+        });
+    </script>
+</body>
+</html>

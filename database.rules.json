@@ -1,0 +1,74 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      "$userId": {
+        "status": {
+          ".read": "auth.uid != null",
+          ".write": "$userId === auth.uid"
+        }
+      }
+    },
+    "calls": {
+      "$userId": {
+        ".read": "$userId === auth.uid || auth.uid != null",
+        ".write": "auth.uid != null",
+        "incoming": {
+          ".read": "$userId === auth.uid || auth.uid != null",
+          ".write": "auth.uid != null"
+        },
+        "outgoing": {
+          ".read": "$userId === auth.uid || auth.uid != null",
+          ".write": "auth.uid != null"
+        }
+      }
+    },
+    "communities": {
+      "$communityId": {
+        ".read": "auth.uid != null",
+        ".write": "root.child('communities').child($communityId).child('owner').val() === auth.uid",
+        "channels": {
+          "$channelId": {
+            ".read": "auth.uid != null",
+            ".write": "root.child('communities').child($communityId).child('owner').val() === auth.uid || root.child('communities').child($communityId).child('admins').child(auth.uid).exists()",
+            "permissions": {
+              ".read": "auth.uid != null",
+              ".write": "root.child('communities').child($communityId).child('owner').val() === auth.uid || root.child('communities').child($communityId).child('admins').child(auth.uid).exists()",
+              "allowedRoles": {
+                ".read": "auth.uid != null",
+                ".write": "root.child('communities').child($communityId).child('owner').val() === auth.uid || root.child('communities').child($communityId).child('admins').child(auth.uid).exists()"
+              },
+              "allowedTypes": {
+                ".read": "auth.uid != null",
+                ".write": "root.child('communities').child($communityId).child('owner').val() === auth.uid || root.child('communities').child($communityId).child('admins').child(auth.uid).exists()"
+              }
+            },
+            "messages": {
+              ".read": "auth.uid != null",
+              ".write": "(root.child('communities').child($communityId).child('owner').val() === auth.uid) || (root.child('communities').child($communityId).child('admins').child(auth.uid).exists()) || (root.child('communities').child($communityId).child('channels').child($channelId).child('permissions').child('allowedRoles').child(root.child('communities').child($communityId).child('members').child(auth.uid).child('role').val()).exists() && root.child('communities').child($communityId).child('channels').child($channelId).child('permissions').child('allowedTypes').child(newData.child('type').val()).exists())"
+            }
+          }
+        },
+        "members": {
+          "$memberId": {
+            ".read": "auth.uid != null",
+            ".write": "root.child('communities').child($communityId).child('owner').val() === auth.uid || root.child('communities').child($communityId).child('admins').child(auth.uid).exists() || $memberId === auth.uid"
+          }
+        },
+        "roles": {
+          ".read": "auth.uid != null",
+          ".write": "root.child('communities').child($communityId).child('owner').val() === auth.uid || root.child('communities').child($communityId).child('admins').child(auth.uid).exists()"
+        },
+        "admins": {
+          ".read": "auth.uid != null",
+          ".write": "root.child('communities').child($communityId).child('owner').val() === auth.uid"
+        },
+        "owner": {
+          ".read": "auth.uid != null",
+          ".write": "root.child('communities').child($communityId).child('owner').val() === auth.uid"
+        }
+      }
+    }
+  }
+}

@@ -5,7 +5,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, FileText, Bold, Italic, Strikethrough, Underline, Superscript, Subscript } from 'lucide-react';
+import { ArrowLeft, FileText, Bold, Italic, Strikethrough, Underline, Superscript, Subscript, Trash2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 interface FormattingTip {
@@ -65,6 +65,24 @@ export default function FormattingTipsPage() {
               {index < formattingTips.length - 1 && <Separator className="bg-border/50 my-3" />}
             </React.Fragment>
           ))}
+
+          <Separator className="bg-border/50 my-6" />
+
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-foreground">General Tips</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-2 items-center">
+              <div className="flex items-center font-semibold text-foreground">
+                <Trash2 className="mr-2 h-5 w-5 text-accent" />
+                Quick Delete
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <code className="bg-muted px-1.5 py-0.5 rounded-sm text-sm font-mono">Shift + Click Delete</code>
+              </div>
+              <div className="text-sm text-foreground italic">
+                Deletes message immediately without confirmation
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -13,7 +13,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Users, UserX, Loader2, MessageSquareOff, MessageSquare, Shield } from 'lucide-react';
-import InteractionTester from '@/components/debug/interaction-tester';
+
 import { isUserDeleted, logFilteringStats } from '@/lib/user-filtering';
 
 
@@ -431,9 +431,7 @@ export default function InteractionsPage() {
         </CardContent>
       </Card>
       
-      {process.env.NODE_ENV === 'development' && (
-        <InteractionTester />
-      )}
+
     </div>
   );
 }

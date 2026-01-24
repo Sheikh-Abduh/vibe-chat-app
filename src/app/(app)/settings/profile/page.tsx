@@ -65,8 +65,8 @@ const passionOptions = [
 
 const profileSchema = z.object({
   displayName: z.string().min(3, { message: "Username must be at least 3 characters." }).optional(),
-  aboutMe: z.string().max(500, { message: "About me cannot exceed 500 characters."}).optional().describe("A short bio about yourself"),
-  status: z.string().max(100, { message: "Status cannot exceed 100 characters."}).optional().describe("Your current status or mood"),
+  note: z.string().max(140, { message: "Note cannot exceed 140 characters." }).optional().describe("A quick note visible across the app"),
+  about: z.string().max(100, { message: "About cannot exceed 100 characters." }).optional().describe("Your current vibe or mood"),
   hobbies: z.string().optional().describe("Comma-separated list of hobbies"),
   age: z.string().optional(),
   gender: z.string().optional(),
@@ -80,8 +80,8 @@ type ProfileFormValues = z.infer<typeof profileSchema>;
 interface UserProfileDetails {
   photoURL?: string | null;
   displayName?: string | null;
-  aboutMe?: string;
-  status?: string;
+  note?: string;
+  about?: string;
   hobbies?: string;
   age?: string;
   gender?: string;
@@ -92,8 +92,8 @@ interface UserProfileDetails {
   isProfilePublic?: boolean;
   publicFields?: {
     displayName?: boolean;
-    aboutMe?: boolean;
-    status?: boolean;
+    note?: boolean;
+    about?: boolean;
     hobbies?: boolean;
     age?: boolean;
     gender?: boolean;
@@ -120,8 +120,8 @@ export default function EditProfilePage() {
   const [isProfilePublic, setIsProfilePublic] = useState(false);
   const [publicFields, setPublicFields] = useState({
     displayName: true,
-    aboutMe: true,
-    status: true,
+    note: true,
+    about: true,
     hobbies: true,
     age: false,
     gender: false,
@@ -160,8 +160,8 @@ export default function EditProfilePage() {
     resolver: zodResolver(profileSchema),
     defaultValues: {
       displayName: "",
-      aboutMe: "",
-      status: "",
+      note: "",
+      about: "",
       hobbies: "",
       age: "",
       gender: "",
@@ -189,8 +189,8 @@ export default function EditProfilePage() {
         setIsProfilePublic(fetchedProfileDetails.isProfilePublic ?? false);
         setPublicFields({
           displayName: fetchedProfileDetails.publicFields?.displayName ?? true,
-          aboutMe: fetchedProfileDetails.publicFields?.aboutMe ?? true,
-          status: fetchedProfileDetails.publicFields?.status ?? true,
+          note: fetchedProfileDetails.publicFields?.note ?? true,
+          about: fetchedProfileDetails.publicFields?.about ?? true,
           hobbies: fetchedProfileDetails.publicFields?.hobbies ?? true,
           age: fetchedProfileDetails.publicFields?.age ?? false,
           gender: fetchedProfileDetails.publicFields?.gender ?? false,
@@ -201,8 +201,8 @@ export default function EditProfilePage() {
         
         form.reset({
           displayName: user.displayName || fetchedProfileDetails.displayName || "",
-          aboutMe: fetchedProfileDetails.aboutMe || "",
-          status: fetchedProfileDetails.status || "",
+          note: fetchedProfileDetails.note || "",
+          about: fetchedProfileDetails.about || "",
           hobbies: fetchedProfileDetails.hobbies || "",
           age: fetchedProfileDetails.age || "",
           gender: fetchedProfileDetails.gender || "",
@@ -300,8 +300,8 @@ export default function EditProfilePage() {
     const profileDetailsToSave: UserProfileDetails = {
       photoURL: newAvatarUrlFromCloudinary || currentUser.photoURL || null, 
       displayName: data.displayName || currentUser.displayName || null,
-      aboutMe: data.aboutMe || "",
-      status: data.status || "",
+      note: data.note || "",
+      about: data.about || "",
       hobbies: data.hobbies || "",
       age: data.age || "",
       gender: data.gender || "",
@@ -365,8 +365,8 @@ export default function EditProfilePage() {
             setAvatarPreview(updatedUser.photoURL || undefined); // Update preview
             form.reset({ // Reset form with potentially updated values
                 displayName: updatedUser.displayName || profileDetailsToSave.displayName || "",
-                aboutMe: profileDetailsToSave.aboutMe || "",
-                status: profileDetailsToSave.status || "",
+                note: profileDetailsToSave.note || "",
+                about: profileDetailsToSave.about || "",
                 hobbies: profileDetailsToSave.hobbies || "",
                 age: profileDetailsToSave.age || "",
                 gender: profileDetailsToSave.gender || "",
@@ -379,8 +379,8 @@ export default function EditProfilePage() {
             setIsProfilePublic(profileDetailsToSave.isProfilePublic ?? false);
             setPublicFields({
               displayName: profileDetailsToSave.publicFields?.displayName ?? true,
-              aboutMe: profileDetailsToSave.publicFields?.aboutMe ?? true,
-              status: profileDetailsToSave.publicFields?.status ?? true,
+              note: profileDetailsToSave.publicFields?.note ?? true,
+              about: profileDetailsToSave.publicFields?.about ?? true,
               hobbies: profileDetailsToSave.publicFields?.hobbies ?? true,
               age: profileDetailsToSave.publicFields?.age ?? false,
               gender: profileDetailsToSave.publicFields?.gender ?? false,
@@ -524,21 +524,21 @@ export default function EditProfilePage() {
 
                   <FormField
                     control={form.control}
-                    name="aboutMe"
+                    name="note"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
-                          <Info className="mr-2 h-5 w-5 text-accent" /> About Me
+                          <MessageSquare className="mr-2 h-5 w-5 text-accent" /> Note
                         </FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="Tell us a little about yourself..."
-                            className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground min-h-[80px] sm:min-h-[100px]"
+                            placeholder="Share a short note (others see the latest one)."
+                            className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground min-h-[60px] sm:min-h-[80px]"
                             {...field}
                           />
                         </FormControl>
                         <FormDescription className="text-xs text-muted-foreground/80">
-                          Share something interesting about you (max 500 characters).
+                          Quick notes are limited to 140 characters and update instantly.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -547,21 +547,21 @@ export default function EditProfilePage() {
 
                   <FormField
                     control={form.control}
-                    name="status"
+                    name="about"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-muted-foreground flex items-center text-sm sm:text-base">
-                          <MessageSquare className="mr-2 h-5 w-5 text-accent" /> Status
+                          <Info className="mr-2 h-5 w-5 text-accent" /> About
                         </FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="What's on your mind?"
+                            placeholder="Add a short blurb about yourself"
                             className="bg-input border-border/80 focus:border-transparent focus:ring-2 focus:ring-accent placeholder:text-muted-foreground/70 text-foreground selection:bg-primary/30 selection:text-primary-foreground"
                             {...field}
                           />
                         </FormControl>
                          <FormDescription className="text-xs text-muted-foreground/80">
-                          A short status message or mood (max 100 characters).
+                          Share a concise description (max 100 characters).
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -784,32 +784,32 @@ export default function EditProfilePage() {
                             />
                           </div>
 
-                          {/* About Me */}
+                          {/* Note */}
                           <div className="flex items-center justify-between p-3 rounded-lg border border-border/30 bg-card/30">
                             <div className="flex items-center space-x-3">
-                              <Info className="h-4 w-4 text-accent" />
-                              <span className="text-sm text-foreground">About Me</span>
+                              <MessageSquare className="h-4 w-4 text-accent" />
+                              <span className="text-sm text-foreground">Note</span>
                             </div>
                             <Switch
-                              checked={publicFields.aboutMe}
+                              checked={publicFields.note}
                               onCheckedChange={(checked) => {
-                                setPublicFields(prev => ({ ...prev, aboutMe: checked }));
+                                setPublicFields(prev => ({ ...prev, note: checked }));
                                 setTimeout(() => savePrivacySettings(), 100);
                               }}
                               className="data-[state=checked]:bg-accent"
                             />
                           </div>
 
-                          {/* Status */}
+                          {/* About */}
                           <div className="flex items-center justify-between p-3 rounded-lg border border-border/30 bg-card/30">
                             <div className="flex items-center space-x-3">
-                              <MessageSquare className="h-4 w-4 text-accent" />
-                              <span className="text-sm text-foreground">Status</span>
+                              <Info className="h-4 w-4 text-accent" />
+                              <span className="text-sm text-foreground">About</span>
                             </div>
                             <Switch
-                              checked={publicFields.status}
+                              checked={publicFields.about}
                               onCheckedChange={(checked) => {
-                                setPublicFields(prev => ({ ...prev, status: checked }));
+                                setPublicFields(prev => ({ ...prev, about: checked }));
                                 setTimeout(() => savePrivacySettings(), 100);
                               }}
                               className="data-[state=checked]:bg-accent"

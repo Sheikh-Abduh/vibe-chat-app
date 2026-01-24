@@ -7,22 +7,23 @@ import { auth, db } from '@/lib/firebase'; // Ensure db is imported
 import { doc, getDoc } from 'firebase/firestore'; // Firestore imports
 
 // Default theme HSL variables (consistent with theme selection page and globals.css)
+// Default theme HSL variables (consistent with theme selection page and globals.css)
 const defaultDarkVars: Record<string, string> = {
-  '--background': '220 3% 10%', '--foreground': '0 0% 98%',
-  '--card': '220 3% 12%', '--card-foreground': '0 0% 98%',
-  '--popover': '220 3% 10%', '--popover-foreground': '0 0% 98%',
-  '--secondary': '220 3% 18%', '--secondary-foreground': '0 0% 98%',
-  '--muted': '220 3% 15%', '--muted-foreground': '0 0% 70%',
-  '--border': '220 3% 18%', '--input': '220 3% 13%',
+  '--background': '240 10% 4%', '--foreground': '0 0% 98%',
+  '--card': '240 10% 6%', '--card-foreground': '0 0% 98%',
+  '--popover': '240 10% 6%', '--popover-foreground': '0 0% 98%',
+  '--secondary': '240 5% 15%', '--secondary-foreground': '0 0% 98%',
+  '--muted': '240 5% 15%', '--muted-foreground': '240 5% 65%',
+  '--border': '240 5% 15%', '--input': '240 5% 15%',
 };
 
 const defaultLightVars: Record<string, string> = {
-  '--background': '0 0% 100%', '--foreground': '220 3% 10%',
-  '--card': '0 0% 97%', '--card-foreground': '220 3% 10%',
-  '--popover': '0 0% 100%', '--popover-foreground': '220 3% 10%',
-  '--secondary': '0 0% 95%', '--secondary-foreground': '220 3% 10%',
-  '--muted': '0 0% 90%', '--muted-foreground': '220 3% 25%',
-  '--border': '0 0% 85%', '--input': '0 0% 92%',
+  '--background': '0 0% 100%', '--foreground': '240 10% 4%',
+  '--card': '0 0% 97%', '--card-foreground': '240 10% 4%',
+  '--popover': '0 0% 100%', '--popover-foreground': '240 10% 4%',
+  '--secondary': '240 5% 96%', '--secondary-foreground': '240 10% 4%',
+  '--muted': '240 5% 96%', '--muted-foreground': '240 5% 45%',
+  '--border': '240 5% 90%', '--input': '240 5% 90%',
 };
 
 // Default color palettes - same as in appearance settings
@@ -33,6 +34,11 @@ interface ColorPalette {
 }
 
 const colorPalettes: ColorPalette[] = [
+  {
+    name: 'Vibe', // New Default
+    primary: { value: '289 85% 55%', foreground: '0 0% 100%' }, // Electric Purple
+    secondary: { value: '110 100% 50%', foreground: '240 10% 4%' } // Neon Green
+  },
   {
     name: 'Nebula',
     primary: { value: '250 84% 54%', foreground: '0 0% 100%' },
@@ -60,12 +66,12 @@ const colorPalettes: ColorPalette[] = [
   }
 ];
 
-const defaultPalette = colorPalettes[0]; // Nebula
+const defaultPalette = colorPalettes[0]; // Vibe
 
 // Legacy defaults for backward compatibility
-const appDefaultPrimary = defaultPalette.primary.value; 
+const appDefaultPrimary = defaultPalette.primary.value;
 const appDefaultPrimaryFg = defaultPalette.primary.foreground;
-const appDefaultSecondaryAccent = defaultPalette.secondary.value; 
+const appDefaultSecondaryAccent = defaultPalette.secondary.value;
 const appDefaultSecondaryAccentFg = defaultPalette.secondary.foreground;
 const appDefaultUiScale = 'default';
 
@@ -123,13 +129,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       }
 
       const baseVarsToApply = mode === 'light' ? defaultLightVars : defaultDarkVars;
-      
+
       for (const [key, value] of Object.entries(baseVarsToApply)) {
         root.style.setProperty(key, value);
       }
       root.style.setProperty('--primary', primaryAccent);
       root.style.setProperty('--primary-foreground', primaryAccentFg);
-      root.style.setProperty('--ring', primaryAccent); 
+      root.style.setProperty('--ring', primaryAccent);
       root.style.setProperty('--accent', secondaryAccent);
       root.style.setProperty('--accent-foreground', secondaryAccentFg);
 
@@ -139,25 +145,31 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+
     if (currentUser) {
       const userDocRef = doc(db, "users", currentUser.uid);
       getDoc(userDocRef).then(userDocSnap => {
+        if (!isMounted) return;
         if (userDocSnap.exists()) {
           const data = userDocSnap.data();
           applyThemeFromSettings(data.appSettings as UserAppSettings || null);
         } else {
-          // User document doesn't exist yet, apply app defaults
           applyThemeFromSettings(null);
         }
       }).catch(error => {
+        if (!isMounted) return;
         console.error("Error fetching user settings from Firestore:", error);
-        applyThemeFromSettings(null); // Fallback to defaults on error
+        applyThemeFromSettings(null);
       });
     } else {
-      // No user logged in, apply app defaults
       applyThemeFromSettings(null);
     }
-  }, [currentUser, applyThemeFromSettings]); 
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser, applyThemeFromSettings]);
 
   return <>{children}</>;
 }

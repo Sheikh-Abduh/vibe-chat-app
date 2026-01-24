@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Call System</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .container { margin: 20px 0; }
+        input, button { padding: 10px; margin: 5px; }
+        .log { background: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>Test Call System</h1>
+    
+    <div class="container">
+        <h2>Firebase Setup</h2>
+        <button id="initFirebase">Initialize Firebase</button>
+        <div id="firebaseStatus" class="log">Not initialized</div>
+    </div>
+    
+    <div class="container">
+        <h2>Send Test Call</h2>
+        <input type="text" id="receiverId" placeholder="Receiver User ID">
+        <select id="callType">
+            <option value="audio">Audio Call</option>
+            <option value="video">Video Call</option>
+        </select>
+        <input type="text" id="callerName" placeholder="Caller Name (optional)" value="Test User">
+        <button id="sendCall">Send Test Call</button>
+        <div id="sendResult" class="log">Enter receiver ID and click send</div>
+    </div>
+    
+    <div class="container">
+        <h2>Listen for Incoming Calls</h2>
+        <input type="text" id="currentUserId" placeholder="Current User ID">
+        <button id="startListening">Start Listening</button>
+        <button id="stopListening">Stop Listening</button>
+        <div id="listenResult" class="log">Enter user ID and start listening</div>
+    </div>
+    
+    <div class="container">
+        <h2>Call Actions</h2>
+        <input type="text" id="callId" placeholder="Call ID">
+        <input type="text" id="targetUserId" placeholder="Target User ID">
+        <button id="acceptCall">Accept Call</button>
+        <button id="declineCall">Decline Call</button>
+        <button id="cancelCall">Cancel Call</button>
+        <div id="actionResult" class="log">Enter call details and perform actions</div>
+    </div>
+
+    <script>
+        let database = null;
+        let unsubscribe = null;
+
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyA1x_MWgIJlEB8BToP2Mc7LLAZv0pPjtc8",
+            authDomain: "vibe-35004.firebaseapp.com",
+            databaseURL: "https://vibe-35004-default-rtdb.firebaseio.com",
+            projectId: "vibe-35004",
+            storageBucket: "vibe-35004.appspot.com",
+            messagingSenderId: "667054799663",
+            appId: "1:667054799663:web:849dc655b5ef124d9fffda"
+        };
+
+        document.getElementById('initFirebase').addEventListener('click', () => {
+            try {
+                firebase.initializeApp(firebaseConfig);
+                database = firebase.database();
+                document.getElementById('firebaseStatus').innerHTML = '<span class="success">✅ Firebase initialized successfully</span>';
+                document.getElementById('firebaseStatus').className = 'log success';
+            } catch (error) {
+                document.getElementById('firebaseStatus').innerHTML = '<span class="error">❌ Firebase initialization error: ' + error.message + '</span>';
+                document.getElementById('firebaseStatus').className = 'log error';
+            }
+        });
+
+        document.getElementById('sendCall').addEventListener('click', async () => {
+            if (!database) {
+                document.getElementById('sendResult').innerHTML = '<span class="error">❌ Firebase not initialized</span>';
+                return;
+            }
+            
+            const receiverId = document.getElementById('receiverId').value;
+            const callType = document.getElementById('callType').value;
+            const callerName = document.getElementById('callerName').value || 'Test User';
+            
+            if (!receiverId) {
+                document.getElementById('sendResult').innerHTML = '<span class="error">❌ Please enter receiver ID</span>';
+                return;
+            }
+            
+            try {
+                const callId = `test_${Date.now()}`;
+                const signal = {
+                    callerId: 'test_user',
+                    callerName: callerName,
+                    callType: callType,
+                    timestamp: Date.now(),
+                    status: 'ringing'
+                };
+                
+                // Send call signal to receiver
+                await database.ref(`calls/${receiverId}/incoming`).set(signal);
+                
+                document.getElementById('sendResult').innerHTML = 
+                    '<span class="success">✅ Call signal sent successfully</span><br>' +
+                    'Call ID: ' + callId + '<br>' +
+                    'Receiver ID: ' + receiverId;
+                    
+                // Also store for sender tracking
+                await database.ref(`calls/test_user/outgoing`).set(signal);
+            } catch (error) {
+                document.getElementById('sendResult').innerHTML = '<span class="error">❌ Error sending call: ' + error.message + '</span>';
+            }
+        });
+
+        document.getElementById('startListening').addEventListener('click', () => {
+            if (!database) {
+                document.getElementById('listenResult').innerHTML = '<span class="error">❌ Firebase not initialized</span>';
+                return;
+            }
+            
+            const currentUserId = document.getElementById('currentUserId').value;
+            if (!currentUserId) {
+                document.getElementById('listenResult').innerHTML = '<span class="error">❌ Please enter current user ID</span>';
+                return;
+            }
+            
+            // Stop any existing listener
+            if (unsubscribe) {
+                unsubscribe();
+            }
+            
+            try {
+                const incomingCallRef = database.ref(`calls/${currentUserId}/incoming`);
+                
+                unsubscribe = incomingCallRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    console.log('Firebase data changed:', data);
+                    
+                    if (data) {
+                        if (data.status === 'ringing') {
+                            document.getElementById('listenResult').innerHTML = 
+                                '<span class="info">📥 Incoming call detected:</span><br>' +
+                                '<strong>Caller:</strong> ' + (data.callerName || data.callerId) + '<br>' +
+                                '<strong>Type:</strong> ' + data.callType + '<br>' +
+                                '<strong>Time:</strong> ' + new Date(data.timestamp).toLocaleString() + '<br>' +
+                                '<strong>Status:</strong> ' + data.status;
+                        } else {
+                            document.getElementById('listenResult').innerHTML = 
+                                '<span class="info">📞 Call status update:</span> ' + data.status;
+                        }
+                    } else {
+                        document.getElementById('listenResult').innerHTML = '📭 No active calls';
+                    }
+                }, (error) => {
+                    document.getElementById('listenResult').innerHTML = '<span class="error">❌ Firebase listener error: ' + error.message + '</span>';
+                });
+                
+                document.getElementById('listenResult').innerHTML = '<span class="success">✅ Listening for incoming calls...</span>';
+            } catch (error) {
+                document.getElementById('listenResult').innerHTML = '<span class="error">❌ Error setting up listener: ' + error.message + '</span>';
+            }
+        });
+
+        document.getElementById('stopListening').addEventListener('click', () => {
+            if (unsubscribe) {
+                unsubscribe();
+                unsubscribe = null;
+                document.getElementById('listenResult').innerHTML = '🔇 Stopped listening for calls';
+            } else {
+                document.getElementById('listenResult').innerHTML = '⚠️ Not currently listening';
+            }
+        });
+
+        document.getElementById('acceptCall').addEventListener('click', async () => {
+            await updateCallStatus('accepted');
+        });
+
+        document.getElementById('declineCall').addEventListener('click', async () => {
+            await updateCallStatus('declined');
+        });
+
+        document.getElementById('cancelCall').addEventListener('click', async () => {
+            await updateCallStatus('cancelled');
+        });
+
+        async function updateCallStatus(status) {
+            if (!database) {
+                document.getElementById('actionResult').innerHTML = '<span class="error">❌ Firebase not initialized</span>';
+                return;
+            }
+            
+            const callId = document.getElementById('callId').value;
+            const targetUserId = document.getElementById('targetUserId').value;
+            
+            if (!callId || !targetUserId) {
+                document.getElementById('actionResult').innerHTML = '<span class="error">❌ Please enter call ID and target user ID</span>';
+                return;
+            }
+            
+            try {
+                // Update receiver's incoming call
+                await database.ref(`calls/${targetUserId}/incoming/status`).set(status);
+                
+                // Update sender's outgoing call
+                await database.ref(`calls/test_user/outgoing/status`).set(status);
+                
+                document.getElementById('actionResult').innerHTML = 
+                    '<span class="success">✅ Call status updated to: ' + status + '</span>';
+                    
+                // Clean up after a delay
+                if (status !== 'ringing') {
+                    setTimeout(async () => {
+                        try {
+                            await database.ref(`calls/${targetUserId}/incoming`).remove();
+                            await database.ref(`calls/test_user/outgoing`).remove();
+                            document.getElementById('actionResult').innerHTML += '<br><span class="info">🧹 Call data cleaned up</span>';
+                        } catch (error) {
+                            console.warn('Cleanup error:', error);
+                        }
+                    }, 2000);
+                }
+            } catch (error) {
+                document.getElementById('actionResult').innerHTML = '<span class="error">❌ Error updating call status: ' + error.message + '</span>';
+            }
+        }
+    </script>
+</body>
+</html>

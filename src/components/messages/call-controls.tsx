@@ -6,7 +6,7 @@ import { Phone, Video } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getUserInteractionStatus } from '@/lib/user-blocking';
 import { auth } from '@/lib/firebase';
-import { sendCallInvitation } from '@/lib/call-invitations';
+import { useLiveKitCall } from '@/hooks/useLiveKitCall';
 
 interface CallControlsProps {
   otherUserId: string;
@@ -25,6 +25,15 @@ export const CallControls: React.FC<CallControlsProps> = ({
   const [isStartingCall, setIsStartingCall] = useState(false);
   const [canInteract, setCanInteract] = useState(true);
   const [isDisconnected, setIsDisconnected] = useState(false);
+
+  // Initialize the call hook for this conversation
+  const webrtc = useLiveKitCall({
+    currentUserId: auth.currentUser?.uid || null,
+    otherUserId,
+    channelId: conversationId,
+    currentUserName: auth.currentUser?.displayName || undefined,
+    currentUserAvatar: auth.currentUser?.photoURL || undefined,
+  });
 
   useEffect(() => {
     const checkInteractionStatus = async () => {
@@ -62,9 +71,15 @@ export const CallControls: React.FC<CallControlsProps> = ({
   }, [otherUserId]);
 
   const handleStartCall = async (isVideoCall: boolean) => {
-    if (disabled || isStartingCall) return;
+    console.log('📞 [CallControls] handleStartCall called:', { isVideoCall, disabled, isStartingCall, webrtcIsCalling: webrtc.isCalling });
+    
+    if (disabled || isStartingCall || webrtc.isCalling) {
+      console.log('📞 [CallControls] Call blocked:', { disabled, isStartingCall, webrtcIsCalling: webrtc.isCalling });
+      return;
+    }
 
     if (!canInteract) {
+      console.log('📞 [CallControls] Cannot interact with user');
       toast({
         variant: "destructive",
         title: "Cannot Call",
@@ -76,32 +91,41 @@ export const CallControls: React.FC<CallControlsProps> = ({
     }
 
     const currentUser = auth.currentUser;
-    if (!currentUser) return;
+    if (!currentUser) {
+      console.log('📞 [CallControls] No current user');
+      return;
+    }
 
+    console.log('📞 [CallControls] Starting call process...');
     setIsStartingCall(true);
 
     try {
-      await sendCallInvitation(
-        currentUser.uid,
-        currentUser.displayName || 'Unknown User',
-        otherUserId,
-        isVideoCall ? 'video' : 'voice',
-        conversationId,
-        currentUser.photoURL || null
-      );
+      if (isVideoCall) {
+        console.log('📞 [CallControls] Starting video call...');
+        await webrtc.startVideoCall();
+      } else {
+        console.log('📞 [CallControls] Starting voice call...');
+        await webrtc.startVoiceCall();
+      }
+      
+      console.log('📞 [CallControls] Call started successfully');
+      toast({
+        title: "Calling...",
+        description: `Calling ${otherUserName}...`,
+      });
     } catch (error: any) {
-      console.error('Call invitation failed:', error);
+      console.error('📞 [CallControls] Call failed:', error);
       toast({
         variant: "destructive",
         title: "Call Failed",
-        description: error.message || "Failed to send call invitation"
+        description: error.message || "Failed to start call"
       });
     } finally {
       setIsStartingCall(false);
     }
   };
 
-  const callsDisabled = disabled || !canInteract;
+  const callsDisabled = disabled || !canInteract || webrtc.isCalling;
 
   return (
     <div className="call-controls flex items-center space-x-2" data-testid="call-controls">
@@ -116,7 +140,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
       >
         <Phone className="h-4 w-4" />
         <span>
-          {isStartingCall ? 'Starting...' : 'Voice Call'}
+          {isStartingCall || webrtc.isCalling ? 'Calling...' : 'Voice Call'}
         </span>
       </Button>
 
@@ -131,7 +155,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
       >
         <Video className="h-4 w-4" />
         <span>
-          {isStartingCall ? 'Starting...' : 'Video Call'}
+          {isStartingCall || webrtc.isCalling ? 'Calling...' : 'Video Call'}
         </span>
       </Button>
     </div>

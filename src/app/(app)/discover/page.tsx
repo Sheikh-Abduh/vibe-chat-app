@@ -25,13 +25,13 @@ import * as z from 'zod';
 
 
 // Updated to reflect the single 'vibe' community structure
-const vibeCommunityStaticDetails = { 
-    id: 'vibe-community-main', 
-    name: 'vibe', 
-    dataAiHint: 'abstract colorful logo', 
-    description: 'The official community for all vibe users. Connect, share, discuss your passions, and discover!', 
-    membersText: "Many enthusiastic members" // Using static text
-  };
+const vibeCommunityStaticDetails = {
+  id: 'vibe-community-main',
+  name: 'vibe',
+  dataAiHint: 'abstract colorful logo',
+  description: 'The official community for all vibe users. Connect, share, discuss your passions, and discover!',
+  membersText: "Many enthusiastic members" // Using static text
+};
 
 // Community creation types and schemas
 interface CommunityPermissions {
@@ -126,11 +126,11 @@ export default function DiscoverPage() {
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [currentThemeMode, setCurrentThemeMode] = useState<'light' | 'dark'>('dark');
-  
+
   // Communities state
   const [communities, setCommunities] = useState<Community[]>([]);
   const [isLoadingCommunities, setIsLoadingCommunities] = useState(true);
-  
+
   // Community creation dialog state
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
@@ -141,12 +141,12 @@ export default function DiscoverPage() {
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Permission states
   const [memberPermissions, setMemberPermissions] = useState<CommunityPermissions>(defaultPermissions.member);
   const [moderatorPermissions, setModeratorPermissions] = useState<CommunityPermissions>(defaultPermissions.moderator);
   const [adminPermissions, setAdminPermissions] = useState<CommunityPermissions>(defaultPermissions.admin);
-  
+
   // Form management
   const form = useForm<CommunitySchemaValues>({
     resolver: zodResolver(communitySchema),
@@ -156,28 +156,28 @@ export default function DiscoverPage() {
       isPrivate: false,
     },
   });
-  
+
   const totalSteps = 4;
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(user => {
-        setCurrentUser(user); // Keep track of user for consistency, though not directly used for theme here yet
-        if (user && typeof window !== 'undefined') {
-            const modeFromStorage = localStorage.getItem(`appSettings_${user.uid}`);
-            if (modeFromStorage) {
-                 try {
-                    const settings = JSON.parse(modeFromStorage);
-                    setCurrentThemeMode(settings.themeMode || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
-                } catch(e) {
-                    console.error("Error parsing theme from localStorage on discover", e);
-                    setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-                }
-            } else {
-                 setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-            }
-        } else if (!user) {
+      setCurrentUser(user); // Keep track of user for consistency, though not directly used for theme here yet
+      if (user && typeof window !== 'undefined') {
+        const modeFromStorage = localStorage.getItem(`appSettings_${user.uid}`);
+        if (modeFromStorage) {
+          try {
+            const settings = JSON.parse(modeFromStorage);
+            setCurrentThemeMode(settings.themeMode || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+          } catch (e) {
+            console.error("Error parsing theme from localStorage on discover", e);
             setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          }
+        } else {
+          setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         }
+      } else if (!user) {
+        setCurrentThemeMode(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -194,12 +194,16 @@ export default function DiscoverPage() {
       try {
         const communitiesRef = collection(db, 'communities');
         const q = query(communitiesRef, orderBy('createdAt', 'desc'));
-        
+
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
           const fetchedCommunities: Community[] = [];
-          
+
           querySnapshot.forEach((doc) => {
             const data = doc.data();
+
+            // Skip the static vibe community if it exists in DB to avoid duplicates
+            if (doc.id === 'vibe-community-main') return;
+
             // Only show public communities or communities where user is a member
             if (!data.isPrivate || (data.members && data.members.includes(currentUser.uid))) {
               fetchedCommunities.push({
@@ -216,11 +220,11 @@ export default function DiscoverPage() {
               });
             }
           });
-          
+
           setCommunities(fetchedCommunities);
           setIsLoadingCommunities(false);
         });
-        
+
         return unsubscribe;
       } catch (error) {
         console.error('Error fetching communities:', error);
@@ -248,7 +252,7 @@ export default function DiscoverPage() {
     }
     setIsCreateDialogOpen(true);
   };
-  
+
   // File upload handlers
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -261,7 +265,7 @@ export default function DiscoverPage() {
         });
         return;
       }
-      
+
       if (!file.type.startsWith('image/')) {
         toast({
           variant: "destructive",
@@ -270,14 +274,14 @@ export default function DiscoverPage() {
         });
         return;
       }
-      
+
       setLogoFile(file);
       const reader = new FileReader();
       reader.onload = (e) => setLogoPreview(e.target?.result as string);
       reader.readAsDataURL(file);
     }
   };
-  
+
   const handleBannerUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -289,7 +293,7 @@ export default function DiscoverPage() {
         });
         return;
       }
-      
+
       if (!file.type.startsWith('image/')) {
         toast({
           variant: "destructive",
@@ -298,14 +302,14 @@ export default function DiscoverPage() {
         });
         return;
       }
-      
+
       setBannerFile(file);
       const reader = new FileReader();
       reader.onload = (e) => setBannerPreview(e.target?.result as string);
       reader.readAsDataURL(file);
     }
   };
-  
+
   // Permission handlers
   const updatePermission = (
     role: 'member' | 'moderator' | 'admin',
@@ -320,11 +324,11 @@ export default function DiscoverPage() {
       setAdminPermissions(prev => ({ ...prev, [permission]: value }));
     }
   };
-  
+
   // Upload file to Cloudinary with retry logic and compression
   const uploadToCloudinary = async (file: File, type: 'logo' | 'banner', retries = 3): Promise<string | null> => {
     const maxFileSize = type === 'logo' ? 2 * 1024 * 1024 : 5 * 1024 * 1024; // 2MB for logo, 5MB for banner
-    
+
     // Compress file if it's too large
     let processedFile = file;
     if (file.size > maxFileSize) {
@@ -334,17 +338,17 @@ export default function DiscoverPage() {
         console.warn('Failed to compress image, using original:', error);
       }
     }
-    
+
     const formData = new FormData();
     formData.append('file', processedFile);
     formData.append('upload_preset', 'vibe_app'); // Use existing preset
     formData.append('folder', `communities/${type}s`);
     formData.append('resource_type', 'image');
-    
+
     for (let attempt = 1; attempt <= retries; attempt++) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout
-      
+
       try {
         const response = await fetch(
           'https://api.cloudinary.com/v1_1/dxqfnat7w/image/upload',
@@ -354,28 +358,28 @@ export default function DiscoverPage() {
             signal: controller.signal,
           }
         );
-        
+
         clearTimeout(timeoutId);
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`Cloudinary upload error (${response.status}):`, errorText);
-          
+
           if (response.status >= 500 && attempt < retries) {
             // Server error, retry
             await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
             continue;
           }
-          
+
           throw new Error(`Upload failed with status ${response.status}: ${errorText}`);
         }
-        
+
         const data = await response.json();
         return data.secure_url;
-        
+
       } catch (error) {
         clearTimeout(timeoutId);
-        
+
         if (controller.signal.aborted) {
           if (attempt < retries) {
             console.warn(`Upload attempt ${attempt} timed out, retrying...`);
@@ -385,42 +389,42 @@ export default function DiscoverPage() {
           console.warn(`Upload timed out after ${retries} attempts. Community will be created without ${type}.`);
           return null;
         }
-        
+
         if (attempt === retries) {
           console.error(`Error uploading ${type} to Cloudinary (final attempt):`, error);
-          
+
           // Provide specific error feedback
           if (error instanceof TypeError && error.message === 'Failed to fetch') {
             console.warn(`Network error uploading ${type}. Community will be created without ${type}.`);
           } else {
             console.warn(`Cloudinary upload failed for ${type}. Community will be created without ${type}.`);
           }
-          
+
           // Return null instead of throwing to allow community creation to continue
           return null;
         }
-        
+
         // Wait before retry
         console.warn(`Upload attempt ${attempt} failed, retrying...`, error);
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
       }
     }
-    
+
     return null;
   };
-  
+
   // Compress image helper function
   const compressImage = async (file: File, maxSize: number): Promise<File> => {
     return new Promise((resolve, reject) => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const img = new Image();
-      
+
       img.onload = () => {
         // Calculate new dimensions maintaining aspect ratio
         const maxDimension = 1920;
         let { width, height } = img;
-        
+
         if (width > height) {
           if (width > maxDimension) {
             height = (height * maxDimension) / width;
@@ -432,12 +436,12 @@ export default function DiscoverPage() {
             height = maxDimension;
           }
         }
-        
+
         canvas.width = width;
         canvas.height = height;
-        
+
         ctx?.drawImage(img, 0, 0, width, height);
-        
+
         canvas.toBlob(
           (blob) => {
             if (blob) {
@@ -454,12 +458,12 @@ export default function DiscoverPage() {
           0.8 // 80% quality
         );
       };
-      
+
       img.onerror = () => reject(new Error('Failed to load image for compression'));
       img.src = URL.createObjectURL(file);
     });
   };
-  
+
   // Convert file to base64 as emergency fallback (for local storage)
   const convertToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -475,11 +479,11 @@ export default function DiscoverPage() {
       reader.onerror = error => reject(error);
     });
   };
-  
+
   // Create community
   const handleCreateCommunity = async () => {
     if (!currentUser) return;
-    
+
     const formData = form.getValues();
     if (!form.formState.isValid) {
       toast({
@@ -489,29 +493,29 @@ export default function DiscoverPage() {
       });
       return;
     }
-    
+
     setIsCreating(true);
-    
+
     try {
       let logoUrl = '';
       let bannerUrl = '';
       let uploadWarnings: string[] = [];
-      
+
       // Show upload progress if files are being uploaded
       const uploadTasks = [];
       if (logoFile) uploadTasks.push('logo');
       if (bannerFile) uploadTasks.push('banner');
-      
+
       if (uploadTasks.length > 0) {
         toast({
           title: "Uploading Images",
           description: `Uploading ${uploadTasks.join(' and ')}. This may take a moment...`,
         });
       }
-      
+
       // Handle uploads in parallel with better error handling
       const uploadPromises = [];
-      
+
       if (logoFile) {
         uploadPromises.push(
           uploadToCloudinary(logoFile, 'logo')
@@ -538,7 +542,7 @@ export default function DiscoverPage() {
             })
         );
       }
-      
+
       if (bannerFile) {
         uploadPromises.push(
           uploadToCloudinary(bannerFile, 'banner')
@@ -565,12 +569,12 @@ export default function DiscoverPage() {
             })
         );
       }
-      
+
       // Wait for all uploads to complete
       if (uploadPromises.length > 0) {
         await Promise.allSettled(uploadPromises);
       }
-      
+
       // Create community document (proceed even if image uploads failed)
       const communityData = {
         name: formData.name,
@@ -595,16 +599,16 @@ export default function DiscoverPage() {
         tags: [],
         channels: [], // Will be populated with default channels
       };
-      
+
       // Add to Firestore
       const communityRef = await addDoc(collection(db, 'communities'), communityData);
-      
+
       // Create default channels
       const defaultChannels = [
         { name: 'general', description: 'General discussion', type: 'text' },
         { name: 'announcements', description: 'Important announcements', type: 'text' },
       ];
-      
+
       for (const channel of defaultChannels) {
         await addDoc(collection(db, `communities/${communityRef.id}/channels`), {
           ...channel,
@@ -612,7 +616,7 @@ export default function DiscoverPage() {
           createdBy: currentUser.uid,
         });
       }
-      
+
       // Provide success feedback with appropriate warnings
       if (uploadWarnings.length > 0) {
         toast({
@@ -625,7 +629,7 @@ export default function DiscoverPage() {
           description: `${formData.name} has been successfully created.`,
         });
       }
-      
+
       // Reset form and close dialog
       setIsCreateDialogOpen(false);
       setCurrentStep(1);
@@ -637,13 +641,13 @@ export default function DiscoverPage() {
       setMemberPermissions(defaultPermissions.member);
       setModeratorPermissions(defaultPermissions.moderator);
       setAdminPermissions(defaultPermissions.admin);
-      
+
       // Optionally redirect to the new community
       router.push('/communities');
-      
+
     } catch (error) {
       console.error('Error creating community:', error);
-      
+
       toast({
         variant: "destructive",
         title: "Failed to Create Community",
@@ -653,7 +657,7 @@ export default function DiscoverPage() {
       setIsCreating(false);
     }
   };
-  
+
   const dynamicVibeCommunityImage = currentThemeMode === 'dark' ? '/bannerd.png' : '/bannerl.png'; // Using banner as main image
 
   const displayCommunity = {
@@ -676,7 +680,7 @@ export default function DiscoverPage() {
     logoUrl: undefined,
     bannerUrl: undefined,
   };
-  
+
   const allCommunities = [staticVibeCommunity, ...communities];
 
   return (
@@ -708,10 +712,10 @@ export default function DiscoverPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
             {allCommunities.map((community, index) => {
               const isVibeCommuity = index === 0; // First item is always vibe community
-              const communityImage = isVibeCommuity 
-                ? displayCommunity.image 
+              const communityImage = isVibeCommuity
+                ? displayCommunity.image
                 : (community.bannerUrl || community.logoUrl || dynamicVibeCommunityImage);
-              
+
               return (
                 <Card key={community.id} className="bg-card border-border/50 shadow-lg hover:shadow-[0_0_15px_hsl(var(--primary)/0.3)] transition-shadow duration-300 flex flex-col">
                   <div className="relative w-full h-32 sm:h-40">
@@ -731,8 +735,8 @@ export default function DiscoverPage() {
                   <CardContent className="flex-grow text-sm sm:text-base">
                     <CardDescription className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{community.description}</CardDescription>
                     <p className="text-xs text-muted-foreground/80 mt-2 flex items-center">
-                        <Users className="mr-1.5 h-3 w-3" />
-                        {isVibeCommuity ? displayCommunity.membersText : `${community.memberCount} member${community.memberCount !== 1 ? 's' : ''}`}
+                      <Users className="mr-1.5 h-3 w-3" />
+                      {isVibeCommuity ? displayCommunity.membersText : `${community.memberCount} member${community.memberCount !== 1 ? 's' : ''}`}
                     </p>
                     {!isVibeCommuity && community.isPrivate && (
                       <Badge variant="secondary" className="mt-2 text-xs">
@@ -741,19 +745,19 @@ export default function DiscoverPage() {
                     )}
                   </CardContent>
                   <div className="p-3 sm:p-4 pt-0">
-                     <Button 
-                       variant="outline" 
-                       className="w-full group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.3)] hover:shadow-[0_0_10px_hsl(var(--accent)/0.5)] transition-all duration-300 text-xs sm:text-sm" 
-                       onClick={() => {
-                         if (isVibeCommuity) {
-                           router.push('/communities');
-                         } else {
-                           router.push(`/communities?communityId=${community.id}`);
-                         }
-                       }}
-                     >
-                        {isVibeCommuity ? 'View Community' : 'Join Community'}
-                     </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full group border-accent text-accent hover:bg-accent/10 hover:text-accent shadow-[0_0_8px_hsl(var(--accent)/0.3)] hover:shadow-[0_0_10px_hsl(var(--accent)/0.5)] transition-all duration-300 text-xs sm:text-sm"
+                      onClick={() => {
+                        if (isVibeCommuity) {
+                          router.push('/communities');
+                        } else {
+                          router.push(`/communities?communityId=${community.id}`);
+                        }
+                      }}
+                    >
+                      {isVibeCommuity ? 'View Community' : 'Join Community'}
+                    </Button>
                   </div>
                 </Card>
               );
@@ -765,7 +769,7 @@ export default function DiscoverPage() {
           </div>
         )}
       </section>
-      
+
       {/* Community Creation Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
@@ -778,28 +782,26 @@ export default function DiscoverPage() {
               Step {currentStep} of {totalSteps}: Build your community with custom settings and permissions.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="py-4">
             {/* Progress indicator */}
             <div className="flex items-center justify-between mb-6">
               {Array.from({ length: totalSteps }, (_, i) => i + 1).map((step) => (
                 <div key={step} className="flex items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                    step <= currentStep
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${step <= currentStep
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted text-muted-foreground'
-                  }`}>
+                    }`}>
                     {step < currentStep ? <CheckCircle className="h-4 w-4" /> : step}
                   </div>
                   {step < totalSteps && (
-                    <div className={`w-12 h-1 mx-2 ${
-                      step < currentStep ? 'bg-primary' : 'bg-muted'
-                    }`} />
+                    <div className={`w-12 h-1 mx-2 ${step < currentStep ? 'bg-primary' : 'bg-muted'
+                      }`} />
                   )}
                 </div>
               ))}
             </div>
-            
+
             {/* Step 1: Basic Information */}
             {currentStep === 1 && (
               <div className="space-y-4">
@@ -815,7 +817,7 @@ export default function DiscoverPage() {
                     <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
                   )}
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="description">Description *</Label>
                   <Textarea
@@ -829,7 +831,7 @@ export default function DiscoverPage() {
                     <p className="text-sm text-destructive">{form.formState.errors.description.message}</p>
                   )}
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="isPrivate"
@@ -843,7 +845,7 @@ export default function DiscoverPage() {
                 </div>
               </div>
             )}
-            
+
             {/* Step 2: Visual Customization */}
             {currentStep === 2 && (
               <div className="space-y-6">
@@ -902,7 +904,7 @@ export default function DiscoverPage() {
                     className="hidden"
                   />
                 </div>
-                
+
                 <div className="space-y-4">
                   <Label>Community Banner</Label>
                   <div className="space-y-4">
@@ -963,7 +965,7 @@ export default function DiscoverPage() {
                 </div>
               </div>
             )}
-            
+
             {/* Step 3: Member Permissions */}
             {currentStep === 3 && (
               <div className="space-y-6">
@@ -984,7 +986,7 @@ export default function DiscoverPage() {
                         <Switch
                           id={`member-${key}`}
                           checked={value}
-                          onCheckedChange={(checked) => 
+                          onCheckedChange={(checked) =>
                             updatePermission('member', key as keyof CommunityPermissions, checked)
                           }
                         />
@@ -994,7 +996,7 @@ export default function DiscoverPage() {
                 </div>
               </div>
             )}
-            
+
             {/* Step 4: Moderator & Admin Permissions */}
             {currentStep === 4 && (
               <div className="space-y-6">
@@ -1015,7 +1017,7 @@ export default function DiscoverPage() {
                         <Switch
                           id={`mod-${key}`}
                           checked={value}
-                          onCheckedChange={(checked) => 
+                          onCheckedChange={(checked) =>
                             updatePermission('moderator', key as keyof CommunityPermissions, checked)
                           }
                         />
@@ -1023,9 +1025,9 @@ export default function DiscoverPage() {
                     ))}
                   </div>
                 </div>
-                
+
                 <Separator />
-                
+
                 <div>
                   <h3 className="text-lg font-semibold mb-2 flex items-center">
                     <Crown className="mr-2 h-5 w-5" />
@@ -1043,7 +1045,7 @@ export default function DiscoverPage() {
                         <Switch
                           id={`admin-${key}`}
                           checked={value}
-                          onCheckedChange={(checked) => 
+                          onCheckedChange={(checked) =>
                             updatePermission('admin', key as keyof CommunityPermissions, checked)
                           }
                         />
@@ -1051,7 +1053,7 @@ export default function DiscoverPage() {
                     ))}
                   </div>
                 </div>
-                
+
                 <div className="bg-muted/30 p-4 rounded-lg">
                   <h4 className="font-semibold text-sm mb-2 flex items-center">
                     <Crown className="mr-2 h-4 w-4 text-primary" />
@@ -1065,7 +1067,7 @@ export default function DiscoverPage() {
               </div>
             )}
           </div>
-          
+
           <DialogFooter className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               {currentStep > 1 && (
@@ -1079,7 +1081,7 @@ export default function DiscoverPage() {
                 </Button>
               )}
             </div>
-            
+
             <div className="flex items-center space-x-2">
               <Button
                 type="button"
@@ -1092,7 +1094,7 @@ export default function DiscoverPage() {
               >
                 Cancel
               </Button>
-              
+
               {currentStep < totalSteps ? (
                 <Button
                   type="button"
@@ -1136,4 +1138,3 @@ export default function DiscoverPage() {
   );
 }
 
-    

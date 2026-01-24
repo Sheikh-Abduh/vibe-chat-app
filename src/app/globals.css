@@ -1,62 +1,72 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 220 3% 10%; /* Darker - Matches #262729 closely enough given PRD's intent for neon enhancement */
+    /* Deep Space Theme */
+    --background: 240 10% 4%;
+    /* Almost black, deep void */
     --foreground: 0 0% 98%;
 
-    --card: 220 3% 12%; 
+    --card: 240 10% 6%;
     --card-foreground: 0 0% 98%;
 
-    --popover: 220 3% 10%; 
+    --popover: 240 10% 6%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 289 85% 55%; /* Electric purple #BE29EC */
+    --primary: 289 85% 55%;
+    /* Electric Purple */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 3% 18%; 
+    --secondary: 240 5% 15%;
     --secondary-foreground: 0 0% 98%;
 
-    --muted: 220 3% 15%; 
-    --muted-foreground: 0 0% 70%;
+    --muted: 240 5% 15%;
+    --muted-foreground: 240 5% 65%;
 
-    --accent: 110 100% 50%; /* Neon green #39FF14 */
-    --accent-foreground: 220 3% 10%; /* Dark text for light green accent */
+    --accent: 110 100% 50%;
+    /* Neon Green */
+    --accent-foreground: 240 10% 4%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 3% 18%; 
-    --input: 220 3% 13%; 
-    --ring: hsl(var(--accent)); /* Use accent for general ring focus */
+    --border: 240 5% 15%;
+    --input: 240 5% 15%;
+    --ring: 289 85% 55%;
+    /* Primary Purple Ring */
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
+    /* Slightly more rounded for modern feel */
 
-    --chart-1: 289 85% 55%; /* Match new primary */
-    --chart-2: 110 100% 50%; /* Match new accent */
-    --chart-3: 220 70% 65%;
+    --chart-1: 289 85% 55%;
+    --chart-2: 110 100% 50%;
+    --chart-3: 240 70% 65%;
     --chart-4: 30 80% 60%;
     --chart-5: 200 75% 55%;
 
-    --sidebar-background: 220 3% 8%; 
-    --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: var(--primary); 
-    --sidebar-primary-foreground: var(--primary-foreground); 
-    --sidebar-accent: var(--accent); 
-    --sidebar-accent-foreground: var(--accent-foreground); 
-    --sidebar-border: 220 3% 15%;
-    --sidebar-ring: var(--accent); 
+    --sidebar-background: 240 10% 4%;
+    --sidebar-foreground: 240 5% 90%;
+    --sidebar-primary: 289 85% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 15%;
+    --sidebar-accent-foreground: 240 5% 90%;
+    --sidebar-border: 240 5% 15%;
+    --sidebar-ring: 289 85% 55%;
 
-    /* Base font size for scaling */
+    /* Glassmorphism Variables */
+    --glass-bg: rgba(10, 10, 15, 0.6);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-highlight: rgba(255, 255, 255, 0.05);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+
+    /* Font Sizes */
     --font-size-root-default: 16px;
     --font-size-root-compact: 14px;
     --font-size-root-comfortable: 17px;
   }
 
-  /* Default UI Scale */
   html {
     font-size: var(--font-size-root-default);
   }
@@ -64,18 +74,14 @@
   html.ui-scale-compact {
     font-size: var(--font-size-root-compact);
   }
+
   html.ui-scale-comfortable {
     font-size: var(--font-size-root-comfortable);
   }
 
-  /* Selection highlight using accent colors */
   ::selection {
-    background-color: hsl(var(--accent)); 
-    color: hsl(var(--accent-foreground));
-  }
-  ::-moz-selection { /* Firefox */
-    background-color: hsl(var(--accent)); 
-    color: hsl(var(--accent-foreground));
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
   }
 }
 
@@ -83,35 +89,70 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    /* Deep space gradient background */
+    background-image:
+      radial-gradient(circle at 50% 0%, hsl(289, 85%, 15%) 0%, transparent 50%),
+      radial-gradient(circle at 85% 30%, hsl(110, 100%, 5%) 0%, transparent 40%),
+      radial-gradient(circle at 15% 70%, hsl(289, 85%, 10%) 0%, transparent 40%);
+    background-attachment: fixed;
   }
 }
 
-/* Custom glow utilities if needed, or use Tailwind's shadow with HSL variables */
-.glow-primary-sm {
-  box-shadow: 0 0 8px hsl(var(--primary)/0.7);
-}
-.glow-primary-md {
-  box-shadow: 0 0 15px hsl(var(--primary)/0.7);
-}
-.glow-accent-sm {
-  box-shadow: 0 0 8px hsl(var(--accent)/0.7);
-}
-.glow-accent-md {
-  box-shadow: 0 0 15px hsl(var(--accent)/0.7);
+@layer utilities {
+  .glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .glass-button {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .glass-button:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 15px rgba(190, 41, 236, 0.3);
+    /* Primary glow */
+  }
+
+  .neon-text {
+    text-shadow: 0 0 10px hsl(var(--primary) / 0.5);
+  }
+
+  .neon-border {
+    box-shadow: 0 0 10px hsl(var(--primary) / 0.3);
+    border-color: hsl(var(--primary) / 0.5);
+  }
 }
 
-@keyframes pulse-neon-primary {
-  0% { box-shadow: 0 0 2px hsl(var(--primary)/0.4), 0 0 3px hsl(var(--primary)/0.3); border-color: hsl(var(--primary)/0.6); }
-  50% { box-shadow: 0 0 6px hsl(var(--primary)/0.7), 0 0 10px hsl(var(--primary)/0.5); border-color: hsl(var(--primary)); }
-  100% { box-shadow: 0 0 2px hsl(var(--primary)/0.4), 0 0 3px hsl(var(--primary)/0.3); border-color: hsl(var(--primary)/0.6); }
+/* Animations */
+@keyframes pulse-neon {
+
+  0%,
+  100% {
+    box-shadow: 0 0 5px hsl(var(--primary)/0.4), 0 0 10px hsl(var(--primary)/0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 10px hsl(var(--primary)/0.6), 0 0 20px hsl(var(--primary)/0.4);
+  }
+}
+
+.animate-pulse-neon {
+  animation: pulse-neon 3s infinite ease-in-out;
 }
 
 .avatar-pulse-neon {
-  border-width: 2px;
-  border-style: solid; /* Ensure border style is set for color to apply */
-  border-color: hsl(var(--primary)/0.6); /* Initial border color */
-  animation: pulse-neon-primary 2.5s infinite ease-in-out;
+  border: 2px solid hsl(var(--primary));
+  animation: pulse-neon 3s infinite ease-in-out;
 }

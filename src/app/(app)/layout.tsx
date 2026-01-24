@@ -34,6 +34,7 @@ import {
 import { AppSidebarContent } from '@/components/layout/sidebar-content';
 import { UserTag } from '@/components/user/user-tag';
 import type { VibeUserTag } from '@/components/user/user-tag';
+import GlobalCallManager from '@/components/call/global-call-manager';
 
 
 interface UserProfileDetails {
@@ -45,8 +46,8 @@ interface UserProfileDetails {
   gender?: string;
   tags?: string;
   passion?: string;
-  aboutMe?: string;
-  status?: string;
+  about?: string;
+  note?: string;
   vibeTag?: VibeUserTag;
 }
 
@@ -98,8 +99,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
           displayName: user.displayName || fetchedProfileDetails.displayName || "",
           photoURL: user.photoURL || fetchedProfileDetails.photoURL || "",
           email: user.email || "",
-          aboutMe: fetchedProfileDetails.aboutMe || "Tell us about yourself...",
-          status: fetchedProfileDetails.status || "What's on your mind?",
+          about: fetchedProfileDetails.about || "What's on your mind?",
+          note: fetchedProfileDetails.note || "Add a quick note",
           hobbies: fetchedProfileDetails.hobbies || "Not set",
           age: fetchedProfileDetails.age || "Not set",
           gender: fetchedProfileDetails.gender || "Not set",
@@ -184,173 +185,182 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider defaultOpen={false}>
-        <Sidebar side="left" collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-          <SidebarHeader className="flex justify-center items-center p-1">
-            <Link href="/dashboard">
-              <Image src="/logo.png" alt="vibe app logo" width={48} height={48} data-ai-hint="abstract logo" priority />
-            </Link>
-          </SidebarHeader>
-          <AppSidebarContent />
-          <SidebarFooter className="p-2 mt-auto border-t border-sidebar-border/50">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="relative h-12 w-full rounded-md p-0 flex items-center justify-center hover:bg-transparent focus:bg-transparent group-data-[state=expanded]:justify-start group-data-[state=expanded]:px-2 group-data-[state=expanded]:gap-2 focus-visible:ring-0 focus-visible:ring-offset-0 focus:ring-0 focus:ring-offset-0"
-                >
-                  <Avatar className="h-9 w-9 avatar-pulse-neon">
-                    <AvatarImage src={userStoredDetails?.photoURL || undefined} alt={userStoredDetails?.displayName || currentUser.email || 'User avatar'} />
-                    <AvatarFallback className="bg-muted text-muted-foreground">
-                      <UserCircle className="h-6 w-6" />
+      <Sidebar side="left" collapsible="icon" className="glass-panel border-r-0 text-sidebar-foreground">
+        <SidebarHeader className="flex justify-center items-center p-1">
+          <Link href="/dashboard">
+            <Image src="/logo.png" alt="vibe app logo" width={48} height={48} data-ai-hint="abstract logo" priority />
+          </Link>
+        </SidebarHeader>
+        <AppSidebarContent />
+        <SidebarFooter className="p-2 mt-auto border-t border-white/10">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className="relative h-12 w-full rounded-md p-0 flex items-center justify-center hover:bg-white/5 focus:bg-white/5 group-data-[state=expanded]:justify-start group-data-[state=expanded]:px-2 group-data-[state=expanded]:gap-2 focus-visible:ring-0 focus-visible:ring-offset-0 focus:ring-0 focus:ring-offset-0"
+              >
+                <Avatar className="h-9 w-9 avatar-pulse-neon">
+                  <AvatarImage src={userStoredDetails?.photoURL || undefined} alt={userStoredDetails?.displayName || currentUser.email || 'User avatar'} />
+                  <AvatarFallback className="bg-white/10 text-white/70">
+                    <UserCircle className="h-6 w-6" />
+                  </AvatarFallback>
+                </Avatar>
+                <span className="hidden group-data-[state=expanded]:inline text-sm text-sidebar-foreground truncate">
+                  {userStoredDetails?.displayName || currentUser.email?.split('@')[0] || "User"}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="right"
+              align="start"
+              className="mb-1 ml-1 min-w-[280px] sm:min-w-[300px] lg:min-w-[320px] glass-panel text-foreground border-white/10 shadow-xl rounded-lg p-3 sm:p-4"
+              sideOffset={12}
+            >
+              <DropdownMenuLabel className="font-normal p-0 mb-3 sm:mb-4">
+                <div className="flex items-center space-x-2 sm:space-x-3">
+                  <Avatar className="h-12 w-12 sm:h-14 sm:w-14">
+                    <AvatarImage src={userStoredDetails?.photoURL || undefined} alt={userStoredDetails?.displayName || 'User avatar'} />
+                    <AvatarFallback className="bg-white/10 text-white/70 text-lg sm:text-xl">
+                      {(userStoredDetails?.displayName || currentUser.email || "U").charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden group-data-[state=expanded]:inline text-sm text-sidebar-foreground truncate">
-                    {userStoredDetails?.displayName || currentUser.email?.split('@')[0] || "User"}
-                  </span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="right"
-                align="start"
-                className="mb-1 ml-1 min-w-[280px] sm:min-w-[300px] lg:min-w-[320px] bg-card border-border shadow-xl rounded-lg p-3 sm:p-4"
-                sideOffset={12}
-              >
-                <DropdownMenuLabel className="font-normal p-0 mb-3 sm:mb-4">
-                  <div className="flex items-center space-x-2 sm:space-x-3">
-                    <Avatar className="h-12 w-12 sm:h-14 sm:w-14">
-                      <AvatarImage src={userStoredDetails?.photoURL || undefined} alt={userStoredDetails?.displayName || 'User avatar'} />
-                      <AvatarFallback className="bg-muted text-muted-foreground text-lg sm:text-xl">
-                        {(userStoredDetails?.displayName || currentUser.email || "U").charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm sm:text-base font-semibold leading-none text-card-foreground truncate flex items-center gap-2">
-                        {userStoredDetails?.displayName || currentUser.email?.split('@')[0] || "User"}
-                        <UserTag tag={userStoredDetails?.vibeTag} size={20} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm sm:text-base font-semibold leading-none text-foreground truncate flex items-center gap-2">
+                      {userStoredDetails?.displayName || currentUser.email?.split('@')[0] || "User"}
+                      <UserTag tag={userStoredDetails?.vibeTag} size={20} />
+                    </p>
+                    {currentUser.email && (
+                      <p className="text-xs leading-none text-muted-foreground mt-1 truncate">
+                        {currentUser.email}
                       </p>
-                      {currentUser.email && (
-                        <p className="text-xs leading-none text-muted-foreground mt-1 truncate">
-                          {currentUser.email}
-                        </p>
-                      )}
+                    )}
+                  </div>
+                </div>
+              </DropdownMenuLabel>
+
+              <div className="space-y-2 sm:space-y-2.5 text-xs sm:text-sm text-foreground mb-3 sm:mb-4 text-left">
+                {/* Selected Tag */}
+                <div className="flex items-center">
+                  <Hash className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
+                  <span className="text-muted-foreground font-medium mr-1.5">Selected Tag:</span>
+                  <span className="flex items-center gap-1 text-foreground/90">
+                    <UserTag tag={userStoredDetails?.vibeTag} size={20} />
+                    <span>{userStoredDetails?.vibeTag || 'Not set'}</span>
+                  </span>
+                </div>
+                {userStoredDetails?.note && (
+                  <div className="flex items-start">
+                    <MessageSquare className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <span className="text-muted-foreground font-medium">Note:</span>
+                      <p className="italic text-foreground/90 leading-snug break-words">{userStoredDetails.note !== "Add a quick note" && userStoredDetails.note !== "" ? userStoredDetails.note : <span className="text-muted-foreground">Not set</span>}</p>
                     </div>
                   </div>
-                </DropdownMenuLabel>
-
-                <div className="space-y-2 sm:space-y-2.5 text-xs sm:text-sm text-card-foreground mb-3 sm:mb-4 text-left">
-                  {/* Selected Tag */}
+                )}
+                {userStoredDetails?.about && (
+                  <div className="flex items-start">
+                    <Info className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <span className="text-muted-foreground font-medium">About:</span>
+                      <p className="italic text-foreground/90 leading-snug break-words">{userStoredDetails.about !== "What's on your mind?" && userStoredDetails.about !== "" ? userStoredDetails.about : <span className="text-muted-foreground">Not set</span>}</p>
+                    </div>
+                  </div>
+                )}
+                {userStoredDetails?.hobbies && userStoredDetails.hobbies !== "Not set" && userStoredDetails.hobbies !== "" && (
+                  <div className="flex items-center">
+                    <Sparkles className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
+                    <span className="text-muted-foreground font-medium mr-1.5">Hobbies:</span> <span className="text-foreground/90 truncate">{userStoredDetails.hobbies}</span>
+                  </div>
+                )}
+                {userStoredDetails?.age && userStoredDetails.age !== "Not set" && (
+                  <div className="flex items-center">
+                    <Gift className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
+                    <span className="text-muted-foreground font-medium mr-1.5">Age:</span> <span className="text-foreground/90">{userStoredDetails.age}</span>
+                  </div>
+                )}
+                {userStoredDetails?.gender && userStoredDetails.gender !== "Not set" && (
+                  <div className="flex items-center">
+                    <PersonStanding className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
+                    <span className="text-muted-foreground font-medium mr-1.5">Gender:</span> <span className="text-foreground/90">{userStoredDetails.gender}</span>
+                  </div>
+                )}
+                {userStoredDetails?.tags && userStoredDetails.tags !== "Not set" && userStoredDetails.tags !== "" && (
                   <div className="flex items-center">
                     <Hash className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
-                    <span className="text-muted-foreground font-medium mr-1.5">Selected Tag:</span>
-                    <span className="flex items-center gap-1 text-card-foreground/90">
-                      <UserTag tag={userStoredDetails?.vibeTag} size={20} />
-                      <span>{userStoredDetails?.vibeTag || 'Not set'}</span>
-                    </span>
+                    <span className="text-muted-foreground font-medium mr-1.5">Tags:</span> <span className="text-foreground/90 truncate">{userStoredDetails.tags}</span>
                   </div>
-                  {userStoredDetails?.aboutMe && (
-                    <div className="flex items-start">
-                      <Info className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0 mt-0.5" />
-                      <div className="min-w-0 flex-1">
-                        <span className="text-muted-foreground font-medium">About:</span>
-                        <p className="italic text-card-foreground/90 leading-snug break-words">{userStoredDetails.aboutMe !== "Tell us about yourself..." && userStoredDetails.aboutMe !== "" ? userStoredDetails.aboutMe : <span className="text-muted-foreground">Not set</span>}</p>
-                      </div>
-                    </div>
-                  )}
-                  {userStoredDetails?.status && (
-                    <div className="flex items-start">
-                      <MessageSquare className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0 mt-0.5" />
-                      <div className="min-w-0 flex-1">
-                        <span className="text-muted-foreground font-medium">Status:</span>
-                        <p className="italic text-card-foreground/90 leading-snug break-words">{userStoredDetails.status !== "What's on your mind?" && userStoredDetails.status !== "" ? userStoredDetails.status : <span className="text-muted-foreground">Not set</span>}</p>
-                      </div>
-                    </div>
-                  )}
-                  {userStoredDetails?.hobbies && userStoredDetails.hobbies !== "Not set" && userStoredDetails.hobbies !== "" && (
-                    <div className="flex items-center">
-                      <Sparkles className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
-                      <span className="text-muted-foreground font-medium mr-1.5">Hobbies:</span> <span className="text-card-foreground/90 truncate">{userStoredDetails.hobbies}</span>
-                    </div>
-                  )}
-                  {userStoredDetails?.age && userStoredDetails.age !== "Not set" && (
-                    <div className="flex items-center">
-                      <Gift className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
-                      <span className="text-muted-foreground font-medium mr-1.5">Age:</span> <span className="text-card-foreground/90">{userStoredDetails.age}</span>
-                    </div>
-                  )}
-                  {userStoredDetails?.gender && userStoredDetails.gender !== "Not set" && (
-                    <div className="flex items-center">
-                      <PersonStanding className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
-                      <span className="text-muted-foreground font-medium mr-1.5">Gender:</span> <span className="text-card-foreground/90">{userStoredDetails.gender}</span>
-                    </div>
-                  )}
-                  {userStoredDetails?.tags && userStoredDetails.tags !== "Not set" && userStoredDetails.tags !== "" && (
-                    <div className="flex items-center">
-                      <Hash className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
-                      <span className="text-muted-foreground font-medium mr-1.5">Tags:</span> <span className="text-card-foreground/90 truncate">{userStoredDetails.tags}</span>
-                    </div>
-                  )}
-                  {userStoredDetails?.passion && userStoredDetails.passion !== "Not set" && (
-                    <div className="flex items-center">
-                      <Heart className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
-                      <span className="text-muted-foreground font-medium mr-1.5">Passion:</span> <span className="text-card-foreground/90 truncate">{passionDisplay}</span>
-                    </div>
-                  )}
-                </div>
-
-                <DropdownMenuItem asChild>
-                  <Link href="/settings/profile" className="flex items-center cursor-pointer text-accent hover:text-accent/80 focus:bg-accent/10 focus:text-accent text-sm py-2">
-                    <Edit3 className="mr-2 h-4 w-4" />
-                    <span>Edit Profile</span>
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive mt-1 text-sm py-2">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarFooter>
-        </Sidebar>
-
-        <SidebarInset>
-          <div className="h-screen flex flex-col overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
-            <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0 h-12 sm:h-14">
-              <div className="relative flex h-full items-center px-3 sm:px-4 lg:px-6">
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                  <Link href="/dashboard" className="flex items-center">
-                    <Image src="/vibe.png" alt="vibe text logo" width={50} height={12} className="block sm:hidden" data-ai-hint="typography wordmark" priority />
-                    <Image src="/vibe.png" alt="vibe text logo" width={60} height={14} className="hidden sm:block md:hidden" data-ai-hint="typography wordmark" priority />
-                    <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} className="hidden md:block" data-ai-hint="typography wordmark" priority />
-                  </Link>
-                </div>
-
-                <div className="ml-auto flex items-center space-x-1 sm:space-x-2">
-                  <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground relative h-8 w-8 sm:h-9 sm:w-9" asChild>
-                    <Link href="/activity">
-                      <BellDot className="h-4 w-4 sm:h-5 sm:w-5" />
-                      {unreadActivityCount > 0 && (
-                        <span className="absolute -top-1 -right-1 sm:top-1.5 sm:right-1.5 flex h-4 w-4 sm:h-2.5 sm:w-2.5 items-center justify-center rounded-full bg-destructive text-[10px] sm:text-xs font-bold text-destructive-foreground p-0 sm:p-1.5">
-                          {unreadActivityCount > 9 ? '9+' : unreadActivityCount}
-                        </span>
-                      )}
-                      <span className="sr-only">Activity Feed</span>
-                    </Link>
-                  </Button>
-                  <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" onClick={() => toast({ title: "Coming Soon!", description: "Global search will be implemented." })}>
-                    <Search className="h-4 w-4 sm:h-5 sm:w-5" />
-                    <span className="sr-only">Search</span>
-                  </Button>
-                </div>
+                )}
+                {userStoredDetails?.passion && userStoredDetails.passion !== "Not set" && (
+                  <div className="flex items-center">
+                    <Heart className="mr-2 sm:mr-2.5 h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
+                    <span className="text-muted-foreground font-medium mr-1.5">Passion:</span> <span className="text-foreground/90 truncate">{passionDisplay}</span>
+                  </div>
+                )}
               </div>
-            </header>
-            <main className="flex-1 overflow-hidden">
-              <Suspense fallback={<SplashScreenDisplay />}>
-                {children}
-              </Suspense>
-            </main>
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
+
+              <DropdownMenuItem asChild>
+                <Link href="/settings/profile" className="flex items-center cursor-pointer text-accent hover:text-accent/80 focus:bg-accent/10 focus:text-accent text-sm py-2">
+                  <Edit3 className="mr-2 h-4 w-4" />
+                  <span>Edit Profile</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings/profile#note" className="flex items-center cursor-pointer text-accent hover:text-accent/80 focus:bg-accent/10 focus:text-accent text-sm py-2">
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  <span>Edit Note</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive mt-1 text-sm py-2">
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SidebarFooter>
+      </Sidebar>
+
+      <SidebarInset>
+        <div className="h-screen flex flex-col overflow-hidden bg-transparent text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+          <header className="sticky top-0 z-40 w-full border-b border-white/10 bg-black/20 backdrop-blur-md shrink-0 h-12 sm:h-14">
+            <div className="relative flex h-full items-center px-3 sm:px-4 lg:px-6">
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <Link href="/dashboard" className="flex items-center">
+                  <Image src="/vibe.png" alt="vibe text logo" width={50} height={12} className="block sm:hidden" data-ai-hint="typography wordmark" />
+                  <Image src="/vibe.png" alt="vibe text logo" width={60} height={14} className="hidden sm:block md:hidden" data-ai-hint="typography wordmark" />
+                  <Image src="/vibe.png" alt="vibe text logo" width={80} height={19} className="hidden md:block" data-ai-hint="typography wordmark" />
+                </Link>
+              </div>
+
+              <div className="ml-auto flex items-center space-x-1 sm:space-x-2">
+                <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground relative h-8 w-8 sm:h-9 sm:w-9" asChild>
+                  <Link href="/activity">
+                    <BellDot className="h-4 w-4 sm:h-5 sm:w-5" />
+                    {unreadActivityCount > 0 && (
+                      <span className="absolute -top-1 -right-1 sm:top-1.5 sm:right-1.5 flex h-4 w-4 sm:h-2.5 sm:w-2.5 items-center justify-center rounded-full bg-destructive text-[10px] sm:text-xs font-bold text-destructive-foreground p-0 sm:p-1.5">
+                        {unreadActivityCount > 9 ? '9+' : unreadActivityCount}
+                      </span>
+                    )}
+                    <span className="sr-only">Activity Feed</span>
+                  </Link>
+                </Button>
+                <Button variant="ghost" size="icon" className="text-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" onClick={() => toast({ title: "Coming Soon!", description: "Global search will be implemented." })}>
+                  <Search className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <span className="sr-only">Search</span>
+                </Button>
+              </div>
+            </div>
+          </header>
+          <main className="flex-1 overflow-hidden">
+            <Suspense fallback={<SplashScreenDisplay />}>
+              {children}
+            </Suspense>
+          </main>
+        </div>
+      </SidebarInset>
+
+      {/* Global Call Manager - Handles incoming calls across the entire app */}
+      <GlobalCallManager />
+    </SidebarProvider>
   );
 }
 

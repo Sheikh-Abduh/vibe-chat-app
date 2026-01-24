@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Verify Database Rules</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px; font-family: monospace; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button { padding: 8px 16px; margin: 5px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        input { padding: 8px; margin: 5px; border: 1px solid #ccc; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>Verify Database Rules</h1>
+    
+    <div id="auth-section">
+        <h2>Authentication</h2>
+        <button id="login-btn">Login with Google</button>
+        <button id="logout-btn" disabled>Logout</button>
+        <div id="user-info"></div>
+    </div>
+    
+    <div id="test-section" style="margin-top: 20px;">
+        <h2>Database Rules Test</h2>
+        <div>
+            <label>Your User ID:</label>
+            <input type="text" id="your-user-id" placeholder="Will be filled automatically" readonly>
+        </div>
+        <div>
+            <label>Test User ID (can be same as yours):</label>
+            <input type="text" id="test-user-id" placeholder="Enter a user ID">
+            <button id="use-my-id">Use My ID</button>
+        </div>
+        <br>
+        <button id="test-write-own">Test Write to Own Calls</button>
+        <button id="test-read-own">Test Read Own Calls</button>
+        <button id="test-write-other">Test Write to Other User's Calls</button>
+        <button id="test-read-other">Test Read Other User's Calls</button>
+        <div id="test-results" style="margin-top: 10px;"></div>
+    </div>
+
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBhfsaN9wCA0C50wzFp064X4S5X7Q2dX7c",
+            authDomain: "vibe-24b62.firebaseapp.com",
+            databaseURL: "https://vibe-24b62-default-rtdb.firebaseio.com",
+            projectId: "vibe-24b62",
+            storageBucket: "vibe-24b62.appspot.com",
+            messagingSenderId: "1072735150347",
+            appId: "1:1072735150347:web:4c90c9728eb87430"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
+        // DOM elements
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const userInfo = document.getElementById('user-info');
+        const yourUserIdInput = document.getElementById('your-user-id');
+        const testUserIdInput = document.getElementById('test-user-id');
+        const useMyIdBtn = document.getElementById('use-my-id');
+        const testWriteOwnBtn = document.getElementById('test-write-own');
+        const testReadOwnBtn = document.getElementById('test-read-own');
+        const testWriteOtherBtn = document.getElementById('test-write-other');
+        const testReadOtherBtn = document.getElementById('test-read-other');
+        const testResults = document.getElementById('test-results');
+
+        // Add log message
+        function addLog(message, type = 'info') {
+            const logDiv = document.createElement('div');
+            logDiv.className = `log ${type}`;
+            logDiv.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            testResults.appendChild(logDiv);
+            testResults.scrollTop = testResults.scrollHeight;
+        }
+
+        // Auth state listener
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                userInfo.innerHTML = `
+                    <p>Logged in as: ${user.email}</p>
+                    <p>User ID: ${user.uid}</p>
+                `;
+                yourUserIdInput.value = user.uid;
+                testUserIdInput.value = user.uid;
+                loginBtn.disabled = true;
+                logoutBtn.disabled = false;
+                addLog('User authenticated successfully', 'success');
+            } else {
+                userInfo.innerHTML = '<p>Not logged in</p>';
+                yourUserIdInput.value = '';
+                loginBtn.disabled = false;
+                logoutBtn.disabled = true;
+                addLog('User not authenticated', 'info');
+            }
+        });
+
+        // Login
+        loginBtn.addEventListener('click', () => {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider).catch(error => {
+                addLog(`Login error: ${error.message}`, 'error');
+            });
+        });
+
+        // Logout
+        logoutBtn.addEventListener('click', () => {
+            auth.signOut().catch(error => {
+                addLog(`Logout error: ${error.message}`, 'error');
+            });
+        });
+
+        // Use my ID
+        useMyIdBtn.addEventListener('click', () => {
+            const user = auth.currentUser;
+            if (user) {
+                testUserIdInput.value = user.uid;
+            } else {
+                alert('Please log in first');
+            }
+        });
+
+        // Test write to own calls
+        testWriteOwnBtn.addEventListener('click', async () => {
+            const user = auth.currentUser;
+            if (!user) {
+                alert('Please log in first');
+                return;
+            }
+
+            try {
+                addLog('Testing write to own calls...', 'info');
+                const testRef = database.ref(`calls/${user.uid}/incoming`);
+                await testRef.set({
+                    callerId: user.uid,
+                    callerName: 'Test User',
+                    callType: 'audio',
+                    timestamp: Date.now(),
+                    status: 'ringing'
+                });
+                addLog('✅ Write to own calls successful', 'success');
+            } catch (error) {
+                addLog(`❌ Write to own calls failed: ${error.message}`, 'error');
+            }
+        });
+
+        // Test read own calls
+        testReadOwnBtn.addEventListener('click', async () => {
+            const user = auth.currentUser;
+            if (!user) {
+                alert('Please log in first');
+                return;
+            }
+
+            try {
+                addLog('Testing read from own calls...', 'info');
+                const testRef = database.ref(`calls/${user.uid}/incoming`);
+                const snapshot = await testRef.get();
+                
+                if (snapshot.exists()) {
+                    addLog(`✅ Read from own calls successful: ${JSON.stringify(snapshot.val())}`, 'success');
+                } else {
+                    addLog('✅ Read from own calls successful: No data found', 'success');
+                }
+            } catch (error) {
+                addLog(`❌ Read from own calls failed: ${error.message}`, 'error');
+            }
+        });
+
+        // Test write to other user's calls
+        testWriteOtherBtn.addEventListener('click', async () => {
+            const user = auth.currentUser;
+            if (!user) {
+                alert('Please log in first');
+                return;
+            }
+
+            const testUserId = testUserIdInput.value;
+            if (!testUserId) {
+                alert('Please enter a test user ID');
+                return;
+            }
+
+            // If testing with own ID, use the own test instead
+            if (testUserId === user.uid) {
+                testWriteOwnBtn.click();
+                return;
+            }
+
+            try {
+                addLog(`Testing write to other user's calls (${testUserId})...`, 'info');
+                const testRef = database.ref(`calls/${testUserId}/incoming`);
+                await testRef.set({
+                    callerId: user.uid,
+                    callerName: 'Test User',
+                    callType: 'audio',
+                    timestamp: Date.now(),
+                    status: 'ringing'
+                });
+                addLog(`✅ Write to other user's calls successful`, 'success');
+            } catch (error) {
+                addLog(`❌ Write to other user's calls failed: ${error.message}`, 'error');
+            }
+        });
+
+        // Test read other user's calls
+        testReadOtherBtn.addEventListener('click', async () => {
+            const user = auth.currentUser;
+            if (!user) {
+                alert('Please log in first');
+                return;
+            }
+
+            const testUserId = testUserIdInput.value;
+            if (!testUserId) {
+                alert('Please enter a test user ID');
+                return;
+            }
+
+            // If testing with own ID, use the own test instead
+            if (testUserId === user.uid) {
+                testReadOwnBtn.click();
+                return;
+            }
+
+            try {
+                addLog(`Testing read from other user's calls (${testUserId})...`, 'info');
+                const testRef = database.ref(`calls/${testUserId}/incoming`);
+                const snapshot = await testRef.get();
+                
+                if (snapshot.exists()) {
+                    addLog(`✅ Read from other user's calls successful: ${JSON.stringify(snapshot.val())}`, 'success');
+                } else {
+                    addLog(`✅ Read from other user's calls successful: No data found`, 'success');
+                }
+            } catch (error) {
+                addLog(`❌ Read from other user's calls failed: ${error.message}`, 'error');
+            }
+        });
+
+        // Initial log
+        addLog('Page loaded. Please log in to begin testing.', 'info');
+    </script>
+</body>
+</html>

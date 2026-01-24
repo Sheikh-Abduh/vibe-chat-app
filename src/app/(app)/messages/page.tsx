@@ -41,6 +41,7 @@ import { useWebRTC } from '@/hooks/useWebRTC';
 import CallPanel from '@/components/call/call-panel';
 import IncomingCall from '@/components/call/incoming-call';
 import OutgoingCall from '@/components/call/outgoing-call';
+import { CommunityPreviewCard } from '@/components/messages/community-preview-card';
 
 
 const EmojiPicker = dynamic(() => import('emoji-picker-react').then(mod => mod.default), {
@@ -141,7 +142,7 @@ export default function MessagesPage() {
   const [otherUserId, setOtherUserId] = useState<string | null>(null);
   const [otherUserName, setOtherUserName] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [dmPartnerProfile, setDmPartnerProfile] = useState<Partial<User> & { bio?: string; mutualInterests?: string[]; vibeTag?: VibeUserTag } | null>(null);
+  const [dmPartnerProfile, setDmPartnerProfile] = useState<Partial<User> & { bio?: string; note?: string; mutualInterests?: string[]; vibeTag?: VibeUserTag } | null>(null);
   const [currentUserVibeTag, setCurrentUserVibeTag] = useState<VibeUserTag | undefined>(undefined);
   const [dmPartnerVibeTag, setDmPartnerVibeTag] = useState<VibeUserTag | undefined>(undefined);
   const [connectedUsers, setConnectedUsers] = useState<DmConversation[]>([]);
@@ -542,7 +543,7 @@ export default function MessagesPage() {
 
           if (userDoc.exists()) {
             const userData = userDoc.data();
-            
+
             // Check if user is deleted
             if (isUserDeleted(userData)) {
               console.log(`Cannot display profile for deleted user ${otherUserId}`);
@@ -554,7 +555,7 @@ export default function MessagesPage() {
               router.push('/messages');
               return;
             }
-            
+
             const profile = userData.profileDetails || {};
 
             // Calculate actual mutual interests
@@ -565,7 +566,8 @@ export default function MessagesPage() {
               displayName: profile.displayName || userData.email?.split('@')[0] || "User",
               photoURL: profile.photoURL || null,
               email: userData.email,
-              bio: profile.aboutMe || "",
+              bio: profile.about || profile.aboutMe || "",
+              note: profile.note || "",
               mutualInterests: mutualInterests,
               vibeTag: profile.vibeTag as VibeUserTag | undefined,
             });
@@ -655,7 +657,7 @@ export default function MessagesPage() {
       // Filter out deleted users using our user filtering utility
       const getUserData = createUserDataGetter(getDoc, doc, db);
       const activeConnectedUserIds = await filterDeletedUserIds(filteredConnectedUserIds, getUserData);
-      
+
       logFilteringStats(filteredConnectedUserIds.length, activeConnectedUserIds.length, "messages-connected-users");
       console.log('fetchConnectedUsers - final active connected user IDs:', activeConnectedUserIds);
 
@@ -669,13 +671,13 @@ export default function MessagesPage() {
 
           if (userDoc.exists()) {
             const userData = userDoc.data();
-            
+
             // Double-check for deleted users (extra safety)
             if (isUserDeleted(userData)) {
               console.log(`Skipping deleted user ${userId} in messages`);
               continue;
             }
-            
+
             const profile = userData.profileDetails || {};
 
             const conversationId = [currentUser.uid, userId].sort().join('_');
@@ -1450,49 +1452,49 @@ export default function MessagesPage() {
       hasConversationId: !!conversationId,
       hasOtherUserId: !!otherUserId
     });
-    // Prevent sending if message is empty or users aren't available
-    if (
-      newMessage.trim() === "" ||
-      !currentUser ||
-      !conversationId ||
-      !otherUserId
-    ) {
-      return;
-    }
-
-    // Check if users can interact (using the new helper function)
-    console.log(`Checking interaction status before sending message: ${currentUser.uid} -> ${otherUserId}`);
-    const canInteract = await canUsersInteract(currentUser.uid, otherUserId);
-    console.log(`Can interact result: ${canInteract}`);
-
-    if (!canInteract) {
-      // Get more specific interaction status
-      const { isBlocked, isDisconnected } = await getUserInteractionStatus(currentUser.uid, otherUserId);
-      console.log(`Detailed status: blocked=${isBlocked}, disconnected=${isDisconnected}`);
-
-      if (isDisconnected) {
-        toast({
-          variant: "destructive",
-          title: "Cannot Send Message",
-          description: "You are disconnected from this user. You can only interact in community channels."
-        });
-      } else if (isBlocked) {
-        toast({
-          variant: "destructive",
-          title: "Blocked",
-          description: "You cannot send messages to this user."
-        });
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Cannot Send Message",
-          description: "You cannot send messages to this user."
-        });
-      }
-      return;
-    }
-
     try {
+      // Prevent sending if message is empty or users aren't available
+      if (
+        newMessage.trim() === "" ||
+        !currentUser ||
+        !conversationId ||
+        !otherUserId
+      ) {
+        return;
+      }
+
+      // Check if users can interact (using the new helper function)
+      console.log(`Checking interaction status before sending message: ${currentUser.uid} -> ${otherUserId}`);
+      const canInteract = await canUsersInteract(currentUser.uid, otherUserId);
+      console.log(`Can interact result: ${canInteract}`);
+
+      if (!canInteract) {
+        // Get more specific interaction status
+        const { isBlocked, isDisconnected } = await getUserInteractionStatus(currentUser.uid, otherUserId);
+        console.log(`Detailed status: blocked=${isBlocked}, disconnected=${isDisconnected}`);
+
+        if (isDisconnected) {
+          toast({
+            variant: "destructive",
+            title: "Cannot Send Message",
+            description: "You are disconnected from this user. You can only interact in community channels."
+          });
+        } else if (isBlocked) {
+          toast({
+            variant: "destructive",
+            title: "Blocked",
+            description: "You cannot send messages to this user."
+          });
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Cannot Send Message",
+            description: "You cannot send messages to this user."
+          });
+        }
+        return;
+      }
+
       const conversationReady = await ensureConversationDocument();
       if (!conversationReady) {
         console.log("Conversation not ready, cannot send message");
@@ -1513,6 +1515,47 @@ export default function MessagesPage() {
       }
       const resolvedMentionedUserIds = mentionedUserDisplayNames;
 
+      // Detect community links in the message (supports full URLs and relative paths)
+      const communityLinkRegex = /(?:https?:\/\/[^\s]+)?\/community\/([a-zA-Z0-9_-]+)/i;
+      const communityMatch = messageText.match(communityLinkRegex);
+      let communityData: {
+        communityId?: string;
+        communityName?: string;
+        communityIcon?: string;
+        communityBanner?: string;
+        communityDescription?: string;
+      } = {};
+
+      console.log("🔍 Checking for community link in message:", messageText);
+      if (communityMatch) {
+        const communityId = communityMatch[1];
+        console.log("✅ Community link detected! ID:", communityId);
+
+        try {
+          // Fetch community data from Firestore
+          console.log("📡 Fetching community data from Firestore...");
+          const communityDoc = await getDoc(doc(db, 'communities', communityId));
+          if (communityDoc.exists()) {
+            const community = communityDoc.data();
+            console.log("📦 Raw community data:", community);
+            communityData = {
+              communityId: communityId,
+              communityName: community.name || 'Unknown Community',
+              communityIcon: community.iconUrl || community.icon || undefined,
+              communityBanner: community.bannerUrl || community.banner || undefined,
+              communityDescription: community.description || undefined,
+            };
+            console.log("✅ Community data processed:", communityData);
+          } else {
+            console.log("⚠️ Community not found in Firestore:", communityId);
+          }
+        } catch (error) {
+          console.error("❌ Error fetching community data:", error);
+        }
+      } else {
+        console.log("ℹ️ No community link detected in message");
+      }
+
       const messageData: Partial<ChatMessage> = {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
@@ -1520,6 +1563,7 @@ export default function MessagesPage() {
         timestamp: new Date(),
         type: 'text' as const,
         text: messageText,
+        ...communityData, // Spread community data if available
       };
       if (resolvedMentionedUserIds.length > 0) messageData.mentionedUserIds = resolvedMentionedUserIds;
       if (replyingToMessage) {
@@ -1530,6 +1574,11 @@ export default function MessagesPage() {
       }
 
       console.log("Sending message with data:", messageData);
+
+      // Optimistic UI: Clear input immediately
+      setNewMessage("");
+      setReplyingToMessage(null);
+      setShowMentionSuggestions(false);
 
       const messagesColRef = collection(db, `direct_messages/${conversationId}/messages`);
       await addDoc(messagesColRef, messageData);
@@ -1543,10 +1592,6 @@ export default function MessagesPage() {
         [`user_${otherUserId}_name`]: dmPartnerProfile?.displayName || (otherUserId === currentUser.uid ? (currentUser.displayName || "You") : "User"),
         [`user_${otherUserId}_avatar`]: dmPartnerProfile?.photoURL || (otherUserId === currentUser.uid ? currentUser.photoURL : null),
       });
-
-      setNewMessage("");
-      setReplyingToMessage(null);
-      setShowMentionSuggestions(false);
 
       console.log("Message sent successfully");
 
@@ -1783,24 +1828,25 @@ export default function MessagesPage() {
     handleToggleFavoriteGif(gifToFavorite);
   };
 
-  const handleDeleteMessage = async () => {
-    console.log("🗑️ handleDeleteMessage called with:", { deletingMessageId, conversationId, currentUserUid: currentUser?.uid });
+  const handleDeleteMessage = async (idOrEvent?: string | React.MouseEvent) => {
+    const targetId = typeof idOrEvent === 'string' ? idOrEvent : deletingMessageId;
+    console.log("🗑️ handleDeleteMessage called with:", { targetId, conversationId, currentUserUid: currentUser?.uid });
 
-    if (!deletingMessageId || !conversationId || !currentUser) {
+    if (!targetId || !conversationId || !currentUser) {
       console.log("❌ Cannot delete message - missing data");
       toast({ variant: "destructive", title: "Error", description: "Cannot delete message." });
       setDeletingMessageId(null);
       return;
     }
-    const msgDoc = messages.find(m => m.id === deletingMessageId);
+    const msgDoc = messages.find(m => m.id === targetId);
     if (msgDoc && msgDoc.senderId !== currentUser.uid) {
       console.log("❌ Cannot delete message - not the sender");
       toast({ variant: "destructive", title: "Error", description: "You can only delete your own messages." });
       setDeletingMessageId(null); return;
     }
     try {
-      console.log("🗑️ Attempting to delete message:", deletingMessageId);
-      await deleteDoc(doc(db, `direct_messages/${conversationId}/messages/${deletingMessageId}`));
+      console.log("🗑️ Attempting to delete message:", targetId);
+      await deleteDoc(doc(db, `direct_messages/${conversationId}/messages/${targetId}`));
       console.log("✅ Message deleted successfully");
       toast({ title: "Message Deleted" });
     } catch (error) {
@@ -1856,8 +1902,8 @@ export default function MessagesPage() {
     if (event.shiftKey) {
       // Shift+click: Delete immediately without confirmation
       console.log("🚀 Shift+click detected - deleting immediately");
-      setDeletingMessageId(messageId);
-      await handleDeleteMessage();
+      // Pass messageId directly to avoid state update race condition
+      await handleDeleteMessage(messageId);
     } else {
       // Normal click: Show confirmation dialog
       console.log("📋 Normal click - showing confirmation dialog");
@@ -2171,17 +2217,35 @@ export default function MessagesPage() {
       } catch (error) {
         console.error("Recording Error:", error);
         toast({ variant: "destructive", title: "Recording Error", description: "Could not start voice recording." }); setIsRecording(false);
+
       }
     }
   };
 
   const handleStartCall = async (isVideoCall: boolean) => {
-    // Voice chat functionality removed
-    toast({
-      title: "Feature Unavailable",
-      description: "Voice and video calling has been disabled.",
-    });
+    if (!currentUser || !otherUserId) return;
+
+    // Check if users can interact
+    const status = await getUserInteractionStatus(currentUser.uid, otherUserId);
+    if (!status.canInteract) {
+      toast({
+        variant: "destructive",
+        title: "Cannot Start Call",
+        description: status.isBlocked
+          ? "You cannot call this user."
+          : "You must be connected to call this user."
+      });
+      return;
+    }
+
+    if (isVideoCall) {
+      await webrtc.startVideoCall();
+    } else {
+      await webrtc.startVoiceCall();
+    }
   };
+
+
 
   // Load blocked users
   useEffect(() => {
@@ -2325,7 +2389,7 @@ export default function MessagesPage() {
 
     let censoredText = text;
     restrictedWords.forEach(({ word, convertTo }) => {
-      const regex = new RegExp(`\\b${word}\\b`, 'gi');
+      const regex = new RegExp(`\\b${word} \\b`, 'gi');
       const replacement = convertTo.length === 1 ? convertTo.repeat(word.length) : convertTo;
       censoredText = censoredText.replace(regex, replacement);
     });
@@ -2351,7 +2415,7 @@ export default function MessagesPage() {
 
     const updatedWords = [...restrictedWords, { word, convertTo }];
     setRestrictedWords(updatedWords);
-    localStorage.setItem(`restricted_words_${currentUser.uid}`, JSON.stringify(updatedWords));
+    localStorage.setItem(`restricted_words_${currentUser.uid} `, JSON.stringify(updatedWords));
     setNewRestrictedWord("");
     setNewRestrictedWordConvertTo("*");
 
@@ -2367,7 +2431,7 @@ export default function MessagesPage() {
 
     const updatedWords = restrictedWords.filter(rw => rw.word !== word);
     setRestrictedWords(updatedWords);
-    localStorage.setItem(`restricted_words_${currentUser.uid}`, JSON.stringify(updatedWords));
+    localStorage.setItem(`restricted_words_${currentUser.uid} `, JSON.stringify(updatedWords));
 
     toast({
       title: "Word Unrestricted",
@@ -2572,59 +2636,59 @@ export default function MessagesPage() {
                       >
                         {currentMuteSettings.mutedUsers && currentMuteSettings.mutedUsers.includes(conversation.partnerId) ? (
                           <>
-                    {/* Call Settings */}
-                    <Dialog open={isCallSettingsOpen} onOpenChange={async (open) => {
-                      setIsCallSettingsOpen(open);
-                      if (open) {
-                        try {
-                          const list = await webrtc.enumerateDevices();
-                          setDeviceList(list);
-                        } catch (e) {
-                          console.warn('Unable to enumerate devices', e);
-                        }
-                      }
-                    }}>
-                      <DialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" title="Call settings">
-                          <MoreHorizontal className="h-4 w-4 sm:h-5 sm:w-5" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Call Settings</DialogTitle>
-                          <DialogDescription>Choose your preferred microphone and camera. TURN status is shown below.</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-3 text-sm">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">TURN</span>
-                            <span className={cn('text-xs px-2 py-0.5 rounded', webrtc.turnConfigured ? 'bg-green-500/10 text-green-600' : 'bg-yellow-500/10 text-yellow-600')}>
-                              {webrtc.turnConfigured ? 'Configured' : 'Not configured'}
-                            </span>
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted-foreground">Microphone</label>
-                            <select className="mt-1 w-full bg-muted text-foreground rounded px-2 py-1" value={webrtc.audioInputId || ''} onChange={(e) => webrtc.setAudioInputId(e.target.value || null)}>
-                              <option value="">Default</option>
-                              {deviceList.filter(d => d.kind === 'audioinput').map(d => (
-                                <option key={d.deviceId} value={d.deviceId}>{d.label || 'Mic'}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted-foreground">Camera</label>
-                            <select className="mt-1 w-full bg-muted text-foreground rounded px-2 py-1" value={webrtc.videoInputId || ''} onChange={(e) => webrtc.setVideoInputId(e.target.value || null)}>
-                              <option value="">Default</option>
-                              {deviceList.filter(d => d.kind === 'videoinput').map(d => (
-                                <option key={d.deviceId} value={d.deviceId}>{d.label || 'Camera'}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button onClick={() => setIsCallSettingsOpen(false)}>Done</Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
+                            {/* Call Settings */}
+                            <Dialog open={isCallSettingsOpen} onOpenChange={async (open) => {
+                              setIsCallSettingsOpen(open);
+                              if (open) {
+                                try {
+                                  const list = await webrtc.enumerateDevices();
+                                  setDeviceList(list);
+                                } catch (e) {
+                                  console.warn('Unable to enumerate devices', e);
+                                }
+                              }
+                            }}>
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" title="Call settings">
+                                  <MoreHorizontal className="h-4 w-4 sm:h-5 sm:w-5" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle>Call Settings</DialogTitle>
+                                  <DialogDescription>Choose your preferred microphone and camera. TURN status is shown below.</DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-3 text-sm">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-medium">TURN</span>
+                                    <span className={cn('text-xs px-2 py-0.5 rounded', webrtc.turnConfigured ? 'bg-green-500/10 text-green-600' : 'bg-yellow-500/10 text-yellow-600')}>
+                                      {webrtc.turnConfigured ? 'Configured' : 'Not configured'}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-muted-foreground">Microphone</label>
+                                    <select className="mt-1 w-full bg-muted text-foreground rounded px-2 py-1" value={webrtc.audioInputId || ''} onChange={(e) => webrtc.setAudioInputId(e.target.value || null)}>
+                                      <option value="">Default</option>
+                                      {deviceList.filter(d => d.kind === 'audioinput').map(d => (
+                                        <option key={d.deviceId} value={d.deviceId}>{d.label || 'Mic'}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-muted-foreground">Camera</label>
+                                    <select className="mt-1 w-full bg-muted text-foreground rounded px-2 py-1" value={webrtc.videoInputId || ''} onChange={(e) => webrtc.setVideoInputId(e.target.value || null)}>
+                                      <option value="">Default</option>
+                                      {deviceList.filter(d => d.kind === 'videoinput').map(d => (
+                                        <option key={d.deviceId} value={d.deviceId}>{d.label || 'Camera'}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+                                <DialogFooter>
+                                  <Button onClick={() => setIsCallSettingsOpen(false)}>Done</Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
                             <Volume2 className="mr-2 h-4 w-4" />
                             Unmute user
                           </>
@@ -2716,7 +2780,7 @@ export default function MessagesPage() {
                   </h3>
                 </div>
               </div>
-              <div className={cn("flex items-center space-x-1", isChatSearchOpen && "w-full sm:max-w-xs")}> 
+              <div className={cn("flex items-center space-x-1", isChatSearchOpen && "w-full sm:max-w-xs")}>
                 {isChatSearchOpen ? (
                   <div className="flex items-center w-full bg-muted rounded-md px-2">
                     <Search className="h-4 w-4 text-muted-foreground mr-2" />
@@ -2844,6 +2908,14 @@ export default function MessagesPage() {
               onHangUp={handleHangUp}
               onUpgradeToVideo={webrtc.upgradeToVideo}
               callStartMs={webrtc.callStartMs}
+              connectionState={webrtc.connectionState}
+              audioInputId={webrtc.audioInputId}
+              videoInputId={webrtc.videoInputId}
+              audioOutputId={webrtc.audioOutputId}
+              setAudioInputId={webrtc.setAudioInputId}
+              setVideoInputId={webrtc.setVideoInputId}
+              setAudioOutputId={webrtc.setAudioOutputId}
+              enumerateDevices={webrtc.enumerateDevices}
             />
 
             <ScrollArea className="flex-1 min-h-0 bg-card/30">
@@ -2869,6 +2941,7 @@ export default function MessagesPage() {
                   return (
                     <div
                       key={msg.id}
+                      id={`message-${msg.id}`}
                       className={cn(
                         "flex items-start space-x-2 group relative hover:bg-muted/30 px-2 py-1 rounded-md",
                         isCurrentUserMsg && "flex-row-reverse space-x-reverse"
@@ -2900,7 +2973,13 @@ export default function MessagesPage() {
                           </div>
                         )}
                         {msg.replyToMessageId && msg.replyToSenderName && msg.replyToTextSnippet && (
-                          <div className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max text-left", isCurrentUserMsg ? "ml-auto" : "mr-auto")}>
+                          <div
+                            className={cn("mb-1 p-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md border-l-2 border-primary/50 max-w-max text-left cursor-pointer hover:opacity-80 transition-opacity", "mr-auto")}
+                            onClick={() => {
+                              const el = document.getElementById(`message-${msg.replyToMessageId}`);
+                              el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }}
+                          >
                             <div className="flex items-center">
                               <CornerUpRight className="h-3 w-3 mr-1.5 text-primary/70" />
                               <span>Replying to <span className="font-medium text-foreground/80">{msg.replyToSenderName}</span>:
@@ -2917,6 +2996,18 @@ export default function MessagesPage() {
                         {msg.type === 'text' && msg.text && (
                           <p className={cn("text-sm text-foreground/90 whitespace-pre-wrap break-words text-left")}
                             dangerouslySetInnerHTML={{ __html: formatChatMessage(msg.text, restrictedWords) }} />
+                        )}
+                        {/* Community Preview Card */}
+                        {msg.communityId && msg.communityName && (
+                          <div className="mt-2">
+                            <CommunityPreviewCard
+                              communityId={msg.communityId}
+                              communityName={msg.communityName}
+                              communityIcon={msg.communityIcon}
+                              communityBanner={msg.communityBanner}
+                              communityDescription={msg.communityDescription}
+                            />
+                          </div>
                         )}
                         {msg.type === 'gif' && msg.gifUrl && (
                           <div className="relative max-w-[250px] sm:max-w-[300px] mt-1 group/gif">
@@ -2972,7 +3063,7 @@ export default function MessagesPage() {
                           </div>
                         )}
                         {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                          <div className={cn("mt-1.5 flex flex-wrap gap-1.5", isCurrentUserMsg && "justify-end")}>
+                          <div className={cn("mt-1.5 flex flex-wrap gap-1.5 justify-start")}>
                             {Object.entries(msg.reactions).map(([emoji, userIds]) => (
                               userIds.length > 0 && (
                                 <Button key={emoji} variant="outline" size="sm" onClick={() => handleToggleReaction(msg.id, emoji)}
@@ -3047,7 +3138,7 @@ export default function MessagesPage() {
                     <em className="ml-1 text-muted-foreground truncate">
                       "{replyingToMessage.text?.substring(0, 50) ||
                         (replyingToMessage.type === 'image' && "Image") ||
-                        (replyingToMessage.type === 'file' && `File: ${replyingToMessage.fileName || 'attachment'}`) ||
+                        (replyingToMessage.type === 'file' && `File: ${replyingToMessage.fileName || 'attachment'} `) ||
                         (replyingToMessage.type === 'gif' && "GIF") ||
                         (replyingToMessage.type === 'voice_message' && "Voice Message") || "..."}"
                       {(replyingToMessage.text && replyingToMessage.text.length > 50) ||
@@ -3091,7 +3182,7 @@ export default function MessagesPage() {
                     <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
                   </Button>
                 )}
-                <Input ref={chatInputRef} type="text" placeholder={isRecording ? "Recording..." : `Message ${otherUserName || 'User'} (@mention, **bold**)`}
+                <Input ref={chatInputRef} type="text" placeholder={isRecording ? "Recording..." : `Message ${otherUserName || 'User'} (@mention, ** bold **)`}
                   className="flex-1 bg-transparent text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-8 sm:h-9 px-2"
                   value={newMessage} onChange={handleMentionInputChange}
                   onKeyPress={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isRecording && !isUploadingFile) handleSendMessage(e); }}
@@ -3164,20 +3255,20 @@ export default function MessagesPage() {
                       <div className="flex border-b border-border/20">
                         <button
                           onClick={() => setGifPickerView('search')}
-                          className={`flex-1 py-3 px-4 text-sm font-medium transition-all duration-200 ${gifPickerView === 'search'
+                          className={`flex - 1 py - 3 px - 4 text - sm font - medium transition - all duration - 200 ${gifPickerView === 'search'
                             ? 'text-primary border-b-2 border-primary bg-primary/5'
                             : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
-                            }`}
+                            } `}
                         >
                           <Search className="h-4 w-4 inline mr-2" />
                           Search & Trending
                         </button>
                         <button
                           onClick={() => setGifPickerView('favorites')}
-                          className={`flex-1 py-3 px-4 text-sm font-medium transition-all duration-200 ${gifPickerView === 'favorites'
+                          className={`flex - 1 py - 3 px - 4 text - sm font - medium transition - all duration - 200 ${gifPickerView === 'favorites'
                             ? 'text-primary border-b-2 border-primary bg-primary/5'
                             : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
-                            }`}
+                            } `}
                         >
                           <Star className="h-4 w-4 inline mr-2" />
                           Favorites
@@ -3392,13 +3483,13 @@ export default function MessagesPage() {
                 {dmPartnerProfile.displayName || 'User'}
                 <span className="ml-2"><UserTag tag={dmPartnerVibeTag} size={20} /></span>
               </h3>
-              {dmPartnerProfile.email && selectedConversation.id === `${currentUser?.uid}_self` && (
+              {dmPartnerProfile.email && selectedConversation.id === `${currentUser?.uid} _self` && (
                 <p className="text-xs sm:text-sm text-muted-foreground">{dmPartnerProfile.email}</p>
               )}
               <div className="text-xs text-muted-foreground mt-1 italic">
-                <span 
-                  dangerouslySetInnerHTML={{ 
-                    __html: detectAndFormatLinks(dmPartnerProfile.bio || (otherUserId === currentUser?.uid ? "Your personal space." : "User bio placeholder."), {
+                <span
+                  dangerouslySetInnerHTML={{
+                    __html: detectAndFormatLinks(dmPartnerProfile.note || (otherUserId === currentUser?.uid ? "Your personal space." : "No note set."), {
                       className: "text-blue-500 hover:text-blue-600 underline break-words transition-colors"
                     })
                   }}
@@ -3412,8 +3503,8 @@ export default function MessagesPage() {
                 {otherUserId === currentUser?.uid ? "Your Info" : "About"}
               </h4>
               <div className="text-sm text-foreground/90">
-                <span 
-                  dangerouslySetInnerHTML={{ 
+                <span
+                  dangerouslySetInnerHTML={{
                     __html: detectAndFormatLinks(dmPartnerProfile.bio || (otherUserId === currentUser?.uid ? "Saved messages and notes." : "This user hasn't shared their bio yet."), {
                       className: "text-blue-500 hover:text-blue-600 underline break-words transition-colors"
                     })
@@ -3422,7 +3513,7 @@ export default function MessagesPage() {
               </div>
 
               {/* Selected Tag */}
-              {selectedConversation.id !== `${currentUser?.uid}_self` && (
+              {selectedConversation.id !== `${currentUser?.uid} _self` && (
                 <div className="mt-3">
                   <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground uppercase tracking-wide">Selected Tag</h4>
                   <div className="mt-1 flex items-center gap-2 text-sm">
@@ -3432,7 +3523,7 @@ export default function MessagesPage() {
                 </div>
               )}
 
-              {selectedConversation.id !== `${currentUser?.uid}_self` && dmPartnerProfile.mutualInterests && dmPartnerProfile.mutualInterests.length > 0 && (
+              {selectedConversation.id !== `${currentUser?.uid} _self` && dmPartnerProfile.mutualInterests && dmPartnerProfile.mutualInterests.length > 0 && (
                 <>
                   <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground uppercase tracking-wide mt-3">Mutual Interests</h4>
                   <div className="flex flex-wrap gap-1.5">
@@ -3453,14 +3544,14 @@ export default function MessagesPage() {
                     console.log('Manual interaction status check:', status);
                     toast({
                       title: "Debug: Interaction Status",
-                      description: `Can interact: ${status.canInteract}, Blocked: ${status.isBlocked}, Disconnected: ${status.isDisconnected}`
+                      description: `Can interact: ${status.canInteract}, Blocked: ${status.isBlocked}, Disconnected: ${status.isDisconnected} `
                     });
                   }}
                 >
                   Debug: Check Status
                 </Button>
               )}
-              {selectedConversation.id !== `${currentUser?.uid}_self` && currentUser && otherUserId && (
+              {selectedConversation.id !== `${currentUser?.uid} _self` && currentUser && otherUserId && (
                 <BlockButton
                   currentUserId={currentUser.uid}
                   targetUserId={otherUserId}
@@ -3472,7 +3563,7 @@ export default function MessagesPage() {
                     fetchConnectedUsers();
                     // Navigate back to saved messages or close conversation
                     const savedMessagesConvo: DmConversation = {
-                      id: `${currentUser.uid}_self`,
+                      id: `${currentUser.uid} _self`,
                       name: 'Saved Messages',
                       partnerId: currentUser.uid,
                       avatarUrl: currentUser.photoURL || undefined,
@@ -3623,14 +3714,9 @@ export default function MessagesPage() {
         </DialogContent>
       </Dialog>
 
-      
+
 
 
     </div>
   );
 }
-
-
-
-
-

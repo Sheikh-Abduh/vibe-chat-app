@@ -129,8 +129,8 @@ export default function CreateAccountPage() {
       const initialProfileDetails = {
         displayName: data.username,
         photoURL: user.photoURL || null,
-        aboutMe: "Tell us about yourself...",
-        status: "What's on your mind?",
+        note: "Add a quick note",
+        about: "What's on your mind?",
         hobbies: "Not set",
         age: "Not set",
         gender: "Not set",

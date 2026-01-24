@@ -147,7 +147,7 @@ export function useWebRTC({ signalingUrl, currentUserId, otherUserId, channelId 
       cleanup();
       try {
         window.dispatchEvent(new CustomEvent('callDeclined'));
-      } catch {}
+      } catch { }
       setIsCalling(false);
     });
 
@@ -156,7 +156,7 @@ export function useWebRTC({ signalingUrl, currentUserId, otherUserId, channelId 
       cleanup();
       try {
         window.dispatchEvent(new CustomEvent('remoteHangup'));
-      } catch {}
+      } catch { }
       setIsCalling(false);
     });
 
@@ -164,7 +164,7 @@ export function useWebRTC({ signalingUrl, currentUserId, otherUserId, channelId 
       socket.disconnect();
       socketRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signalingUrl, canSignal, currentUserId, channelId, otherUserId, inCall]);
 
   const createPeerConnection = useCallback(async () => {
@@ -193,6 +193,13 @@ export function useWebRTC({ signalingUrl, currentUserId, otherUserId, channelId 
       }
     };
   }, [iceServers, otherUserId]);
+
+  // Set call start time when connection is established
+  useEffect(() => {
+    if (connectionState === 'connected' && inCall && !callStartMs) {
+      setCallStartMs(Date.now());
+    }
+  }, [connectionState, inCall, callStartMs]);
 
   // Cache for pending remote offer before user accepts
   const pendingRemoteOffer = useRef<any | null>(null);
@@ -232,8 +239,8 @@ export function useWebRTC({ signalingUrl, currentUserId, otherUserId, channelId 
     setInCall(true);
     setCallType(type);
     setIsCalling(true);
-    setCallStartMs(Date.now());
-  }, [canSignal, createPeerConnection, otherUserId]);
+    // Don't set callStartMs here - wait for connection to be established
+  }, [canSignal, createPeerConnection, otherUserId, audioInputId, videoInputId]);
 
   const startVoiceCall = useCallback(async () => {
     await startCall("audio");
@@ -266,7 +273,7 @@ export function useWebRTC({ signalingUrl, currentUserId, otherUserId, channelId 
     if (pcRef.current) {
       pcRef.current.onicecandidate = null;
       pcRef.current.ontrack = null;
-      try { pcRef.current.close(); } catch {}
+      try { pcRef.current.close(); } catch { }
       pcRef.current = null;
     }
     if (localStream) {
@@ -308,8 +315,8 @@ export function useWebRTC({ signalingUrl, currentUserId, otherUserId, channelId 
     setInCall(true);
     setIncomingFromUserId(null);
     pendingRemoteOffer.current = null;
-    setCallStartMs(Date.now());
-  }, [createPeerConnection, localStream, otherUserId]);
+    // Don't set callStartMs here - wait for connection to be established
+  }, [createPeerConnection, localStream, otherUserId, audioInputId]);
 
   const acceptIncomingCallWithVideo = useCallback(async () => {
     if (!pendingRemoteOffer.current) return;
@@ -332,7 +339,7 @@ export function useWebRTC({ signalingUrl, currentUserId, otherUserId, channelId 
     setInCall(true);
     setIncomingFromUserId(null);
     pendingRemoteOffer.current = null;
-    setCallStartMs(Date.now());
+    // Don't set callStartMs here - wait for connection to be established
   }, [createPeerConnection, localStream, otherUserId, audioInputId, videoInputId]);
 
   const declineIncomingCall = useCallback(() => {
@@ -343,7 +350,7 @@ export function useWebRTC({ signalingUrl, currentUserId, otherUserId, channelId 
     setIncomingFromUserId(null);
     try {
       window.dispatchEvent(new CustomEvent('callMissed'));
-    } catch {}
+    } catch { }
   }, [otherUserId]);
 
   // Auto-timeout for incoming calls (30s)

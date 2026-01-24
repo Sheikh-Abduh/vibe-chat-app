@@ -248,6 +248,81 @@ export default function CommunitiesPage() {
         // Get the proper owner info for vibe community
         const vibeOwnerInfo = await getVibeOwnerInfo();
         
+        // Check if vibe-community-main document exists in Firestore
+        const vibeCommunityRef = doc(db, 'communities', 'vibe-community-main');
+        const vibeCommunityDoc = await getDoc(vibeCommunityRef);
+        
+        // Create the vibe community document if it doesn't exist
+        if (!vibeCommunityDoc.exists()) {
+          console.log('Vibe community document does not exist. Creating it...');
+          
+          // Create default permissions
+          const defaultPermissions = {
+            member: {
+              canInviteMembers: true,
+              canCreateChannels: false,
+              canDeleteMessages: false,
+              canMentionEveryone: false,
+              canManageRoles: false,
+              canKickMembers: false,
+              canBanMembers: false,
+              canManageServer: false,
+            },
+            moderator: {
+              canInviteMembers: true,
+              canCreateChannels: true,
+              canDeleteMessages: true,
+              canMentionEveryone: true,
+              canManageRoles: false,
+              canKickMembers: true,
+              canBanMembers: false,
+              canManageServer: false,
+            },
+            admin: {
+              canInviteMembers: true,
+              canCreateChannels: true,
+              canDeleteMessages: true,
+              canMentionEveryone: true,
+              canManageRoles: true,
+              canKickMembers: true,
+              canBanMembers: true,
+              canManageServer: true,
+            },
+            owner: {
+              canInviteMembers: true,
+              canCreateChannels: true,
+              canDeleteMessages: true,
+              canMentionEveryone: true,
+              canManageRoles: true,
+              canKickMembers: true,
+              canBanMembers: true,
+              canManageServer: true,
+            }
+          };
+          
+          // Create the vibe community document
+          await setDoc(vibeCommunityRef, {
+            name: 'VIBE',
+            description: 'The official VIBE community',
+            isPrivate: false,
+            logoUrl: dynamicVibeCommunityIcon,
+            bannerUrl: dynamicVibeCommunityBanner,
+            ownerId: vibeOwnerInfo.ownerId,
+            ownerName: vibeOwnerInfo.ownerName,
+            memberCount: 0,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            permissions: defaultPermissions,
+            members: [],
+            moderators: [],
+            admins: [],
+            bannedUsers: [],
+            tags: [],
+          });
+          
+          console.log('Vibe community document created successfully!');
+        }
+        
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
           const fetchedCommunities: Community[] = [];
           
@@ -1339,17 +1414,42 @@ export default function CommunitiesPage() {
 
     try {
       const communityRef = doc(db, 'communities', selectedCommunity.id);
-      await updateDoc(communityRef, {
-        ...updates,
-        updatedAt: serverTimestamp(),
-      });
+      
+      // Check if the document exists first
+      const communityDoc = await getDoc(communityRef);
+      
+      if (!communityDoc.exists()) {
+        // If document doesn't exist, create it instead of updating
+        console.log(`Community document ${selectedCommunity.id} does not exist. Creating it...`);
+        await setDoc(communityRef, {
+          ...selectedCommunity,
+          ...updates,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        console.log(`Community document ${selectedCommunity.id} created successfully!`);
+      } else {
+        // Document exists, update it
+        await updateDoc(communityRef, {
+          ...updates,
+          updatedAt: serverTimestamp(),
+        });
+      }
       
       toast({
         title: "Settings Updated",
         description: "Community settings have been saved successfully.",
       });
+      
+      // Refresh communities to update the UI
+      setRefreshCommunities(prev => !prev);
     } catch (error) {
       console.error('Error updating community settings:', error);
+      toast({
+        variant: "destructive",
+        title: "Error Saving Settings",
+        description: error instanceof Error ? error.message : "An unexpected error occurred. Please try again.",
+      });
       throw error;
     }
   };

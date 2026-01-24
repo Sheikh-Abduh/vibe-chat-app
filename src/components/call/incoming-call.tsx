@@ -1,111 +1,137 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Phone, PhoneOff, Video } from "lucide-react";
+import { Phone, PhoneOff, Video, User } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface IncomingCallProps {
   visible: boolean;
   callerName?: string;
+  callerAvatar?: string;
   onAccept: () => void;
   onDecline: () => void;
   onAcceptVideo?: () => void;
 }
 
-export default function IncomingCall({ visible, callerName, onAccept, onDecline, onAcceptVideo }: IncomingCallProps) {
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const oscRef = useRef<OscillatorNode | null>(null);
-  const gainRef = useRef<GainNode | null>(null);
-  const audioElRef = useRef<HTMLAudioElement | null>(null);
+export default function IncomingCall({
+  visible,
+  callerName,
+  callerAvatar,
+  onAccept,
+  onDecline,
+  onAcceptVideo
+}: IncomingCallProps) {
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('📞 [IncomingCall] Component props updated:', { visible, callerName, callerAvatar });
+  }, [visible, callerName, callerAvatar]);
 
   useEffect(() => {
     if (visible) {
-      try {
-        // Try to play ringtone asset first (if exists)
-        const el = new Audio("/sounds/ringtone.mp3");
-        el.loop = true;
-        el.volume = 0.25;
-        audioElRef.current = el;
-        el.play().then(() => {
-          // Played asset successfully, no need for Web Audio fallback
-        }).catch(() => {
-          // Create simple ringtone using Web Audio API (beeping) as fallback
-          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = "sine";
-          osc.frequency.value = 880; // A5
-          gain.gain.value = 0.0001; // start silent
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start();
+      console.log('📞 [IncomingCall] Popup becoming visible');
+      setIsVisible(true);
+      // Delay animation to ensure DOM is ready
+      setTimeout(() => {
+        setIsAnimating(true);
+      }, 10);
 
-          audioCtxRef.current = ctx;
-          oscRef.current = osc;
-          gainRef.current = gain;
-
-          // Beep pattern: 800ms on, 800ms off
-          let on = false;
-          const interval = setInterval(() => {
-            on = !on;
-            if (gainRef.current) {
-              gainRef.current.gain.setTargetAtTime(on ? 0.03 : 0.0001, ctx.currentTime, 0.01);
-            }
-          }, 800);
-
-          return () => {
-            clearInterval(interval);
-            try { osc.stop(); } catch {}
-            gain.disconnect();
-            osc.disconnect();
-            ctx.close();
-            audioCtxRef.current = null;
-            oscRef.current = null;
-            gainRef.current = null;
-          };
+      // Request notification permission if not granted
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          console.log('🔔 [IncomingCall] Notification permission:', permission);
         });
-      } catch (e) {
-        // Ignore audio errors (autoplay restrictions, etc.)
       }
-    }
-    return () => {
-      try {
-        if (audioElRef.current) {
-          audioElRef.current.pause();
-          audioElRef.current.currentTime = 0;
-          audioElRef.current = null;
+
+      // Show browser notification (ONLY ONCE)
+      if (Notification.permission === 'granted') {
+        try {
+          const notification = new Notification('Incoming Call', {
+            body: `${callerName || 'Someone'} is calling you`,
+            icon: callerAvatar || '/logo.png',
+            tag: 'incoming-call', // This prevents duplicate notifications with same tag
+            requireInteraction: true,
+          });
+
+          notification.onclick = () => {
+            window.focus();
+            notification.close();
+          };
+
+          // Auto-close notification after 30 seconds
+          setTimeout(() => {
+            if (notification) notification.close();
+          }, 30000);
+        } catch (error) {
+          console.error('Failed to show notification:', error);
         }
-      } catch {}
-      if (audioCtxRef.current) {
-        try { oscRef.current?.stop(); } catch {}
-        gainRef.current?.disconnect();
-        oscRef.current?.disconnect();
-        audioCtxRef.current?.close();
       }
-      audioCtxRef.current = null;
-      oscRef.current = null;
-      gainRef.current = null;
-    };
-  }, [visible]);
+    } else {
+      console.log('📞 [IncomingCall] Popup becoming hidden');
+      setIsAnimating(false);
+      // Delay hiding to allow animation to complete
+      setTimeout(() => {
+        setIsVisible(false);
+      }, 300);
+    }
+  }, [visible, callerName, callerAvatar]);
 
   if (!visible) return null;
+
   return (
-    <div className="w-full border-b border-border/40 bg-card/80 backdrop-blur-md">
-      <div className="px-3 py-2 flex items-center justify-between">
-        <div className="text-sm">
-          Incoming call{callerName ? ` from ${callerName}` : ''}...
+    <div className="w-full border-b border-border/40 bg-card/90 backdrop-blur-md animate-in slide-in-from-top-2 duration-300">
+      <div className="px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Avatar className="w-10 h-10 border-2 border-primary animate-pulse">
+              <AvatarImage src={callerAvatar} alt={callerName} />
+              <AvatarFallback>{callerName ? callerName.charAt(0).toUpperCase() : <User className="w-5 h-5" />}</AvatarFallback>
+            </Avatar>
+            <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-background rounded-full"></span>
+          </div>
+
+          <div>
+            <div className="text-sm font-bold">
+              {callerName || 'Unknown User'}
+            </div>
+            <div className="text-xs text-primary animate-pulse font-medium">
+              Incoming Call...
+            </div>
+          </div>
         </div>
+
         <div className="flex items-center gap-2">
-          {onAcceptVideo && (
-            <Button variant="secondary" size="sm" className="gap-1" onClick={onAcceptVideo}>
-              <Video className="h-4 w-4" /> Accept with Video
-            </Button>
-          )}
-          <Button variant="default" size="sm" className="gap-1" onClick={onAccept}>
-            <Phone className="h-4 w-4" /> Accept
+          <Button
+            variant="destructive"
+            size="icon"
+            className="h-9 w-9 rounded-full hover:scale-110 transition-transform shadow-lg shadow-destructive/20"
+            onClick={onDecline}
+            title="Decline"
+          >
+            <PhoneOff className="h-4 w-4" />
           </Button>
-          <Button variant="destructive" size="sm" className="gap-1" onClick={onDecline}>
-            <PhoneOff className="h-4 w-4" /> Decline
+
+          <Button
+            variant="secondary"
+            size="icon"
+            className="h-9 w-9 rounded-full hover:scale-110 transition-transform bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20"
+            onClick={onAccept}
+            title="Accept Audio"
+          >
+            <Phone className="h-4 w-4" />
+          </Button>
+
+          <Button
+            variant="default"
+            size="icon"
+            className="h-9 w-9 rounded-full hover:scale-110 transition-transform bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20"
+            onClick={onAcceptVideo}
+            title="Accept Video"
+          >
+            <Video className="h-4 w-4" />
           </Button>
         </div>
       </div>

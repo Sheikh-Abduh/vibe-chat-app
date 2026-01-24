@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Firebase Connection</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+</head>
+<body>
+    <h1>Test Firebase Connection</h1>
+    <button id="testConnection">Test Connection</button>
+    <button id="testWrite">Test Write</button>
+    <button id="testRead">Test Read</button>
+    <div id="result"></div>
+
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyA1x_MWgIJlEB8BToP2Mc7LLAZv0pPjtc8",
+            authDomain: "vibe-35004.firebaseapp.com",
+            databaseURL: "https://vibe-35004-default-rtdb.firebaseio.com",
+            projectId: "vibe-35004",
+            storageBucket: "vibe-35004.appspot.com",
+            messagingSenderId: "667054799663",
+            appId: "1:667054799663:web:849dc655b5ef124d9fffda"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        document.getElementById('testConnection').addEventListener('click', async () => {
+            try {
+                const testRef = database.ref('.info/connected');
+                testRef.on('value', (snap) => {
+                    if (snap.val() === true) {
+                        document.getElementById('result').innerHTML = '✅ Firebase connection successful';
+                    } else {
+                        document.getElementById('result').innerHTML = '❌ Firebase not connected';
+                    }
+                });
+            } catch (error) {
+                document.getElementById('result').innerHTML = '❌ Error: ' + error.message;
+            }
+        });
+
+        document.getElementById('testWrite').addEventListener('click', async () => {
+            try {
+                // This will only work if user is authenticated
+                const testRef = database.ref('test/connection');
+                await testRef.set({
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    message: 'Test write successful'
+                });
+                document.getElementById('result').innerHTML = '✅ Firebase write successful';
+            } catch (error) {
+                document.getElementById('result').innerHTML = '❌ Write error: ' + error.message;
+            }
+        });
+
+        document.getElementById('testRead').addEventListener('click', async () => {
+            try {
+                const testRef = database.ref('test/connection');
+                const snapshot = await testRef.once('value');
+                if (snapshot.exists()) {
+                    document.getElementById('result').innerHTML = '✅ Firebase read successful: ' + JSON.stringify(snapshot.val());
+                } else {
+                    document.getElementById('result').innerHTML = '⚠️ No data found at test path';
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML = '❌ Read error: ' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>

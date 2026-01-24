@@ -113,8 +113,8 @@ export default function ChatInput({
     restrictedWords = [],
     censorRestrictedWords
 }: ChatInputProps) {
-    // Check if user can send messages in this community
-    const canSendMessage = canUserSendMessage(selectedCommunity, currentUser);
+    // Check if user can send messages in this community and channel
+    const canSendMessage = canUserSendMessage(selectedCommunity, currentUser, selectedChannel.id);
     
     const { toast } = useToast();
     const [newMessage, setNewMessage] = useState("");
@@ -141,6 +141,13 @@ export default function ChatInput({
     const [gifPickerView, setGifPickerView] = useState<'search' | 'favorites'>('search');
     const [favoritedGifs, setFavoritedGifs] = useState<TenorGif[]>([]);
 
+    const userRole = selectedCommunity.ownerId === currentUser?.uid ? 'owner' : selectedCommunity.admins?.includes(currentUser?.uid) ? 'admin' : selectedCommunity.moderators?.includes(currentUser?.uid) ? 'moderator' : 'member';
+    const allowedRoles = selectedChannel.permissions?.allowedRoles || [];
+    const allowedMessageTypes = selectedChannel.permissions?.allowedMessageTypes || [];
+
+    const canSendTextMessage = allowedRoles.length === 0 || allowedRoles.includes(userRole) && (allowedMessageTypes.length === 0 || allowedMessageTypes.includes('text'));
+    const canSendAttachment = allowedRoles.length === 0 || allowedRoles.includes(userRole) && (allowedMessageTypes.length === 0 || allowedMessageTypes.includes('file') || allowedMessageTypes.includes('image') || allowedMessageTypes.includes('video'));
+
     useEffect(() => {
         if(currentUser) {
             const storedFavorites = localStorage.getItem(`favorited_gifs_${currentUser.uid}`);
@@ -154,8 +161,8 @@ export default function ChatInput({
           e.preventDefault();
         }
     
-        // Check if user can send messages in this community
-        if (!canUserSendMessage(selectedCommunity, currentUser)) {
+        // Check if user can send messages in this community and channel
+        if (!canUserSendMessage(selectedCommunity, currentUser, selectedChannel.id, 'text')) {
           toast({
             variant: "destructive",
             title: "Access Denied",
@@ -240,8 +247,8 @@ export default function ChatInput({
       };
     
       const sendAttachmentMessageToFirestore = async (fileUrl: string, fileName: string, fileType: string) => {
-        // Check if user can send messages in this community
-        if (!canUserSendMessage(selectedCommunity, currentUser)) {
+        // Check if user can send messages in this community and channel
+        if (!canUserSendMessage(selectedCommunity, currentUser, selectedChannel.id, 'files')) {
           toast({
             variant: "destructive",
             title: "Access Denied",
@@ -322,8 +329,9 @@ export default function ChatInput({
       };
     
       const uploadFileToCloudinaryAndSend = async (file: File, isVoiceMessage: boolean = false) => {
-        // Check if user can send messages in this community
-        if (!canUserSendMessage(selectedCommunity, currentUser)) {
+        // Check if user can send messages in this community and channel
+        const messageType = isVoiceMessage ? 'files' : (file.type.startsWith('image/') ? 'images' : 'files');
+        if (!canUserSendMessage(selectedCommunity, currentUser, selectedChannel.id, messageType)) {
           toast({
             variant: "destructive",
             title: "Access Denied",
